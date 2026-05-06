@@ -1,0 +1,93 @@
+# BusyReader
+
+## What This Is
+
+An AI-powered ebook web app that helps readers deeply understand books through AI-generated "Explainers" (never called "summaries") at both book and section levels, text-to-speech audio generation, and multilingual support. Built around a Universal Library concept where books are deduplicated by MD5 hash and all AI-generated content (Explainers and audio) is cached and shared across every user with access to that book.
+
+Users upload EPUB files, which are hashed and checked against the Universal Library. If new, the book is converted to TXT, stored, and the uploader is granted access. If already present, the uploader simply gains access to the existing copy. From their Personal Library ("My Library"), users can read with excellent typography, navigate via a rich Table of Contents, and request Explainers or audio in their preferred language — all cached globally after first generation.
+
+## Core Value
+
+Any user can upload an EPUB and immediately receive AI-powered explanations in their preferred language, plus listen to audiobook-style audio, with everything cached so it only needs to be generated once for all readers.
+
+## Requirements
+
+### Validated
+
+(None yet — ship to validate)
+
+### Active
+
+- [ ] User authentication with role-based access (Regular, Pro, Admin)
+- [ ] EPUB upload with MD5 hash deduplication against the Universal Library
+- [ ] EPUB to TXT conversion for downstream AI processing
+- [ ] Personal Library ("My Library") showing only books the user has access to
+- [ ] Book Detail page with rich Table of Contents (ToC)
+- [ ] Reader view with excellent typography, three themes (light / dark / sepia), bookmarks, highlights, and resume-last-position
+- [ ] Book-level "Explain this to me" generating AI explanations via OpenRouter
+- [ ] Section-level (ToC entry) "Explain this to me" generating contextual AI explanations
+- [ ] Explainer caching per (book or section, language) in the Universal Library
+- [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai
+- [ ] Audio caching per (book or section, language) in the Universal Library
+- [ ] Admin panel for managing user roles, Universal Library books, and LLM prompt content
+- [ ] Per-user language preference driving both Explainer and TTS generation
+- [ ] Beautiful bookshelf experience for browsing Personal Library
+
+### Out of Scope
+
+- **Native mobile app (iOS/iPad)** — Web-first for v1; mobile app is a v2 consideration.
+- **PDF, DOCX, or other formats** — EPUB only for v1 to constrain scope.
+- **Social features** — No sharing, comments, reviews, or community features in v1.
+- **Real-time collaboration** — Single-user reading and annotation only.
+- **Offline reading / PWA** — Requires service worker and local storage; defer to v2.
+- **In-app payment / subscription tiers** — Role assignments handled via Admin panel for v1; no self-serve billing.
+- **Semantic search across library** — Full-text search within a book may come later; universal semantic search is out of scope.
+
+## Context
+
+The project is motivated by the founder's personal experience using LLMs to recover understanding from books that were only skimmed or listened to in noisy environments. Through conversations with others, the need expanded to helping language learners (e.g., a Vietnamese reader learning data science from English books) and academics working with dense literature. The core insight is that LLMs are uniquely valuable for making large quantities of text comprehensible — but only if the experience is seamless, beautifully designed, and cost-efficient through caching.
+
+Key design principles:
+- **Never call Explainers "summaries"** — they are a distinct product concept.
+- **Universal Library is invisible to non-admins** — users only ever see their Personal Library.
+- **Generate once, serve many** — All AI outputs (Explainers, audio) are cached in the Universal Library by (content, language) to minimize cost and latency.
+- **Tiered AI quality** — Regular users get cost-effective models; Pro users unlock higher-fidelity models for audio and Explainers.
+
+## Constraints
+
+- **Platform**: Web application only for v1. No native mobile.
+- **LLM Provider**: OpenRouter for abstraction across model providers.
+- **TTS Providers**: ElevenLabs and fal.ai endpoints (admin-configurable).
+- **Book Format**: EPUB only for v1.
+- **Book Identifier**: MD5 hash of the EPUB file contents, used as the primary key in the `epub_files` table.
+- **Budget**: AI generation costs must be controlled via caching and model tiering.
+
+## Key Decisions
+
+| Decision | Rationale | Outcome |
+| --- | --- | --- |
+| OpenRouter for LLM abstraction | Avoid vendor lock-in; easy to swap models for Regular vs Pro tiers | - Pending |
+| Web-first, mobile later | Faster to ship, broader reach, easier iteration | - Pending |
+| Explainers cached per (content, language) | Minimizes API costs; content is language-agnostic until generation | - Pending |
+| MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | - Pending |
+| Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | - Pending |
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
+---
+*Last updated: 2026-05-06 after project initialization*
