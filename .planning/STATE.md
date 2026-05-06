@@ -1,13 +1,13 @@
 # Project State: BusyReader
 
 **Project:** busyreader-via-pi
-**Last updated:** 2026-05-06
+**Last updated:** 2026-05-06 (context gathered)
 
 ---
 
 ## Current Phase
 
-**Phase 1: Foundation** — Not started
+**Phase 1: Foundation** — Context gathered, ready for planning
 
 Phase 1 delivers authentication, EPUB upload with MD5 deduplication, the Universal Library, Personal Library, basic admin panel, and book language detection. All other phases depend on this foundation.
 
@@ -17,7 +17,7 @@ Phase 1 delivers authentication, EPUB upload with MD5 deduplication, the Univers
 
 | Phase | Status | Requirements | Completed | Blockers |
 | --- | --- | --- | --- | --- |
-| Phase 1: Foundation | Not started | 19 | 0 | None |
+| Phase 1: Foundation | Context gathered | 19 | 0 | None |
 | Phase 2: Core Reading | Blocked | 5 | 0 | Phase 1 |
 | Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
