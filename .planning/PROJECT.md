@@ -73,6 +73,7 @@ Key design principles:
 | MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | - Pending |
 | Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | - Pending |
 | Google OAuth for authentication | Simpler than email/password; Better Auth supports it natively | - Pending |
+| TTS streams sections on-demand; full-book download is Pro-only | Cost control — streaming avoids paying for unlistened content; download is value-add for Pro | - Pending |
 
 ## Evolution
 

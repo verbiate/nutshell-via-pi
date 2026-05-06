@@ -47,13 +47,14 @@
 
 ### TTS Audio
 
-- [ ] **TTS-01**: User can request audiobook-style audio for an entire book
+- [ ] **TTS-01**: User can hit "play" to stream audiobook-style audio; system generates sections on-demand with a buffer (current section + following section)
 - [ ] **TTS-02**: User can request audio for a specific section
 - [ ] **TTS-03**: Audio is generated via ElevenLabs (default) or fal.ai (cost-effective) endpoints
 - [ ] **TTS-04**: System checks cache for existing audio matching (content_hash, language, voice_id, model); serves cached if found
 - [ ] **TTS-05**: If no cached audio exists, system generates, caches, then serves it
 - [ ] **TTS-06**: Pro users can access higher-fidelity voice models for audio generation
-- [ ] **TTS-07**: Audio generation is queued asynchronously (202 Accepted); user polls or receives notification on completion
+- [ ] **TTS-07**: Audio generation is queued asynchronously; user polls or receives notification on completion
+- [ ] **TTS-08**: Pro users can "Download" full-book audio for offline listening (pre-processes entire book, gated feature)
 
 ### Admin Panel
 
@@ -154,18 +155,19 @@
 | TTS-05 | Phase 5: TTS Audio | Pending |
 | TTS-06 | Phase 5: TTS Audio | Pending |
 | TTS-07 | Phase 5: TTS Audio | Pending |
+| TTS-08 | Phase 5: TTS Audio | Pending |
 | LANG-04 | Phase 5: TTS Audio | Pending |
 
 **Coverage:**
-- v1 requirements: 46 total
-- Mapped to phases: 46
+- v1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
 - Duplicated: 0 ✓
 - Phase 1: Foundation — 19 requirements
 - Phase 2: Core Reading — 5 requirements
 - Phase 3: AI Explainers — 8 requirements
 - Phase 4: Reading Enhancements — 5 requirements
-- Phase 5: TTS Audio — 9 requirements
+- Phase 5: TTS Audio — 10 requirements
 
 ---
 *Requirements defined: 2026-05-06*

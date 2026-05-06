@@ -2,7 +2,7 @@
 
 **Project:** busyreader-via-pi
 **Created:** 2026-05-06
-**Derived from:** REQUIREMENTS.md v1 (45 requirements)
+**Derived from:** REQUIREMENTS.md v1 (47 requirements)
 **Coverage:** 100% — every v1 requirement mapped to exactly one phase
 
 ---
@@ -138,20 +138,21 @@
 | ID | Requirement |
 | --- | --- |
 | EXP-09 | Pro users can access higher-fidelity LLM models for Explainer generation |
-| TTS-01 | User can request audiobook-style audio for an entire book |
+| TTS-01 | User can hit "play" to stream audiobook-style audio; system generates sections on-demand with a buffer |
 | TTS-02 | User can request audio for a specific section |
 | TTS-03 | Audio is generated via ElevenLabs (default) or fal.ai (cost-effective) endpoints |
 | TTS-04 | System checks cache for existing audio matching (content_hash, language, voice_id, model); serves cached if found |
 | TTS-05 | If no cached audio exists, system generates, caches, then serves it |
 | TTS-06 | Pro users can access higher-fidelity voice models for audio generation |
 | TTS-07 | Audio generation is queued asynchronously (202 Accepted); user polls or receives notification on completion |
+| TTS-08 | Pro users can "Download" full-book audio for offline listening (pre-processes entire book, gated feature) |
 | LANG-04 | TTS voice selection respects book language (not user preference) |
 
 **Success Criteria (observable user behaviors):**
-1. A user can click "Generate Audio" on a book, receive a "processing" indicator, and within minutes see a playable audio file with standard playback controls.
-2. Requesting audio for the same book with the same voice loads from cache instantly without triggering a new generation job.
+1. A user can hit "play" on any book and audio begins within seconds; the system streams sections on-demand, generating the current section + next section as a buffer.
+2. Requesting audio for the same section with the same voice loads from cache instantly without triggering a new generation job.
 3. A Pro user sees premium voice/model options in the audio generation UI that are not visible to Regular users.
-4. A user can request audio for a single section and receive a short audio file specific to that chapter.
+4. A Pro user can click "Download Audio" to pre-process the entire book for offline listening; a Regular user does not see this option.
 5. A user can play, pause, and scrub through generated audio with a built-in audio player that shows progress and duration.
 
 **Research Flags:**
@@ -169,8 +170,8 @@
 | Phase 2: Core Reading | READ-01..05 | 5 |
 | Phase 3: AI Explainers | EXP-01..02, EXP-04..07, LANG-01..02 | 8 |
 | Phase 4: Reading Enhancements | READ-06..08, EXP-03, EXP-08 | 5 |
-| Phase 5: TTS Audio | EXP-09, TTS-01..07, LANG-04 | 9 |
-| **Total** | | **46** |
+| Phase 5: TTS Audio | EXP-09, TTS-01..08, LANG-04 | 10 |
+| **Total** | | **47** |
 
 Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase. No requirements are orphaned, duplicated, or deferred without explicit Out of Scope documentation.
 
