@@ -1,0 +1,53 @@
+{
+  "model_profile": "inherit",
+  "commit_docs": true,
+  "parallelization": true,
+  "model_overrides": {
+    "gsd-planner": "kimi-coding/k2p6",
+    "gsd-roadmapper": "kimi-coding/k2p6",
+    "gsd-executor": "minimax/MiniMax-M2.7-highspeed",
+    "gsd-phase-researcher": "kimi-coding/k2p6",
+    "gsd-project-researcher": "kimi-coding/k2p6",
+    "gsd-research-synthesizer": "kimi-coding/k2p6",
+    "gsd-verifier": "zai/glm-5.1",
+    "gsd-plan-checker": "zai/glm-5.1",
+    "gsd-debugger": "kimi-coding/k2p6",
+    "gsd-codebase-mapper": "kimi-coding/k2p6",
+    "gsd-integration-checker": "zai/glm-5.1",
+    "gsd-nyquist-auditor": "zai/glm-5.1",
+    "gsd-ui-researcher": "kimi-coding/k2p6",
+    "gsd-ui-checker": "zai/glm-5.1",
+    "gsd-ui-auditor": "zai/glm-5.1"
+  },
+  "search_gitignored": false,
+  "brave_search": false,
+  "firecrawl": false,
+  "exa_search": false,
+  "git": {
+    "branching_strategy": "none",
+    "phase_branch_template": "gsd/phase-{phase}-{slug}",
+    "milestone_branch_template": "gsd/{milestone}-{slug}",
+    "quick_branch_template": null
+  },
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": true,
+    "auto_advance": false,
+    "node_repair": true,
+    "node_repair_budget": 2,
+    "ui_phase": true,
+    "ui_safety_gate": true,
+    "text_mode": false,
+    "research_before_questions": false,
+    "discuss_mode": "discuss",
+    "skip_discuss": false
+  },
+  "hooks": {
+    "context_warnings": true
+  },
+  "agent_skills": {},
+  "mode": "yolo",
+  "granularity": "standard"
+}
