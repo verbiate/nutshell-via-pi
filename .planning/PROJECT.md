@@ -26,6 +26,7 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - [ ] Reader view with excellent typography, three themes (light / dark / sepia), bookmarks, highlights, and resume-last-position
 - [ ] Book-level "Explain this to me" generating AI explanations via OpenRouter
 - [ ] Section-level (ToC entry) "Explain this to me" generating contextual AI explanations
+- [ ] Selected passage "Explain this to me" for arbitrary text selections
 - [ ] Explainer caching per (book or section, language) in the Universal Library
 - [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai
 - [ ] Audio caching per (book or section, language) in the Universal Library
@@ -71,6 +72,7 @@ Key design principles:
 | Explainers cached per (content, language) | Minimizes API costs; content is language-agnostic until generation | - Pending |
 | MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | - Pending |
 | Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | - Pending |
+| Google OAuth for authentication | Simpler than email/password; Better Auth supports it natively | - Pending |
 
 ## Evolution
 
