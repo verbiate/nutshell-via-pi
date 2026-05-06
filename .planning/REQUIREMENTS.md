@@ -109,57 +109,63 @@
 
 | Requirement | Phase | Status |
 | --- | --- | --- |
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
-| AUTH-03 | Phase 1 | Pending |
-| AUTH-04 | Phase 1 | Pending |
-| AUTH-05 | Phase 1 | Pending |
-| LIB-01 | Phase 1 | Pending |
-| LIB-02 | Phase 1 | Pending |
-| LIB-03 | Phase 1 | Pending |
-| LIB-04 | Phase 1 | Pending |
-| LIB-05 | Phase 1 | Pending |
-| LIB-06 | Phase 1 | Pending |
-| READ-01 | Phase 2 | Pending |
-| READ-02 | Phase 2 | Pending |
-| READ-03 | Phase 2 | Pending |
-| READ-04 | Phase 2 | Pending |
-| READ-05 | Phase 2 | Pending |
-| READ-06 | Phase 4 | Pending |
-| READ-07 | Phase 4 | Pending |
-| READ-08 | Phase 4 | Pending |
-| EXP-01 | Phase 3 | Pending |
-| EXP-02 | Phase 3 | Pending |
-| EXP-03 | Phase 4 | Pending |
-| EXP-04 | Phase 3 | Pending |
-| EXP-05 | Phase 3 | Pending |
-| EXP-06 | Phase 3 | Pending |
-| EXP-07 | Phase 3 | Pending |
-| EXP-08 | Phase 4 | Pending |
-| EXP-09 | Phase 5 | Pending |
-| TTS-01 | Phase 5 | Pending |
-| TTS-02 | Phase 5 | Pending |
-| TTS-03 | Phase 5 | Pending |
-| TTS-04 | Phase 5 | Pending |
-| TTS-05 | Phase 5 | Pending |
-| TTS-06 | Phase 5 | Pending |
-| TTS-07 | Phase 5 | Pending |
-| ADM-01 | Phase 1 | Pending |
-| ADM-02 | Phase 1 | Pending |
-| ADM-03 | Phase 1 | Pending |
-| ADM-04 | Phase 1 | Pending |
-| ADM-05 | Phase 1 | Pending |
-| ADM-06 | Phase 1 | Pending |
-| ADM-07 | Phase 1 | Pending |
-| LANG-01 | Phase 3 | Pending |
-| LANG-02 | Phase 3 | Pending |
-| LANG-03 | Phase 1 | Pending |
-| LANG-04 | Phase 5 | Pending |
+| AUTH-01 | Phase 1: Foundation | Pending |
+| AUTH-02 | Phase 1: Foundation | Pending |
+| AUTH-03 | Phase 1: Foundation | Pending |
+| AUTH-04 | Phase 1: Foundation | Pending |
+| AUTH-05 | Phase 1: Foundation | Pending |
+| LIB-01 | Phase 1: Foundation | Pending |
+| LIB-02 | Phase 1: Foundation | Pending |
+| LIB-03 | Phase 1: Foundation | Pending |
+| LIB-04 | Phase 1: Foundation | Pending |
+| LIB-05 | Phase 1: Foundation | Pending |
+| LIB-06 | Phase 1: Foundation | Pending |
+| ADM-01 | Phase 1: Foundation | Pending |
+| ADM-02 | Phase 1: Foundation | Pending |
+| ADM-03 | Phase 1: Foundation | Pending |
+| ADM-04 | Phase 1: Foundation | Pending |
+| ADM-05 | Phase 1: Foundation | Pending |
+| ADM-06 | Phase 1: Foundation | Pending |
+| ADM-07 | Phase 1: Foundation | Pending |
+| LANG-03 | Phase 1: Foundation | Pending |
+| READ-01 | Phase 2: Core Reading | Pending |
+| READ-02 | Phase 2: Core Reading | Pending |
+| READ-03 | Phase 2: Core Reading | Pending |
+| READ-04 | Phase 2: Core Reading | Pending |
+| READ-05 | Phase 2: Core Reading | Pending |
+| EXP-01 | Phase 3: AI Explainers | Pending |
+| EXP-02 | Phase 3: AI Explainers | Pending |
+| EXP-04 | Phase 3: AI Explainers | Pending |
+| EXP-05 | Phase 3: AI Explainers | Pending |
+| EXP-06 | Phase 3: AI Explainers | Pending |
+| EXP-07 | Phase 3: AI Explainers | Pending |
+| LANG-01 | Phase 3: AI Explainers | Pending |
+| LANG-02 | Phase 3: AI Explainers | Pending |
+| READ-06 | Phase 4: Reading Enhancements | Pending |
+| READ-07 | Phase 4: Reading Enhancements | Pending |
+| READ-08 | Phase 4: Reading Enhancements | Pending |
+| EXP-03 | Phase 4: Reading Enhancements | Pending |
+| EXP-08 | Phase 4: Reading Enhancements | Pending |
+| EXP-09 | Phase 5: TTS Audio | Pending |
+| TTS-01 | Phase 5: TTS Audio | Pending |
+| TTS-02 | Phase 5: TTS Audio | Pending |
+| TTS-03 | Phase 5: TTS Audio | Pending |
+| TTS-04 | Phase 5: TTS Audio | Pending |
+| TTS-05 | Phase 5: TTS Audio | Pending |
+| TTS-06 | Phase 5: TTS Audio | Pending |
+| TTS-07 | Phase 5: TTS Audio | Pending |
+| LANG-04 | Phase 5: TTS Audio | Pending |
 
 **Coverage:**
-- v1 requirements: 45 total
-- Mapped to phases: 45
+- v1 requirements: 46 total
+- Mapped to phases: 46
 - Unmapped: 0 ✓
+- Duplicated: 0 ✓
+- Phase 1: Foundation — 19 requirements
+- Phase 2: Core Reading — 5 requirements
+- Phase 3: AI Explainers — 8 requirements
+- Phase 4: Reading Enhancements — 5 requirements
+- Phase 5: TTS Audio — 9 requirements
 
 ---
 *Requirements defined: 2026-05-06*
