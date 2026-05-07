@@ -2,16 +2,18 @@ export const dynamic = "force-dynamic";
 
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
-import { generateExplainer } from "@/server/services/explainer";
+import { generateExplainer, computeContentHash } from "@/server/services/explainer";
 import { OpenRouterError } from "@/server/services/openrouter";
+import { db } from "@/server/db";
 
 /**
  * POST /api/explainers/generate
  *
- * Body: { bookId: string, type: "book" | "section", language?: string, sectionHref?: string }
+ * Body: { bookId: string, type: "book" | "section" | "passage", language?: string, sectionHref?: string, passageText?: string, passageCfi?: string }
  *
  * Returns SSE stream. On cache hit, emits one event with the full cached content.
  * On cache miss, streams tokens from OpenRouter and caches the result on completion.
+ * After successful generation, records ExplainerRequest for user history tracking.
  */
 export async function POST(request: Request) {
   try {
@@ -19,9 +21,11 @@ export async function POST(request: Request) {
 
     let body: {
       bookId?: string;
-      type?: "book" | "section";
+      type?: "book" | "section" | "passage";
       language?: string;
       sectionHref?: string;
+      passageText?: string;
+      passageCfi?: string;
     };
     try {
       body = await request.json();
@@ -32,7 +36,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { bookId, type, language, sectionHref } = body;
+    const { bookId, type, language, sectionHref, passageText, passageCfi } = body;
     const preferredLanguage = language || user.preferredLanguage || "en";
     const tier = user.role === "pro" ? "pro" : "regular";
 
@@ -45,7 +49,14 @@ export async function POST(request: Request) {
 
     if (type === "section" && !sectionHref) {
       return new Response(
-        `data: ${JSON.stringify({ error: "sectionHref is required" })}\n\n`,
+        `data: ${JSON.stringify({ error: "sectionHref is required for section type" })}\n\n`,
+        { status: 400, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }
+
+    if (type === "passage" && !passageText) {
+      return new Response(
+        `data: ${JSON.stringify({ error: "passageText is required for passage type" })}\n\n`,
         { status: 400, headers: { "Content-Type": "text/event-stream" } }
       );
     }
@@ -62,20 +73,63 @@ export async function POST(request: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        let generator: AsyncGenerator<string>;
+
+        // Helper to record ExplainerRequest after generation completes
+        function recordExplainerRequest() {
+n          Promise.resolve().then(async () => {
+            try {
+              const templateType = type ?? "book";
+              const template = await db.promptTemplate.findUnique({
+                where: { type: templateType },
+              });
+              const promptVersion = template?.version ?? 1;
+              const sourceText = type === "passage" ? (passageText ?? "") : "";
+              const contentHash = computeContentHash(sourceText, promptVersion, type ?? "book");
+
+              const generatedExplainer = await db.explainer.findUnique({
+                where: {
+                  contentHash_language_contentType_tier: {
+                    contentHash,
+                    language: preferredLanguage,
+                    contentType: type ?? "book",
+                    tier,
+                  },
+                },
+              });
+              if (generatedExplainer) {
+                await db.explainerRequest.create({
+                  data: {
+                    userId: user.id,
+                    bookId,
+                    explainerId: generatedExplainer.id,
+                    passageCfi: type === "passage" ? (passageCfi ?? null) : null,
+                    passageText: type === "passage" ? (passageText?.slice(0, 200) ?? null) : null,
+                    sectionHref: type === "section" ? (sectionHref ?? null) : null,
+                  },
+                });
+              }
+            } catch (err) {
+              console.error("[explainer/generate] Failed to record ExplainerRequest:", err);
+            }
+          });
+        }
+
         try {
-          const generator = generateExplainer({
+          generator = generateExplainer({
             bookId,
             type,
             language: preferredLanguage,
             tier,
             sectionHref,
+            passageText,
           });
 
           const first = await generator.next();
           if (first.done) {
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-            controller.close();
-            return;
+n            controller.close();
+n            return;
           }
 
           const second = await generator.next();
@@ -84,8 +138,9 @@ export async function POST(request: Request) {
             const data = JSON.stringify({ chunk: first.value, cached: true });
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-            controller.close();
-            return;
+n            controller.close();
+n            recordExplainerRequest();
+n            return;
           }
 
           // Multiple chunks = cache miss — stream all
@@ -100,7 +155,8 @@ export async function POST(request: Request) {
           }
 
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-          controller.close();
+n          controller.close();
+n          recordExplainerRequest();
         } catch (err: any) {
           const message = err instanceof OpenRouterError ? err.message : "Generation failed";
           const data = JSON.stringify({ error: message });
