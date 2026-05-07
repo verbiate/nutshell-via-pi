@@ -96,3 +96,95 @@ export async function verifyBookAccess(
 
   return false;
 }
+
+// Bookmarks
+
+export async function getBookmarks(userId: string, bookId: string) {
+  return db.bookmark.findMany({
+    where: { userId, bookId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function createBookmark(
+  userId: string,
+  bookId: string,
+  data: {
+    cfi: string;
+    paragraphIndex: number;
+    charOffset: number;
+    selectedText?: string;
+    note?: string;
+  }
+) {
+  return db.bookmark.create({
+    data: {
+      userId,
+      bookId,
+      cfi: data.cfi,
+      paragraphIndex: data.paragraphIndex,
+      charOffset: data.charOffset,
+      selectedText: data.selectedText,
+      note: data.note,
+    },
+  });
+}
+
+export async function deleteBookmark(userId: string, bookmarkId: string) {
+  const bookmark = await db.bookmark.findUnique({
+    where: { id: bookmarkId },
+    select: { userId: true },
+  });
+  if (!bookmark || bookmark.userId !== userId) {
+    throw new Error("Bookmark not found or access denied");
+  }
+  await db.bookmark.delete({ where: { id: bookmarkId } });
+}
+
+// Highlights
+
+export async function getHighlights(userId: string, bookId: string) {
+  return db.highlight.findMany({
+    where: { userId, bookId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function createHighlight(
+  userId: string,
+  bookId: string,
+  data: {
+    cfi: string;
+    paragraphIndex: number;
+    charOffsetStart: number;
+    charOffsetEnd: number;
+    selectedText: string;
+    color?: string;
+    note?: string;
+  }
+) {
+  return db.highlight.create({
+    data: {
+      userId,
+      bookId,
+      cfi: data.cfi,
+      paragraphIndex: data.paragraphIndex,
+      charOffsetStart: data.charOffsetStart,
+      charOffsetEnd: data.charOffsetEnd,
+      selectedText: data.selectedText,
+      color: data.color ?? "#fbbf24",
+      note: data.note,
+    },
+  });
+}
+
+export async function deleteHighlight(userId: string, highlightId: string) {
+  const highlight = await db.highlight.findUnique({
+    where: { id: highlightId },
+    select: { userId: true },
+  });
+  if (!highlight || highlight.userId !== userId) {
+    throw new Error("Highlight not found or access denied");
+  }
+  await db.highlight.delete({ where: { id: highlightId } });
+}
