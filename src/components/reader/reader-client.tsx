@@ -10,6 +10,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
+import { useSession } from "@/hooks/use-session";
 
 interface SavedPosition {
   paragraphIndex: number;
@@ -26,12 +27,15 @@ export interface ReaderClientProps {
 export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) {
   const router = useRouter();
   const viewerRef = useRef<EpubViewerHandle>(null);
+  const { user } = useSession();
 
   const [toc, setToc] = useState<NavItem[]>([]);
   const [currentHref, setCurrentHref] = useState<string>("");
   const [percentage, setPercentage] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  const initialLanguage = (user as any)?.preferredLanguage || "en";
 
   // ─── Position state ───────────────────────────────────────────────────────────
   const [savedPosition, setSavedPosition] = useState<SavedPosition | null>(null);
@@ -233,6 +237,8 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
                 toc={toc}
                 currentHref={currentHref}
                 onNavigate={handleTocNavigate}
+                bookId={bookId}
+                initialLanguage={initialLanguage}
               />
             }
             themeToggle={<ThemeToggle />}
