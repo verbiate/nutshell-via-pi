@@ -43,7 +43,7 @@ describe("Upload Integration: LIB-02, LIB-03, LIB-04", () => {
         author: "Author",
       };
 
-      mockDb.epubFile.findUnique.mockResolvedValue(existingBook as any);
+      (mockDb.epubFile.findUnique as any).mockResolvedValue(existingBook);
 
       // Simulating the dedup path: findUnique returns existing, upsert is called
       expect(mockDb.epubFile.findUnique).toBeDefined();
