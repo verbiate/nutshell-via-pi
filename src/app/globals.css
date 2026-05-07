@@ -150,6 +150,23 @@
     --sidebar-ring: #8a7a6a;
 }
 
+@keyframes fadeInWord {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.explainer-word {
+  opacity: 0;
+  animation: fadeInWord 0.3s ease-out forwards;
+  animation-delay: calc(min(var(--word-index), 50) * 0.04s);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
