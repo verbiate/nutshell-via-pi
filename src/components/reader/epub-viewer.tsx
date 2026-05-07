@@ -1,0 +1,174 @@
+"use client";
+
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import ePub, { Book, Rendition, NavItem } from "@likecoin/epub-ts";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export interface EpubViewerProps {
+  url: string;
+  theme: "light" | "dark" | "sepia";
+  initialPosition?: { paragraphIndex: number; charOffset: number } | null;
+  onPositionChange?: (
+    position: { paragraphIndex: number; charOffset: number },
+    cfi: string
+  ) => void;
+  onTocLoaded?: (toc: NavItem[]) => void;
+  onProgressChange?: (percentage: number) => void;
+  onRenditionReady?: (rendition: Rendition) => void;
+  onNavigateRequest?: (href: string) => void;
+  className?: string;
+  onLoadChange?: (isLoaded: boolean) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface EpubViewerHandle {
+  navigateTo: (href: string) => void;
+}
+
+// epub-ts ThemeEntry format: { rules: { "selector": { "property": "value" } } }
+// See: @likecoin/epub-ts/dist/types.d.ts — ThemeEntry interface
+const LIGHT_THEME = { rules: { body: { background: "#ffffff", color: "#1a1a1a" } } };
+const DARK_THEME = { rules: { body: { background: "#1a1a1a", color: "#e8e8e8" } } };
+const SEPIA_THEME = { rules: { body: { background: "#f4ecd8", color: "#5b4636" } } };
+
+export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
+  (
+    {
+      url,
+      theme,
+      initialPosition,
+      onPositionChange,
+      onTocLoaded,
+      onProgressChange,
+      onRenditionReady,
+      className,
+      onLoadChange,
+      onError,
+    },
+    ref
+  ) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const bookRef = useRef<Book | null>(null);
+    const renditionRef = useRef<Rendition | null>(null);
+
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // Navigate method exposed via ref
+    useImperativeHandle(ref, () => ({
+      navigateTo: (href: string) => {
+        renditionRef.current?.display(href);
+      },
+    }));
+
+    // Initialize EPUB book
+    useEffect(() => {
+      if (!url || !containerRef.current) return;
+
+      let mounted = true;
+      setIsLoaded(false);
+      onLoadChange?.(false);
+
+      const book = ePub(url);
+      bookRef.current = book;
+
+      book.ready
+        .then(() => {
+          if (!mounted || !containerRef.current) return;
+
+          // Extract and expose ToC
+          if (book.navigation?.toc) {
+            onTocLoaded?.(book.navigation.toc);
+          }
+
+          // Render to container iframe
+          const rendition = book.renderTo(containerRef.current, {
+            width: "100%",
+            height: "100%",
+            flow: "paginated",
+          });
+          renditionRef.current = rendition;
+
+          // Register three themes
+          rendition.themes.register("light", LIGHT_THEME);
+          rendition.themes.register("dark", DARK_THEME);
+          rendition.themes.register("sepia", SEPIA_THEME);
+
+          // Apply current theme
+          rendition.themes.select(theme);
+
+          // Wire relocated event for progress and position
+          rendition.on(
+            "relocated",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (location: any) => {
+              if (!mounted) return;
+              const percentage = (location.start.percentage ?? 0) * 100;
+              onProgressChange?.(percentage);
+              onPositionChange?.(
+                { paragraphIndex: 0, charOffset: 0 },
+                location.start.cfi
+              );
+            }
+          );
+
+          // Display and wait for ready
+          return rendition.display();
+        })
+        .then(() => {
+          if (!mounted) return;
+          setIsLoaded(true);
+          onLoadChange?.(true);
+          onRenditionReady?.(renditionRef.current!);
+        })
+        .catch((err: Error) => {
+          if (!mounted) return;
+          console.error("[EpubViewer] Failed to load EPUB:", err);
+          onError?.(err);
+        });
+
+      return () => {
+        mounted = false;
+        try {
+          renditionRef.current?.destroy();
+          bookRef.current?.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
+        renditionRef.current = null;
+        bookRef.current = null;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [url]);
+
+    // Sync theme changes
+    useEffect(() => {
+      renditionRef.current?.themes.select(theme);
+    }, [theme]);
+
+    return (
+      <div className={cn("relative h-full w-full", className)}>
+        <div
+          ref={containerRef}
+          className="h-full w-full"
+          aria-label="Book content"
+        />
+        {!isLoaded && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background gap-4">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-32" />
+            <div className="mt-8 space-y-3 w-[300px]">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-[92%]" />
+              <Skeleton className="h-3 w-[96%]" />
+              <Skeleton className="h-3 w-[88%]" />
+              <Skeleton className="h-3 w-[94%]" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+EpubViewer.displayName = "EpubViewer";
