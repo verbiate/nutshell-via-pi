@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
   SheetContent,
@@ -10,6 +11,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -25,7 +27,7 @@ import {
   Globe,
 } from "lucide-react";
 import { ExplainerStream } from "./explainer-stream";
-import { LANGUAGES, getLanguageName } from "@/lib/languages";
+import { LANGUAGES } from "@/lib/languages";
 
 type ExplainerState =
   | "idle"
@@ -39,10 +41,13 @@ interface ExplainerPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bookId: string;
-  type: "book" | "section";
+  type: "book" | "section" | "passage";
   sectionHref?: string;
   sectionTitle?: string;
+  passageText?: string;
+  passageCfi?: string;
   initialLanguage: string;
+  onNavigateToCfi?: (cfi: string) => void;
 }
 
 export function ExplainerPanel({
@@ -52,15 +57,37 @@ export function ExplainerPanel({
   type,
   sectionHref,
   sectionTitle,
+  passageText,
+  passageCfi,
   initialLanguage,
+  onNavigateToCfi,
 }: ExplainerPanelProps) {
   const [state, setState] = useState<ExplainerState>("idle");
   const [text, setText] = useState("");
   const [language, setLanguage] = useState(initialLanguage);
   const [isCached, setIsCached] = useState(false);
+  const [activeTab, setActiveTab] = useState("current");
   const abortRef = useRef<AbortController | null>(null);
+  const queryClient = useQueryClient();
 
-  const title = type === "book" ? "Explainer" : "Section Explainer";
+  const title =
+    type === "book"
+      ? "Explainer"
+      : type === "section"
+        ? "Section Explainer"
+        : "Passage Explainer";
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ["explainer-history", bookId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/explainers/history?bookId=${encodeURIComponent(bookId)}`
+      );
+      if (!res.ok) throw new Error("Failed to load history");
+      return res.json();
+    },
+    enabled: open,
+  });
 
   const generate = useCallback(async () => {
     setState("loading");
@@ -69,9 +96,18 @@ export function ExplainerPanel({
 
     // Check cache first
     try {
-      const cacheRes = await fetch(
-        `/api/explainers?bookId=${bookId}&type=${type}&lang=${language}&sectionHref=${sectionHref ?? ""}`
-      );
+      let cacheRes: Response;
+      if (type === "passage" && passageText) {
+        cacheRes = await fetch("/api/explainers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookId, type, language, passageText }),
+        });
+      } else {
+        cacheRes = await fetch(
+          `/api/explainers?bookId=${bookId}&type=${type}&lang=${language}&sectionHref=${sectionHref ?? ""}`
+        );
+      }
       if (cacheRes.ok) {
         const data = await cacheRes.json();
         if (data.cached) {
@@ -98,6 +134,7 @@ export function ExplainerPanel({
           type,
           language,
           sectionHref,
+          passageText,
         }),
         signal: abort.signal,
       });
@@ -145,6 +182,7 @@ export function ExplainerPanel({
       }
 
       setState("complete");
+      queryClient.invalidateQueries({ queryKey: ["explainer-history", bookId] });
     } catch (err: any) {
       if (err.name === "AbortError") {
         setState("empty");
@@ -154,7 +192,7 @@ export function ExplainerPanel({
     } finally {
       abortRef.current = null;
     }
-  }, [bookId, type, language, sectionHref]);
+  }, [bookId, type, language, sectionHref, passageText, queryClient]);
 
   const handleRetry = useCallback(() => {
     generate();
@@ -212,16 +250,100 @@ export function ExplainerPanel({
             </SelectContent>
           </Select>
         </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-56px)]">
-          <div className="p-4">
-            {state === "loading" && <ExplainerLoading />}
-            {state === "error" && <ExplainerError onRetry={handleRetry} />}
-            {state === "empty" && <ExplainerEmpty />}
-            {(state === "streaming" || state === "complete") && (
-              <ExplainerStream text={text} />
-            )}
-          </div>
-        </ScrollArea>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full grid grid-cols-2 mx-4 mt-3 mb-0">
+            <TabsTrigger value="current">Current</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
+          <TabsContent value="current" className="mt-0">
+            <ScrollArea className="h-[calc(100vh-120px)]">
+              <div className="p-4">
+                {state === "loading" && <ExplainerLoading />}
+                {state === "error" && (
+                  <ExplainerError onRetry={handleRetry} />
+                )}
+                {state === "empty" && <ExplainerEmpty />}
+                {(state === "streaming" || state === "complete") && (
+                  <ExplainerStream text={text} />
+                )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="history" className="mt-0">
+            <ScrollArea className="h-[calc(100vh-120px)]">
+              <div className="divide-y divide-border/50">
+                {historyLoading && (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Loading history...
+                  </div>
+                )}
+                {!historyLoading &&
+                  historyData?.explainers?.length === 0 && (
+                    <div className="px-4 py-8 text-center">
+                      <p className="font-medium text-foreground">
+                        No Explainers yet
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Generate an Explainer for this book, a section, or a
+                        selected passage.
+                      </p>
+                    </div>
+                  )}
+                {!historyLoading &&
+                  historyData?.explainers?.map((entry: any) => (
+                    <div key={entry.id} className="px-4 py-3">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 capitalize"
+                        >
+                          {entry.contentType === "book"
+                            ? "Book"
+                            : entry.contentType === "section"
+                              ? "Section"
+                              : "Passage"}
+                        </Badge>
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] h-5 capitalize"
+                        >
+                          {entry.tier}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium text-foreground line-clamp-1">
+                        {entry.targetLabel ||
+                          (entry.contentType === "passage"
+                            ? "Selected passage"
+                            : "Explainer")}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          {entry.language.toUpperCase()} ·{" "}
+                          {formatRelativeTime(entry.createdAt)}
+                        </span>
+                        {(entry.passageCfi || entry.sectionHref) &&
+                          onNavigateToCfi && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-xs"
+                              onClick={() => {
+                                onNavigateToCfi(
+                                  entry.passageCfi || entry.sectionHref
+                                );
+                                onOpenChange(false);
+                              }}
+                            >
+                              Go to context
+                            </Button>
+                          )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   );
@@ -281,4 +403,14 @@ function ExplainerEmpty() {
       </div>
     </div>
   );
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }

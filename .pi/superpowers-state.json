@@ -30,11 +30,7 @@
     "phase": "idle",
     "testFiles": [],
     "sourceFiles": [
-      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/types.ts",
-      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/settings.ts",
-      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/native.ts",
-      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/events.ts",
-      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/platforms/native.ts"
+      "/Volumes/My Shared Files/Dev/busyreader-via-pi/src/components/explainer/explainer-panel.tsx"
     ],
     "redVerificationPending": false
   },

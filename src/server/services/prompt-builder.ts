@@ -73,3 +73,24 @@ export async function buildSectionPrompt(
 
   return { prompt, sourceText: sectionText, promptVersion: template.version, sectionTitle };
 }
+
+export async function buildPassagePrompt(
+  bookId: string,
+  passageText: string,
+  language: string
+): Promise<{ prompt: string; sourceText: string; promptVersion: number }> {
+  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+  if (!book) throw new Error("Book not found");
+
+  const template = await db.promptTemplate.findUnique({ where: { type: "passage" } });
+  if (!template) throw new Error("Passage prompt template not found");
+
+  const prompt = fillTemplate(template.content, {
+    title: book.title,
+    author: book.author ?? "Unknown",
+    target_language: language,
+    text: passageText,
+  });
+
+  return { prompt, sourceText: passageText, promptVersion: template.version };
+}
