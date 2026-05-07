@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// UserRole: regular, pro, admin
+// Stored as String in SQLite since SQLite lacks native enum support
+// Application-level validation enforces valid values
+
+model User {
+  id            String          @id
+  email         String          @unique
+  name          String?
+  image         String?
+  role          String          @default("regular")
+  emailVerified Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  bookAccesses  UserBookAccess[]
+  uploadedBooks EpubFile[]      @relation("UploadedBooks")
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model EpubFile {
+  id           String   @id @default(cuid())
+  md5          String   @unique
+  title        String
+  author       String?
+  language     String   @default("und")
+  coverPath    String?
+  epubPath     String
+  txtPath      String
+  tocJson      String?
+  fileSize     Int
+  uploadedById String?
+  uploadedBy   User?    @relation("UploadedBooks", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userAccesses UserBookAccess[]
+}
+
+model UserBookAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  bookId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book      EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, bookId])
+}
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  type      String   @unique
+  content   String
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+}
