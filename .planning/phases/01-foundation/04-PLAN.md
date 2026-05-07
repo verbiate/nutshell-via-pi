@@ -1,8 +1,9 @@
 ---
-wave: 2
+wave: 3
 depends_on: ["02-PLAN.md", "03-PLAN.md"]
 files_modified:
   - src/app/admin/layout.tsx
+  - src/app/admin/page.tsx
   - src/app/admin/users/page.tsx
   - src/app/admin/books/page.tsx
   - src/app/admin/prompts/page.tsx

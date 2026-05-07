@@ -19,26 +19,7 @@ files_modified:
   - components.json
   - src/components/ui/** (shadcn components)
 autonomous: true
-requirements:
-  - AUTH-01
-  - AUTH-02
-  - AUTH-03
-  - AUTH-04
-  - AUTH-05
-  - LIB-01
-  - LIB-02
-  - LIB-03
-  - LIB-04
-  - LIB-05
-  - LIB-06
-  - ADM-01
-  - ADM-02
-  - ADM-03
-  - ADM-04
-  - ADM-05
-  - ADM-06
-  - ADM-07
-  - LANG-03
+requirements: []
 ---
 
 # Plan 01: Project Scaffolding & Database Schema

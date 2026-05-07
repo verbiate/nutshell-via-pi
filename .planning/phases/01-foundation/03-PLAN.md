@@ -1,5 +1,5 @@
 ---
-wave: 1
+wave: 2
 depends_on: ["01-PLAN.md"]
 files_modified:
   - src/server/services/epub-processor.ts

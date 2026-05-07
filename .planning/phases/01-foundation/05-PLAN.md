@@ -1,5 +1,5 @@
 ---
-wave: 3
+wave: 4
 depends_on: ["01-PLAN.md", "02-PLAN.md", "03-PLAN.md", "04-PLAN.md"]
 files_modified:
   - src/app/profile/page.tsx
