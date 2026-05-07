@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T07:10:04.961Z"
+last_updated: "2026-05-07T07:11:43.324Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State: BusyReader
 
 **Project:** busyreader-via-pi
-**Last updated:** 2026-05-07 (Phase 3 context gathered, ready for planning)
+**Last updated:** 2026-05-07 (Phase 3 complete — all 4/4 plans executed)
 
 ---
 
 ## Current Phase
 
-**Phase 3: AI Explainers** — Plans 03-01, 03-02, and 03-03 complete (3/4 plans). OpenRouter streaming service, generateExplainer orchestration, and API routes built. Next: Plan 03-04 (frontend ExplainerTrigger and ExplainerPanel components).
+**Phase 3: AI Explainers** — All 4/4 plans complete. OpenRouter streaming service, generateExplainer orchestration, API routes, and frontend ExplainerTrigger + ExplainerPanel components built. EXP-01, EXP-02, LANG-01 fully implemented.
 
 Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
 
@@ -32,7 +32,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
-| Phase 3: AI Explainers | Plans 03-01, 03-02, 03-03 done (3/4) | 8 | 6 | — |
+| Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
@@ -42,7 +42,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 
 All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified in `01-VERIFICATION.md`.
 
-Phase 3 partial (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-02 completed via plans 03-01, 03-02, and 03-03; remaining via plan 03-04).
+All Phase 3 requirements (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-01, LANG-02) completed via plans 03-01, 03-02, 03-03, and 03-04.
 
 ---
 
@@ -140,7 +140,11 @@ Plan 03-03 (API Routes) executed 2026-05-07. Commits: `4187ff2` (GET /api/explai
 
 Establishes: GET /api/explainers cache check (validates params, verifies book access, computes content hash, returns cached or 404), POST /api/explainers/generate SSE endpoint (force-dynamic, cache-first via two-step generator.next(), manual ReadableStream framing), PATCH /api/user/language update endpoint (2-char validation, preferredLanguage update). EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, LANG-02 implemented.
 
-## Plan 03-02 Completion
+## Plan 03-04 Completion
+
+Plan 03-04 (UI Components) executed 2026-05-07. Commits: `c889813` (ExplainerPanel + ExplainerStream + CSS animation), `2e95673` (book-level ExplainerTrigger on book detail page), `20032d5` (section-level trigger in ToC panel), `52cd683` (ProfileModal + UserNav integration).
+
+Establishes: `ExplainerPanel` right-side Sheet (320/400px) with word-by-word CSS fade-in animation, cache check + SSE streaming with AbortController cancellation, language Select, all UI states; `ExplainerTrigger` book-level button on book detail page via `BookActions` client component (Server/Client boundary); Sparkles icon per ToC entry with `md:group-hover:opacity-100` visibility; `ProfileModal` Dialog with avatar, name, RoleBadge, language Select, PATCH /api/user/language persistence with session invalidation. EXP-01, EXP-02, LANG-01 implemented.
 
 Plan 03-02 (OpenRouter Integration & Generation Orchestration) executed 2026-05-07. Commits: `f93b3a3` (OpenRouter SSE streaming service), `713100b` (generateExplainer orchestrator), `63f5863` (unit tests).
 
