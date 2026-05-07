@@ -21,11 +21,15 @@ export interface EpubViewerProps {
   className?: string;
   onLoadChange?: (isLoaded: boolean) => void;
   onError?: (error: Error) => void;
+  onTextSelected?: (cfiRange: string, contents: unknown) => void;
+  onSelectionCleared?: () => void;
 }
 
 export interface EpubViewerHandle {
   navigateTo: (href: string) => void;
   getCurrentCfi: () => string | null;
+  clearSelection: () => void;
+  addHighlight: (cfi: string, color?: string) => void;
 }
 
 // epub-ts ThemeEntry format: { rules: { "selector": { "property": "value" } } }
@@ -48,6 +52,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       className,
       onLoadChange,
       onError,
+      onTextSelected,
+      onSelectionCleared,
     },
     ref
   ) => {
@@ -65,6 +71,23 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         renditionRef.current?.display(href);
       },
       getCurrentCfi: () => lastCfiRef.current,
+      clearSelection: () => {
+        // Only clear the native browser selection — do NOT remove persisted annotations
+        const iframe = containerRef.current?.querySelector("iframe");
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.getSelection()?.removeAllRanges();
+        }
+      },
+      addHighlight: (cfi: string, color?: string) => {
+        if (!renditionRef.current) return;
+        renditionRef.current.annotations.highlight(
+          cfi,
+          {},
+          () => {},
+          "br-highlight",
+          { fill: color || "#fbbf24" }
+        );
+      },
     }));
 
     // Initialize EPUB book
@@ -118,6 +141,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               );
             }
           );
+
+          // Wire text selection events
+          rendition.on("selected", (cfiRange: string, contents: unknown) => {
+            if (!mounted) return;
+            onTextSelected?.(cfiRange, contents);
+          });
 
           // Display the book first
           const displayPromise = rendition.display();
