@@ -21,6 +21,16 @@ async function main() {
       version: 1,
     },
   });
+
+  await prisma.promptTemplate.upsert({
+    where: { type: "passage" },
+    update: {},
+    create: {
+      type: "passage",
+      content: "You are an expert literary assistant. Explain the following passage from the book \"{{title}}\" by {{author}} in {{target_language}}. Provide context, key concepts, and any difficult vocabulary.\n\nPassage:\n{{text}}",
+      version: 1,
+    },
+  });
 }
 
 main()
