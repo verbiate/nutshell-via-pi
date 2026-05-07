@@ -11,6 +11,8 @@
 
 **Goal:** Users can authenticate, upload EPUBs, and admins can manage the system.
 
+**Status:** ✅ Plans 01-01, 01-02, 01-03 complete. Admin Panel remaining.
+
 **Requirements:**
 | ID | Requirement |
 | --- | --- |
