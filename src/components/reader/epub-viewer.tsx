@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export interface EpubViewerProps {
   url: string;
   theme: "light" | "dark" | "sepia";
+  initialCfi?: string | null;
   initialPosition?: { paragraphIndex: number; charOffset: number } | null;
   onPositionChange?: (
     position: { paragraphIndex: number; charOffset: number },
@@ -24,6 +25,7 @@ export interface EpubViewerProps {
 
 export interface EpubViewerHandle {
   navigateTo: (href: string) => void;
+  getCurrentCfi: () => string | null;
 }
 
 // epub-ts ThemeEntry format: { rules: { "selector": { "property": "value" } } }
@@ -37,6 +39,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     {
       url,
       theme,
+      initialCfi,
       initialPosition,
       onPositionChange,
       onTocLoaded,
@@ -53,12 +56,15 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const renditionRef = useRef<Rendition | null>(null);
 
     const [isLoaded, setIsLoaded] = useState(false);
+    // Track last known CFI for getCurrentCfi()
+    const lastCfiRef = useRef<string | null>(null);
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
       navigateTo: (href: string) => {
         renditionRef.current?.display(href);
       },
+      getCurrentCfi: () => lastCfiRef.current,
     }));
 
     // Initialize EPUB book
@@ -103,6 +109,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (location: any) => {
               if (!mounted) return;
+              lastCfiRef.current = location.start.cfi ?? null;
               const percentage = (location.start.percentage ?? 0) * 100;
               onProgressChange?.(percentage);
               onPositionChange?.(
@@ -112,8 +119,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             }
           );
 
-          // Display and wait for ready
-          return rendition.display();
+          // Display the book first
+          const displayPromise = rendition.display();
+
+          // If we have a saved CFI, restore to that position after initial display
+          if (initialCfi) {
+            displayPromise.then(() => {
+              if (!mounted) return;
+              rendition
+                .display(initialCfi)
+                .catch((err: Error) =>
+                  console.warn("[EpubViewer] CFI restore failed:", err)
+                );
+            });
+          }
+
+          return displayPromise;
         })
         .then(() => {
           if (!mounted) return;
