@@ -20,11 +20,13 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - ✅ Personal Library ("My Library") showing only books the user has access to — Phase 1
 - ✅ Admin panel for managing user roles, Universal Library books, and LLM prompt content — Phase 1
 - ✅ Per-user language preference stored at upload time (LANG-03) — Phase 1
+- ✅ Full-screen EPUB reader with excellent typography — Phase 2
+- ✅ Reader supports three themes (light, dark, sepia) with instant switching — Phase 2
+- ✅ Hierarchical Table of Contents navigation in reader — Phase 2
+- ✅ Content-based reading position persistence (paragraph + char offset) — Phase 2
 
 ### Active
 
-- [ ] Book Detail page with rich Table of Contents (ToC)
-- [ ] Reader view with excellent typography, three themes (light / dark / sepia), bookmarks, highlights, and resume-last-position
 - [ ] Book-level "Explain this to me" generating AI explanations via OpenRouter
 - [ ] Section-level (ToC entry) "Explain this to me" generating contextual AI explanations
 - [ ] Selected passage "Explain this to me" for arbitrary text selections
@@ -33,6 +35,9 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - [ ] Audio caching per (book or section, language) in the Universal Library
 - [ ] Per-user language preference driving both Explainer and TTS generation
 - [ ] Beautiful bookshelf experience for browsing Personal Library
+- [ ] Bookmarks at any position
+- [ ] Text highlighting within books
+- [ ] Full-text search within current book
 
 ### Out of Scope
 
@@ -93,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-07 after Phase 1 completion*
+*Last updated: 2026-05-07 after Phase 2 completion*
