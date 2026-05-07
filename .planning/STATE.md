@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T12:00:00.000Z"
+last_updated: "2026-05-07T07:15:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 13
+  completed_plans: 10
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 3: AI Explainers** — Context gathered, ready for planning. Decisions captured: book-level + section-level triggers, GSAP word-by-word fade-in streaming, profile modal for language preference, cache key includes tier.
+**Phase 3: AI Explainers** — Plan 03-01 complete (1/4 plans). Schema and service foundation built. Next: Plan 03-02 (OpenRouter + SSE streaming).
 
 Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
 
@@ -32,7 +32,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
-| Phase 3: AI Explainers | Context gathered | 8 | 0 | Planning |
+| Phase 3: AI Explainers | Plan 03-01 done (1/4) | 8 | 4 | — |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
@@ -41,6 +41,8 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 ## Completed Requirements
 
 All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified in `01-VERIFICATION.md`.
+
+Phase 3 partial (EXP-05, EXP-06, EXP-07, LANG-02 completed via plan 03-01; remaining via plans 03-02 onwards).
 
 ---
 
@@ -131,6 +133,12 @@ Establishes: Bidirectional CFI↔paragraph mapping library (buildParagraphMap, c
 Plan 02-03 (ToC Panel, Theme Toggle, Loading/Error) executed 2026-05-07. Commits: `20d8c6d` (toc-panel), `ce4fe56` (theme-toggle), `d8f53c9` (skeleton, error, reader-client).
 
 Establishes: ToC panel with left Sheet + ScrollArea, mount-gated ThemeToggle cycling light/sepia/dark, ReaderSkeleton + ReaderError overlays, ReaderClient orchestration. READ-01/02/03/04 covered.
+
+## Plan 03-01 Completion
+
+Plan 03-01 (Schema & Explainer Service Foundation) executed 2026-05-07. Commits: `5e06c45` (Explainer model + User.preferredLanguage + migration), `ced0eb6` (explainer service: getExplainer, createExplainer, computeContentHash), `feec5d2` (prompt builder: fillTemplate, buildBookPrompt, buildSectionPrompt), `a1a2ed1` (section extractor: extractSectionText via @likecoin/epub-ts spine).
+
+Establishes: `Explainer` model with `@@unique([contentHash, language, contentType, tier])`, `User.preferredLanguage` with better-auth integration, SHA-256 content hash computation, template substitution, section text extraction from EPUB spine. EXP-05, EXP-06, EXP-07, LANG-02 implemented.
 
 ## Plan 02-01 Completion
 

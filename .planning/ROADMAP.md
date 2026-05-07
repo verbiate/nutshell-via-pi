@@ -115,6 +115,11 @@
 - Explainer quality evaluation against real books; establish acceptance criteria for coherence and accuracy.
 - Composite cache key design `(content_hash, language, content_type, tier)` validation.
 
+**Plans:**
+1/4 plans complete
+| --- | --- | --- |
+| 03-01: Schema & Explainer Service Foundation | ✅ Complete (2026-05-07) | Explainer model, User.preferredLanguage, explainer service (cache CRUD + SHA-256 hash), prompt builder (fillTemplate + book/section prompts), section text extractor. EXP-05, EXP-06, EXP-07, LANG-02 implemented. Commits: `5e06c45`, `ced0eb6`, `feec5d2`, `a1a2ed1` |
+
 ---
 
 ## Phase 4: Reading Enhancements
