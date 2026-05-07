@@ -81,7 +81,7 @@
 | Plan | Status | Summary |
 | --- | --- | --- |
 | 02-01: Reader Infrastructure | ✅ Complete (2026-05-07) | UserBookPosition model, (reader) route group, ThemeProvider with sepia, Open Reader navigation. Commits: `30822a1`, `5003111`, `72490e3` |
-| 02-02 | Pending | - |
+| 02-02 | ✅ Complete (2026-05-07) | Custom EPUB wrapper (@likecoin/epub-ts), ReaderChrome (h-12 glassmorphism), ReadingProgress (h-1). EpubViewerHandle.navigateTo() exposed. Commits: `4084a90`, `6c9f514` |
 | 02-03 | ✅ Complete (2026-05-07) | ToC panel (left Sheet + ScrollArea), ThemeToggle (mount-gated, light→sepia→dark), ReaderSkeleton (5 skeleton lines), ReaderError (UI-SPEC copy). READ-01/02/03/04 covered. Commits: `20d8c6d`, `ce4fe56`, `d8f53c9`, `a2b7c36` |
 
 ---
