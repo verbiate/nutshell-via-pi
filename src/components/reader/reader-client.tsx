@@ -10,6 +10,14 @@ import { ThemeToggle } from "./theme-toggle";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
+import { FloatingToolbar } from "./floating-toolbar";
+import { SearchPanel } from "./search-panel";
+import { BookmarkPanel } from "./bookmark-panel";
+import { ExplainerPanel } from "@/components/explainer/explainer-panel";
+import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { Bookmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
 
 interface SavedPosition {
@@ -37,19 +45,42 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
 
   const initialLanguage = (user as any)?.preferredLanguage || "en";
 
-  // ─── Position state ───────────────────────────────────────────────────────────
+  // ─── Selection / floating toolbar state ────────────────────────────────────────
+  const [toolbarVisible, setToolbarVisible] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+  const [toolbarPlacement, setToolbarPlacement] = useState<"above" | "below">("above");
+  const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
+  const [selectedText, setSelectedText] = useState("");
+  const [passageExplainerOpen, setPassageExplainerOpen] = useState(false);
+  const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
+
+  // ─── Position state ────────────────────────────────────────────────────────────
   const [savedPosition, setSavedPosition] = useState<SavedPosition | null>(null);
 
   // Ref to hold the debounce timeout ID — cleared on unmount and before re-setting
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Load saved position on mount ─────────────────────────────────────────────
+  // ─── Highlights data (via React Query) ────────────────────────────────────────
+  const { data: highlightsData } = useQuery({
+    queryKey: ["highlights", bookId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/reader/highlights?bookId=${encodeURIComponent(bookId)}`
+      );
+      if (!res.ok) throw new Error("Failed to load highlights");
+      return res.json();
+    },
+  });
+
+  // ─── Load saved position on mount ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
     async function loadPosition() {
       try {
-        const res = await fetch(`/api/reader/position?bookId=${encodeURIComponent(bookId)}`);
+        const res = await fetch(
+          `/api/reader/position?bookId=${encodeURIComponent(bookId)}`
+        );
         if (!res.ok) {
           if (res.status === 404) return; // no position saved yet — normal
           console.warn("[ReaderClient] Failed to load position:", res.status);
@@ -65,7 +96,10 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
         }
       } catch (err) {
         // Non-blocking — log warning and continue without position restore
-        console.warn("[ReaderClient] Position fetch failed (non-blocking):", err);
+        console.warn(
+          "[ReaderClient] Position fetch failed (non-blocking):",
+          err
+        );
       }
     }
 
@@ -93,7 +127,10 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
           console.warn("[ReaderClient] Position save failed:", res.status);
         }
       } catch (err) {
-        console.warn("[ReaderClient] Position save failed (non-blocking):", err);
+        console.warn(
+          "[ReaderClient] Position save failed (non-blocking):",
+          err
+        );
       }
     },
     [bookId]
@@ -144,6 +181,9 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
         cfi,
       };
 
+      // Track current CFI for bookmark creation
+      setCurrentCfi(cfi);
+
       // Update local state
       setSavedPosition(next);
 
@@ -166,15 +206,147 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
     [savePosition]
   );
 
-  const handleRenditionReady = useCallback((_rendition: unknown) => {
-    setIsLoaded(true);
+  // ─── Text selection handling ──────────────────────────────────────────────────
+  const handleTextSelected = useCallback(
+    (cfiRange: string, contents: unknown) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c = contents as { document?: Document; range?: Range };
+      const text = c.range?.toString() ?? "";
+      if (text.length < 3) return;
+
+      setSelectedCfi(cfiRange);
+      setSelectedText(text);
+
+      // Compute position from iframe
+      const iframe = document.querySelector("iframe");
+      if (iframe && c.range) {
+        const rect = c.range.getBoundingClientRect();
+        const iframeRect = iframe.getBoundingClientRect();
+        const toolbarWidth = 220;
+        const toolbarHeight = 36;
+        let top = iframeRect.top + rect.top - toolbarHeight - 8;
+        let placement: "above" | "below" = "above";
+        if (top < toolbarHeight + 16) {
+          top = iframeRect.top + rect.bottom + 8;
+          placement = "below";
+        }
+        let left =
+          iframeRect.left + rect.left + rect.width / 2 - toolbarWidth / 2;
+        left = Math.max(
+          8,
+          Math.min(left, window.innerWidth - toolbarWidth - 8)
+        );
+        setToolbarPos({ top, left });
+        setToolbarPlacement(placement);
+        setToolbarVisible(true);
+      }
+    },
+    []
+  );
+
+  const handleSelectionCleared = useCallback(() => {
+    setToolbarVisible(false);
+    setSelectedCfi(null);
+    setSelectedText("");
   }, []);
+
+  // ─── Floating toolbar actions ────────────────────────────────────────────────
+  const handleHighlight = useCallback(async () => {
+    if (!selectedCfi) return;
+    try {
+      const res = await fetch("/api/reader/highlights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookId,
+          cfi: selectedCfi,
+          paragraphIndex: savedPosition?.paragraphIndex ?? 0,
+          charOffsetStart: savedPosition?.charOffset ?? 0,
+          charOffsetEnd: (savedPosition?.charOffset ?? 0) + selectedText.length,
+          selectedText,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Text highlighted");
+        viewerRef.current?.addHighlight(selectedCfi, "#fbbf24");
+      }
+    } catch (err) {
+      console.error("[ReaderClient] highlight failed:", err);
+    }
+    setToolbarVisible(false);
+  }, [bookId, selectedCfi, selectedText, savedPosition]);
+
+  const handleExplainPassage = useCallback(() => {
+    setToolbarVisible(false);
+    setPassageExplainerOpen(true);
+  }, []);
+
+  // ─── Search navigation ────────────────────────────────────────────────────────
+  const handleSearchResult = useCallback((paragraphIndex: number) => {
+    viewerRef.current?.navigateToParagraph(paragraphIndex);
+  }, []);
+
+  // ─── Bookmark actions ──────────────────────────────────────────────────────────
+  const handleBookmarkNavigate = useCallback((cfi: string) => {
+    viewerRef.current?.navigateTo(cfi);
+  }, []);
+
+  const handleSaveBookmark = useCallback(
+    async (cfi: string) => {
+      try {
+        const res = await fetch("/api/reader/bookmarks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookId,
+            cfi,
+            paragraphIndex: savedPosition?.paragraphIndex ?? 0,
+            charOffset: savedPosition?.charOffset ?? 0,
+            selectedText: null,
+          }),
+        });
+        if (res.ok) toast.success("Bookmark saved");
+      } catch (err) {
+        console.error("[ReaderClient] bookmark save failed:", err);
+      }
+    },
+    [bookId, savedPosition]
+  );
+
+  // ─── Render highlights when rendition is ready ─────────────────────────────────
+  const handleRenditionReady = useCallback(
+    (_rendition: unknown) => {
+      setIsLoaded(true);
+      if (highlightsData?.highlights) {
+        highlightsData.highlights.forEach(
+          (h: { cfi: string; color?: string }) => {
+            viewerRef.current?.addHighlight(h.cfi, h.color);
+          }
+        );
+      }
+    },
+    [highlightsData]
+  );
 
   const handleError = useCallback((err: Error) => {
     setError(err);
   }, []);
 
-  // ─── Cleanup: clear pending saves on unmount ─────────────────────────────────
+  // ─── Click-outside to dismiss floating toolbar ─────────────────────────────────
+  useEffect(() => {
+    if (!toolbarVisible) return;
+    const handleClick = (e: MouseEvent) => {
+      // If click is not inside the toolbar, hide it
+      const toolbarEl = document.querySelector('[role="toolbar"]');
+      if (toolbarEl && !toolbarEl.contains(e.target as Node)) {
+        setToolbarVisible(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [toolbarVisible]);
+
+  // ─── Cleanup: clear pending saves on unmount ──────────────────────────────────
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -199,9 +371,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   return (
     <div className="relative h-full w-full">
       {/* Error overlay */}
-      {error && (
-        <ReaderError onBack={handleBack} onRetry={handleRetry} />
-      )}
+      {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
 
       {/* EPUB viewer */}
       {!error && (
@@ -219,9 +389,32 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
           onRenditionReady={handleRenditionReady}
           onError={handleError}
           onLoadChange={(loaded) => setIsLoaded(loaded)}
+          onTextSelected={handleTextSelected}
+          onSelectionCleared={handleSelectionCleared}
           className="h-full w-full"
         />
       )}
+
+      {/* Floating toolbar for text selection */}
+      <FloatingToolbar
+        visible={toolbarVisible}
+        position={toolbarPos}
+        placement={toolbarPlacement}
+        onHighlight={handleHighlight}
+        onExplain={handleExplainPassage}
+        onDismiss={handleSelectionCleared}
+      />
+
+      {/* Passage-level Explainer */}
+      <ExplainerPanel
+        open={passageExplainerOpen}
+        onOpenChange={setPassageExplainerOpen}
+        bookId={bookId}
+        type="passage"
+        sectionTitle="Selected Passage"
+        initialLanguage={initialLanguage}
+        passageText={selectedText}
+      />
 
       {/* Loading skeleton overlay */}
       {!isLoaded && !error && <ReaderSkeleton />}
@@ -242,6 +435,30 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
               />
             }
             themeToggle={<ThemeToggle />}
+            bookmarkSaveTrigger={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => currentCfi && handleSaveBookmark(currentCfi)}
+                aria-label="Save bookmark"
+              >
+                <Bookmark className="h-4 w-4" />
+              </Button>
+            }
+            bookmarkTrigger={
+              <BookmarkPanel
+                bookId={bookId}
+                currentCfi={currentCfi}
+                onBookmarkClick={handleBookmarkNavigate}
+                onSaveBookmark={handleSaveBookmark}
+              />
+            }
+            searchTrigger={
+              <SearchPanel
+                bookId={bookId}
+                onResultClick={handleSearchResult}
+              />
+            }
           />
           <ReadingProgress percentage={percentage} />
         </>

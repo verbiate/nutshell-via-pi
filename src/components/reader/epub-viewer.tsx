@@ -4,6 +4,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import ePub, { Book, Rendition, NavItem } from "@likecoin/epub-ts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
+import type { ParagraphMap } from "@/lib/reader/position-tracking";
 
 export interface EpubViewerProps {
   url: string;
@@ -30,6 +32,7 @@ export interface EpubViewerHandle {
   getCurrentCfi: () => string | null;
   clearSelection: () => void;
   addHighlight: (cfi: string, color?: string) => void;
+  navigateToParagraph: (paragraphIndex: number) => Promise<void>;
 }
 
 // epub-ts ThemeEntry format: { rules: { "selector": { "property": "value" } } }
@@ -60,6 +63,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const bookRef = useRef<Book | null>(null);
     const renditionRef = useRef<Rendition | null>(null);
+    const paragraphMapRef = useRef<ParagraphMap | null>(null);
 
     const [isLoaded, setIsLoaded] = useState(false);
     // Track last known CFI for getCurrentCfi()
@@ -86,6 +90,21 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           () => {},
           "br-highlight",
           { fill: color || "#fbbf24" }
+        );
+      },
+      navigateToParagraph: async (paragraphIndex: number) => {
+        if (!renditionRef.current || !bookRef.current) return;
+        // Build paragraph map lazily on first use
+        if (!paragraphMapRef.current) {
+          paragraphMapRef.current = await buildParagraphMap(bookRef.current);
+        }
+        const cfi = paragraphOffsetToCfi(
+          bookRef.current,
+          { paragraphIndex, charOffset: 0 },
+          paragraphMapRef.current
+        );
+        renditionRef.current.display(cfi).catch((err: Error) =>
+          console.warn("[EpubViewer] navigateToParagraph failed:", err)
         );
       },
     }));
