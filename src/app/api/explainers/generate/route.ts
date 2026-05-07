@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
         // Helper to record ExplainerRequest after generation completes
         function recordExplainerRequest() {
-n          Promise.resolve().then(async () => {
+          Promise.resolve().then(async () => {
             try {
               const templateType = type ?? "book";
               const template = await db.promptTemplate.findUnique({
@@ -101,7 +101,7 @@ n          Promise.resolve().then(async () => {
                 await db.explainerRequest.create({
                   data: {
                     userId: user.id,
-                    bookId,
+                    bookId: bookId!,
                     explainerId: generatedExplainer.id,
                     passageCfi: type === "passage" ? (passageCfi ?? null) : null,
                     passageText: type === "passage" ? (passageText?.slice(0, 200) ?? null) : null,
@@ -128,8 +128,8 @@ n          Promise.resolve().then(async () => {
           const first = await generator.next();
           if (first.done) {
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-n            controller.close();
-n            return;
+            controller.close();
+            return;
           }
 
           const second = await generator.next();
@@ -138,9 +138,9 @@ n            return;
             const data = JSON.stringify({ chunk: first.value, cached: true });
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-n            controller.close();
-n            recordExplainerRequest();
-n            return;
+            controller.close();
+            recordExplainerRequest();
+            return;
           }
 
           // Multiple chunks = cache miss — stream all
@@ -155,8 +155,8 @@ n            return;
           }
 
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-n          controller.close();
-n          recordExplainerRequest();
+          controller.close();
+          recordExplainerRequest();
         } catch (err: any) {
           const message = err instanceof OpenRouterError ? err.message : "Generation failed";
           const data = JSON.stringify({ error: message });
