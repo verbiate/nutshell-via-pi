@@ -11,7 +11,7 @@
 
 **Goal:** Users can authenticate, upload EPUBs, and admins can manage the system.
 
-**Status:** ✅ Plans 01-01, 01-02, 01-03 complete. Admin Panel remaining.
+**Status:** ✅ Plans 01-01, 01-02, 01-03, 01-04 complete. Phase 1 ready for final plan (Prompt Templates seed data).
 
 **Requirements:**
 | ID | Requirement |
@@ -27,13 +27,13 @@
 | LIB-04 | If no MD5 match, EPUB is converted to TXT, both stored, and uploader granted access |
 | LIB-05 | User sees only books they have access to in "My Library" |
 | LIB-06 | Admin can view all books in the Universal Library |
-| ADM-01 | Admin can view a list of all registered users |
-| ADM-02 | Admin can change any user's role (Regular / Pro / Admin) |
-| ADM-03 | Admin can view all books in the Universal Library |
-| ADM-04 | Admin can edit the LLM prompt template for book-level Explainers |
-| ADM-05 | Admin can edit the LLM prompt template for section-level Explainers |
-| ADM-06 | Admin actions are audited (who, what, when, old/new values) |
-| ADM-07 | Admin routes require server-side role validation on every request |
+| ADM-01 | Admin can view a list of all registered users | ✅ 01-04 |
+| ADM-02 | Admin can change any user's role (Regular / Pro / Admin) | ✅ 01-04 |
+| ADM-03 | Admin can view all books in the Universal Library | ✅ 01-04 |
+| ADM-04 | Admin can edit the LLM prompt template for book-level Explainers | ✅ 01-04 |
+| ADM-05 | Admin can edit the LLM prompt template for section-level Explainers | ✅ 01-04 |
+| ADM-06 | Admin actions are audited (who, what, when, old/new values) | ✅ 01-04 |
+| ADM-07 | Admin routes require server-side role validation on every request | ✅ 01-04 |
 | LANG-03 | System detects and stores the book's original language at upload time |
 
 **Success Criteria (observable user behaviors):**
