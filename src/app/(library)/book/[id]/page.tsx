@@ -1,9 +1,8 @@
 import { requireAuth } from "@/lib/auth-guards";
 import { getBookForUser } from "@/server/services/library";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BookActions } from "./book-actions";
 
 export default async function BookDetailPage({
   params,
@@ -61,14 +60,10 @@ export default async function BookDetailPage({
             </span>
           </div>
 
-          <div className="mt-6">
-            <Button asChild>
-              <Link href={`/book/${book.id}/reader`}>
-                <BookOpen className="mr-2 h-4 w-4" />
-                Open Reader
-              </Link>
-            </Button>
-          </div>
+          <BookActions
+            bookId={book.id}
+            initialLanguage={user.preferredLanguage || "en"}
+          />
 
           {/* TOC Preview */}
           {toc.length > 0 && (
