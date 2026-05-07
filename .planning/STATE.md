@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T07:03:48.678Z"
+last_updated: "2026-05-07T07:10:04.961Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 3: AI Explainers** — Plans 03-01 and 03-02 complete (2/4 plans). OpenRouter streaming service and generateExplainer orchestration built. Next: Plan 03-03 (API route wrapping SSE).
+**Phase 3: AI Explainers** — Plans 03-01, 03-02, and 03-03 complete (3/4 plans). OpenRouter streaming service, generateExplainer orchestration, and API routes built. Next: Plan 03-04 (frontend ExplainerTrigger and ExplainerPanel components).
 
 Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
 
@@ -32,7 +32,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
-| Phase 3: AI Explainers | Plans 03-01 and 03-02 done (2/4) | 8 | 6 | — |
+| Phase 3: AI Explainers | Plans 03-01, 03-02, 03-03 done (3/4) | 8 | 6 | — |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
@@ -42,7 +42,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 
 All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified in `01-VERIFICATION.md`.
 
-Phase 3 partial (EXP-04, EXP-05, EXP-06, EXP-07, LANG-02 completed via plans 03-01 and 03-02; remaining via plans 03-03 onwards).
+Phase 3 partial (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-02 completed via plans 03-01, 03-02, and 03-03; remaining via plan 03-04).
 
 ---
 
@@ -133,6 +133,12 @@ Establishes: Bidirectional CFI↔paragraph mapping library (buildParagraphMap, c
 Plan 02-03 (ToC Panel, Theme Toggle, Loading/Error) executed 2026-05-07. Commits: `20d8c6d` (toc-panel), `ce4fe56` (theme-toggle), `d8f53c9` (skeleton, error, reader-client).
 
 Establishes: ToC panel with left Sheet + ScrollArea, mount-gated ThemeToggle cycling light/sepia/dark, ReaderSkeleton + ReaderError overlays, ReaderClient orchestration. READ-01/02/03/04 covered.
+
+## Plan 03-03 Completion
+
+Plan 03-03 (API Routes) executed 2026-05-07. Commits: `4187ff2` (GET /api/explainers), `27d0fe5` (POST /api/explainers/generate SSE streaming), `d33e6d1` (PATCH /api/user/language), `29fc0ef` (unit tests).
+
+Establishes: GET /api/explainers cache check (validates params, verifies book access, computes content hash, returns cached or 404), POST /api/explainers/generate SSE endpoint (force-dynamic, cache-first via two-step generator.next(), manual ReadableStream framing), PATCH /api/user/language update endpoint (2-char validation, preferredLanguage update). EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, LANG-02 implemented.
 
 ## Plan 03-02 Completion
 

@@ -120,6 +120,7 @@
 | --- | --- | --- |
 | 03-01: Schema & Explainer Service Foundation | ✅ Complete (2026-05-07) | Explainer model, User.preferredLanguage, explainer service (cache CRUD + SHA-256 hash), prompt builder (fillTemplate + book/section prompts), section text extractor. EXP-05, EXP-06, EXP-07, LANG-02 implemented. Commits: `5e06c45`, `ced0eb6`, `feec5d2`, `a1a2ed1` |
 | 03-02: OpenRouter Integration & Generation Orchestration | ✅ Complete (2026-05-07) | OpenRouter SSE streaming service (streamExplainer async generator), generateExplainer orchestrator (cache-first: check -> stream -> write), REGULAR_MODEL/PRO_MODEL exports, OpenRouterError with statusCode. EXP-04, EXP-06, EXP-07 implemented. Commits: `f93b3a3`, `713100b`, `63f5863` |
+| 03-03: API Routes | ✅ Complete (2026-05-07) | GET /api/explainers (cache check), POST /api/explainers/generate (SSE streaming with force-dynamic), PATCH /api/user/language (preferred language update). EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, LANG-02 implemented. Commits: `4187ff2`, `27d0fe5`, `d33e6d1`, `29fc0ef` |
 
 ---
 
