@@ -28,6 +28,9 @@ model User {
   uploadedBooks EpubFile[]      @relation("UploadedBooks")
   auditLogs     AuditLog[]
   positions     UserBookPosition[]
+  bookmarks      Bookmark[]
+  highlights     Highlight[]
+  explainerRequests ExplainerRequest[]
 }
 
 model Explainer {
@@ -46,6 +49,8 @@ model Explainer {
   @@unique([contentHash, language, contentType, tier])
   @@index([contentHash])
   @@index([createdAt])
+
+  requests ExplainerRequest[]
 }
 
 model Session {
@@ -106,6 +111,9 @@ model EpubFile {
 
   userAccesses UserBookAccess[]
   positions     UserBookPosition[]
+  bookmarks     Bookmark[]
+  highlights    Highlight[]
+  explainerRequests ExplainerRequest[]
 }
 
 model UserBookAccess {
@@ -157,4 +165,62 @@ model UserBookPosition {
   @@unique([userId, bookId])
   @@index([userId])
   @@index([bookId])
+}
+
+model Bookmark {
+  id             String   @id @default(cuid())
+  userId         String
+  bookId         String
+  cfi            String
+  paragraphIndex Int
+  charOffset     Int
+  selectedText   String?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId, cfi])
+  @@index([userId])
+  @@index([bookId])
+}
+
+model Highlight {
+  id             String   @id @default(cuid())
+  userId         String
+  bookId         String
+  cfi            String
+  paragraphIndex Int
+  charOffsetStart Int
+  charOffsetEnd   Int
+  selectedText   String
+  color          String   @default("#fbbf24")
+  note           String?
+  createdAt      DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId, cfi])
+  @@index([userId])
+  @@index([bookId])
+}
+
+model ExplainerRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  bookId      String
+  explainerId String
+  passageCfi  String?
+  passageText String?
+  sectionHref String?
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book      EpubFile  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  explainer Explainer @relation(fields: [explainerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, bookId])
+  @@index([createdAt])
 }
