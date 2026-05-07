@@ -1,0 +1,41 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Users, Library, FileText, ScrollText } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const NAV_ITEMS = [
+  { label: "Users", icon: Users, href: "/admin/users" },
+  { label: "Universal Library", icon: Library, href: "/admin/books" },
+  { label: "Prompt Templates", icon: FileText, href: "/admin/prompts" },
+  { label: "Audit Log", icon: ScrollText, href: "/admin/audit" },
+];
+
+export function AdminSidebar() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="flex flex-col gap-1 p-3">
+      {NAV_ITEMS.map((item) => {
+        const isActive =
+          pathname === item.href || pathname.startsWith(item.href + "/");
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex h-10 items-center gap-2 rounded-md px-4 text-sm",
+              isActive
+                ? "bg-slate-900 text-white border-l-[3px] border-slate-900"
+                : "text-slate-600 hover:bg-slate-200 border-l-[3px] border-transparent"
+            )}
+          >
+            <item.icon className="h-[18px] w-[18px]" />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
