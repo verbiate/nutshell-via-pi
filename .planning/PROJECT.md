@@ -14,14 +14,15 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 
 ### Validated
 
-(None yet — ship to validate)
+- ✅ User authentication with role-based access (Regular, Pro, Admin) — Phase 1
+- ✅ EPUB upload with MD5 hash deduplication against the Universal Library — Phase 1
+- ✅ EPUB to TXT conversion for downstream AI processing — Phase 1
+- ✅ Personal Library ("My Library") showing only books the user has access to — Phase 1
+- ✅ Admin panel for managing user roles, Universal Library books, and LLM prompt content — Phase 1
+- ✅ Per-user language preference stored at upload time (LANG-03) — Phase 1
 
 ### Active
 
-- [ ] User authentication with role-based access (Regular, Pro, Admin)
-- [ ] EPUB upload with MD5 hash deduplication against the Universal Library
-- [ ] EPUB to TXT conversion for downstream AI processing
-- [ ] Personal Library ("My Library") showing only books the user has access to
 - [ ] Book Detail page with rich Table of Contents (ToC)
 - [ ] Reader view with excellent typography, three themes (light / dark / sepia), bookmarks, highlights, and resume-last-position
 - [ ] Book-level "Explain this to me" generating AI explanations via OpenRouter
@@ -30,7 +31,6 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - [ ] Explainer caching per (book or section, language) in the Universal Library
 - [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai
 - [ ] Audio caching per (book or section, language) in the Universal Library
-- [ ] Admin panel for managing user roles, Universal Library books, and LLM prompt content
 - [ ] Per-user language preference driving both Explainer and TTS generation
 - [ ] Beautiful bookshelf experience for browsing Personal Library
 
@@ -67,13 +67,13 @@ Key design principles:
 
 | Decision | Rationale | Outcome |
 | --- | --- | --- |
-| OpenRouter for LLM abstraction | Avoid vendor lock-in; easy to swap models for Regular vs Pro tiers | - Pending |
+| OpenRouter for LLM abstraction | Avoid vendor lock-in; easy to swap models for Regular vs Pro tiers | Installed in Phase 1 (will be configured in Phase 3) |
 | Web-first, mobile later | Faster to ship, broader reach, easier iteration | - Pending |
 | Explainers cached per (content, language) | Minimizes API costs; content is language-agnostic until generation | - Pending |
-| MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | - Pending |
-| Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | - Pending |
-| Google OAuth for authentication | Simpler than email/password; Better Auth supports it natively | - Pending |
-| TTS streams sections on-demand; full-book download is Pro-only | Cost control — streaming avoids paying for unlistened content; download is value-add for Pro | - Pending |
+| MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | Implemented in Phase 1 with streaming hash |
+| Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | Implemented in Phase 1 with audit logging |
+| Google OAuth for authentication | Simpler than email/password; Better Auth supports it natively | Implemented in Phase 1 with Better Auth + Prisma adapter |
+| TTS streams sections on-demand; full-book download is Pro-only | Cost control — streaming avoids paying for unlistened content; download is value-add for Pro | Architecture designed in Phase 1, implementation pending Phase 5 |
 
 ## Evolution
 
@@ -93,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-06 after project initialization*
+*Last updated: 2026-05-07 after Phase 1 completion*
