@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T00:50:00Z"
+last_updated: "2026-05-07T04:43:11Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 2: Core Reading** — Plans 01, 02, 03, 04 complete. EPUB viewer, reader chrome, progress bar, ToC panel, theme toggle, skeleton/error states all built and wired.
+**Phase 2: Core Reading** — ✅ COMPLETE (4/4 plans). EPUB viewer, reader chrome, progress bar, ToC panel, theme toggle, skeleton/error states, position persistence all built and wired. READ-01 through READ-05 all implemented.
 
 Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native rendering, full-screen immersive reader with slide-out ToC, three themes (light/dark/sepia), content-based position persistence.
 
@@ -31,7 +31,7 @@ Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native ren
 | Phase | Status | Requirements | Completed | Blockers |
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
-| Phase 2: Core Reading | In progress (4/4 plans) | 5 | 4 | None |
+| Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
@@ -119,6 +119,12 @@ All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified
 Plan 02-02 (EPUB Viewer, Reader Chrome, Progress Bar) executed 2026-05-07. Commits: `4084a90` (epub-viewer), `6c9f514` (reader-chrome + reading-progress).
 
 Establishes: Custom React wrapper around @likecoin/epub-ts Book + Rendition with full lifecycle (book.destroy on unmount), three themes registered via rendition.themes.register(), EpubViewerHandle.navigateTo() via useImperativeHandle, ReaderChrome h-12 glassmorphism toolbar with slot-based composition, ReadingProgress h-1 bar with 300ms transition. READ-01 and READ-04 implemented.
+
+## Plan 02-04 Completion
+
+Plan 02-04 (Position Persistence) executed 2026-05-07. Commits: `b812401` (position-tracking library), `c65e304` (reader service + API route), `9aadd92` (reader integration).
+
+Establishes: Bidirectional CFI↔paragraph mapping library (buildParagraphMap, cfiToParagraphOffset, paragraphOffsetToCfi), authenticated position CRUD API route (GET/POST), reader components wired with debounced save (3s) and CFI-first instant restore. READ-05 implemented.
 
 ## Plan 02-03 Completion
 
