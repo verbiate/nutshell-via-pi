@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T07:11:43.324Z"
+last_updated: "2026-05-07T07:29:19.991Z"
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 13
   completed_plans: 13
 ---
@@ -20,9 +20,9 @@ progress:
 
 ## Current Phase
 
-**Phase 3: AI Explainers** — All 4/4 plans complete. OpenRouter streaming service, generateExplainer orchestration, API routes, and frontend ExplainerTrigger + ExplainerPanel components built. EXP-01, EXP-02, LANG-01 fully implemented.
+**Phase 4: Reading Enhancements** — Context gathered, ready for planning. Bookmarks, highlights, search, passage-level Explainers, and Explainer history list.
 
-Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans).
 
 ---
 
@@ -33,7 +33,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
-| Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
+| Phase 4: Reading Enhancements | Ready | 5 | 0 | None |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
 ---
@@ -86,8 +86,8 @@ All Phase 3 requirements (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-0
 
 | Milestone | Target Phase | Status |
 | --- | --- | --- |
-| First user can upload and read an EPUB | Phase 2 | Pending |
-| First Explainer generated and cached | Phase 3 | Pending |
+| First user can upload and read an EPUB | Phase 2 | ✅ Complete |
+| First Explainer generated and cached | Phase 3 | ✅ Complete |
 | First TTS audio generated and played | Phase 5 | Pending |
 | Admin can manage users and prompts end-to-end | Phase 1 | ✅ Complete |
 

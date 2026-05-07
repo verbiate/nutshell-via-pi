@@ -24,20 +24,22 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - ✅ Reader supports three themes (light, dark, sepia) with instant switching — Phase 2
 - ✅ Hierarchical Table of Contents navigation in reader — Phase 2
 - ✅ Content-based reading position persistence (paragraph + char offset) — Phase 2
+- ✅ Book-level "Explain this to me" via OpenRouter with SSE streaming — Phase 3
+- ✅ Section-level (ToC entry) "Explain this to me" with contextual grounding — Phase 3
+- ✅ Explainer caching per (content_hash, language, content_type, tier) — Phase 3
+- ✅ Per-user language preference for Explainer generation (13 languages) — Phase 3
 
 ### Active
 
-- [ ] Book-level "Explain this to me" generating AI explanations via OpenRouter
-- [ ] Section-level (ToC entry) "Explain this to me" generating contextual AI explanations
-- [ ] Selected passage "Explain this to me" for arbitrary text selections
-- [ ] Explainer caching per (book or section, language) in the Universal Library
-- [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai
-- [ ] Audio caching per (book or section, language) in the Universal Library
-- [ ] Per-user language preference driving both Explainer and TTS generation
+- [ ] Selected passage "Explain this to me" for arbitrary text selections — Phase 4
+- [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai — Phase 5
+- [ ] Audio caching per (content_hash, language, voice_id, model) in the Universal Library — Phase 5
+- [ ] Per-user language preference driving TTS generation — Phase 5
 - [ ] Beautiful bookshelf experience for browsing Personal Library
-- [ ] Bookmarks at any position
-- [ ] Text highlighting within books
-- [ ] Full-text search within current book
+- [ ] Bookmarks at any position — Phase 4
+- [ ] Text highlighting within books — Phase 4
+- [ ] Full-text search within current book — Phase 4
+- [ ] View list of all generated Explainers for a book — Phase 4
 
 ### Out of Scope
 
@@ -72,9 +74,9 @@ Key design principles:
 
 | Decision | Rationale | Outcome |
 | --- | --- | --- |
-| OpenRouter for LLM abstraction | Avoid vendor lock-in; easy to swap models for Regular vs Pro tiers | Installed in Phase 1 (will be configured in Phase 3) |
+| OpenRouter for LLM abstraction | Avoid vendor lock-in; easy to swap models for Regular vs Pro tiers | Configured in Phase 3 with SSE streaming, tiered model selection, and cache-first orchestration |
 | Web-first, mobile later | Faster to ship, broader reach, easier iteration | - Pending |
-| Explainers cached per (content, language) | Minimizes API costs; content is language-agnostic until generation | - Pending |
+| Explainers cached per (content, language) | Minimizes API costs; content is language-agnostic until generation | Implemented in Phase 3 with SHA-256 hash + composite unique index |
 | MD5 hash as book unique ID | Simple, deterministic deduplication; same book = same hash | Implemented in Phase 1 with streaming hash |
 | Admin-managed roles (no self-serve billing) | Defers payment infrastructure; roles adjusted manually for v1 | Implemented in Phase 1 with audit logging |
 | Google OAuth for authentication | Simpler than email/password; Better Auth supports it natively | Implemented in Phase 1 with Better Auth + Prisma adapter |
@@ -98,4 +100,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-07 after Phase 2 completion*
+*Last updated: 2026-05-07 after Phase 3 completion*

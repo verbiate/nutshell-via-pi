@@ -35,13 +35,13 @@
 
 ### AI Explainers
 
-- [ ] **EXP-01**: User can request a book-level "Explain this to me" for any book in their library
-- [ ] **EXP-02**: User can request a section-level "Explain this to me" for any ToC entry
+- [x] **EXP-01**: User can request a book-level "Explain this to me" for any book in their library
+- [x] **EXP-02**: User can request a section-level "Explain this to me" for any ToC entry
 - [ ] **EXP-03**: User can request an Explainer for a selected passage (text selection)
-- [ ] **EXP-04**: Explainers are generated via OpenRouter with user-specified language preference
-- [ ] **EXP-05**: System checks cache for existing Explainer matching (content_hash, language, content_type); serves cached if found
-- [ ] **EXP-06**: If no cached Explainer exists, system generates, caches, then serves it
-- [ ] **EXP-07**: Explainers are grounded in source text from the book's TXT conversion
+- [x] **EXP-04**: Explainers are generated via OpenRouter with user-specified language preference
+- [x] **EXP-05**: System checks cache for existing Explainer matching (content_hash, language, content_type); serves cached if found
+- [x] **EXP-06**: If no cached Explainer exists, system generates, caches, then serves it
+- [x] **EXP-07**: Explainers are grounded in source text from the book's TXT conversion
 - [ ] **EXP-08**: User can view a list of all generated Explainers for a book
 - [ ] **EXP-09**: Pro users can access higher-fidelity LLM models for Explainer generation
 
@@ -69,7 +69,7 @@
 ### Language & Preferences
 
 - [ ] **LANG-01**: User can set a preferred language for Explainers
-- [ ] **LANG-02**: Language preference is persisted to user profile
+- [x] **LANG-02**: Language preference is persisted to user profile
 - [ ] **LANG-03**: System detects and stores the book's original language at upload time
 - [ ] **LANG-04**: TTS voice selection respects book language (not user preference)
 
@@ -134,14 +134,14 @@
 | READ-03 | Phase 2: Core Reading | Pending |
 | READ-04 | Phase 2: Core Reading | Pending |
 | READ-05 | Phase 2: Core Reading | Pending |
-| EXP-01 | Phase 3: AI Explainers | Pending |
-| EXP-02 | Phase 3: AI Explainers | Pending |
-| EXP-04 | Phase 3: AI Explainers | Pending |
-| EXP-05 | Phase 3: AI Explainers | Pending |
-| EXP-06 | Phase 3: AI Explainers | Pending |
-| EXP-07 | Phase 3: AI Explainers | Pending |
+| EXP-01 | Phase 3: AI Explainers | Complete |
+| EXP-02 | Phase 3: AI Explainers | Complete |
+| EXP-04 | Phase 3: AI Explainers | Complete |
+| EXP-05 | Phase 3: AI Explainers | Complete |
+| EXP-06 | Phase 3: AI Explainers | Complete |
+| EXP-07 | Phase 3: AI Explainers | Complete |
 | LANG-01 | Phase 3: AI Explainers | Pending |
-| LANG-02 | Phase 3: AI Explainers | Pending |
+| LANG-02 | Phase 3: AI Explainers | Complete |
 | READ-06 | Phase 4: Reading Enhancements | Pending |
 | READ-07 | Phase 4: Reading Enhancements | Pending |
 | READ-08 | Phase 4: Reading Enhancements | Pending |
