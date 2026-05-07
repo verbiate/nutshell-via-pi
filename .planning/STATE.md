@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T04:30:10Z"
+last_updated: "2026-05-07T00:50:00Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 2: Core Reading** — Plan 01 complete. Reader infrastructure established.
+**Phase 2: Core Reading** — Plans 01, 02, 03 complete. Reader UI components (ToC panel, theme toggle, skeleton, error) built and wired.
 
 Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native rendering, full-screen immersive reader with slide-out ToC, three themes (light/dark/sepia), content-based position persistence.
 
@@ -31,7 +31,7 @@ Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native ren
 | Phase | Status | Requirements | Completed | Blockers |
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
-| Phase 2: Core Reading | In progress (1/3 plans) | 5 | 0 | None |
+| Phase 2: Core Reading | In progress (3/3 plans) | 5 | 3 | None |
 | Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
@@ -57,6 +57,7 @@ All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified
 | UserRole stored as String (SQLite has no enum) | Confirmed | App-level validation enforces values |
 | shadcn/ui with radix-nova preset (slate semantics) | Confirmed | CLI doesn't support --base-color; Nova functionally equivalent |
 | Storage abstraction with LocalStorage | Confirmed | StorageProvider interface; LocalStorage implementation |
+| `@likecoin/epub-ts` NavItem.label (not title) | Active | ToC entries use `label` field from epub-ts Navigation API |
 
 ---
 
@@ -104,9 +105,20 @@ All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified
 | `src/components/ui/` | 22 shadcn components |
 | `vitest.config.ts` | Vitest node environment config |
 | `playwright.config.ts` | Playwright chromium config |
+| `src/components/reader/toc-panel.tsx` | Left Sheet ToC with recursive entries |
+| `src/components/reader/theme-toggle.tsx` | Mount-gated theme cycle button |
+| `src/components/reader/reader-skeleton.tsx` | Loading skeleton overlay |
+| `src/components/reader/reader-error.tsx` | Error state with Back/Retry |
+| `src/components/reader/reader-client.tsx` | Reader orchestrator component |
 | `prisma/seed.ts` | 2 PromptTemplate records seeded |
 
 ---
+
+## Plan 02-03 Completion
+
+Plan 02-03 (ToC Panel, Theme Toggle, Loading/Error) executed 2026-05-07. Commits: `20d8c6d` (toc-panel), `ce4fe56` (theme-toggle), `d8f53c9` (skeleton, error, reader-client), `a2b7c36` (session.id fix).
+
+Establishes: ToC panel with left Sheet + ScrollArea, mount-gated ThemeToggle cycling light/sepia/dark, ReaderSkeleton + ReaderError overlays, ReaderClient orchestration. READ-01/02/03/04 covered. READ-05 (position persistence) remaining.
 
 ## Plan 02-01 Completion
 
