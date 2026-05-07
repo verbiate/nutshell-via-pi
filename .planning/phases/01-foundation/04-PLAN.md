@@ -1,5 +1,5 @@
 ---
-wave: 3
+wave: 4
 depends_on: ["02-PLAN.md", "03-PLAN.md"]
 files_modified:
   - src/app/admin/layout.tsx

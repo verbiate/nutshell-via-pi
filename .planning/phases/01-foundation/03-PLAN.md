@@ -1,6 +1,6 @@
 ---
-wave: 2
-depends_on: ["01-PLAN.md"]
+wave: 3
+depends_on: ["01-PLAN.md", "02-PLAN.md"]
 files_modified:
   - src/server/services/epub-processor.ts
   - src/lib/language.ts
