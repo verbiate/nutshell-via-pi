@@ -16,7 +16,7 @@
     "gsd-integration-checker": "zai/glm-5.1",
     "gsd-nyquist-auditor": "zai/glm-5.1",
     "gsd-ui-researcher": "kimi-coding/k2p6",
-    "gsd-ui-checker": "zai/glm-5.1",
+    "gsd-ui-checker": "kimi-coding/k2p6",
     "gsd-ui-auditor": "zai/glm-5.1"
   },
   "search_gitignored": false,

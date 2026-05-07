@@ -16,14 +16,14 @@ Users can authenticate via Google OAuth, upload EPUBs with MD5 deduplication aga
 ### Library browsing experience
 - **D-01:** Grid layout for "My Library" — cards arranged in a responsive grid (similar to Apple Books/Kindle). List view toggle deferred to a later version.
 - **D-02:** Cover images extracted from uploaded EPUBs where available; generic placeholder (book icon + colored background derived from title hash) when no cover is found.
-- **D-03:** Per-book metadata displayed: title, author, detected language badge. No reading progress indicator in Phase 1 (reader doesn't exist yet).
+- **D-03:** Per-book metadata displayed: title, author, detected language badge (if user has enabled; disabled by default). No reading progress indicator in Phase 1 (reader doesn't exist yet).
 - **D-04:** Empty state: friendly illustration + "Upload your first book" CTA with a prominent upload button.
 
 ### Upload flow & feedback
 - **D-05:** Drag-and-drop zone as primary upload mechanism, with a fallback file picker button. Standard file input accept=".epub".
-- **D-06:** Processing feedback shown as a multi-step indicator: "Computing hash → Checking library → Converting → Done". Each step visible to the user.
+- **D-06:** Processing feedback shown as a multi-step indicator: "Computing hash → Checking library → Converting → Done". Each step visible to the user (in v1; removing this later).
 - **D-07:** On successful upload (new book), redirect to the book detail page.
-- **D-08:** On MD5 match (existing book), show a toast: "You now have access to [Book Title]" and redirect to the book detail page.
+- **D-08:** On MD5 match (existing book), show a toast: "[Book Title] added" and redirect to the book detail page.
 - **D-09:** Upload validation: reject non-EPUB files client-side, max file size 50MB (generous for EPUBs, can be adjusted).
 
 ### Admin panel structure
@@ -33,11 +33,11 @@ Users can authenticate via Google OAuth, upload EPUBs with MD5 deduplication aga
 
 ### Role visibility & feature gating
 - **D-13:** Admin routes are completely hidden from non-admin users — no navigation items, no disabled links. Role check happens at the route/layout level.
-- **D-14:** User role badge shown on their profile page (Regular / Pro / Admin). No self-serve upgrade path in v1.
+- **D-14:** User role badge shown on their profile page (Regular (a disabled "Upgrade to Pro" badge / Pro / Admin). No self-serve upgrade path in v1.
 - **D-15:** For Phase 1 specifically, no Pro-gated features exist yet. When Pro features are introduced in later phases, they will be visible but locked for Regular users (teaser pattern), not hidden.
 
 ### the agent's Discretion
-- Exact spacing, typography, and color palette for library grid cards
+- Exact spacing, typography, and color palette for library grid cards—MUST leverage frontend design agent skills.
 - Loading skeleton design for library and book detail pages
 - Toast notification styling and duration
 - Exact sidebar navigation item ordering and icons
@@ -56,11 +56,15 @@ Users can authenticate via Google OAuth, upload EPUBs with MD5 deduplication aga
 - `.planning/research/ARCHITECTURE.md` - System architecture diagram, project structure recommendation, design patterns (Universal Library with Access Grants, AI Output Caching, Tiered AI Provider), data flows, anti-patterns, and build order.
 - `.planning/research/FEATURES.md` - Feature-by-feature breakdown with implementation notes.
 - `.planning/research/PITFALLS.md` - Known issues and failure modes to avoid.
+- All relevant agent skills
+- Fetch and cache relevant docs via `context7-cli`
 
 ### Project Definitions
 - `.planning/PROJECT.md` - Vision, core value, constraints, key decisions (OpenRouter, MD5 dedup, admin-managed roles).
 - `.planning/REQUIREMENTS.md` - All 47 v1 requirements mapped to phases. Phase 1 covers AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03.
 - `.planning/ROADMAP.md` - Phase boundaries, success criteria, research flags, and phase ordering rationale.
+- All relevant agent skills
+- Fetch and cache relevant docs via `context7-cli`
 
 </canonical_refs>
 

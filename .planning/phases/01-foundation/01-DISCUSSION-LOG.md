@@ -69,7 +69,7 @@
 
 ## the agent's Discretion
 
-- Exact spacing, typography, and color palette for library grid cards
+- Exact spacing, typography, and color palette for library grid cards—MUST use frontend design agent skills
 - Loading skeleton design for library and book detail pages
 - Toast notification styling and duration
 - Exact sidebar navigation item ordering and icons

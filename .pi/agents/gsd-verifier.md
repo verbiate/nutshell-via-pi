@@ -1,0 +1,1 @@
+/Volumes/My Shared Files/Dev/busyreader-via-pi/.pi/gsd/agents/gsd-verifier.md
