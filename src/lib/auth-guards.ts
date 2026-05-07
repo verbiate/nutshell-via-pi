@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   name: string | null;
   image: string | null;
   role: UserRole;
+  preferredLanguage: string;
 }
 
 export async function getSession() {
@@ -28,6 +29,7 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
     name: session.user.name ?? null,
     image: session.user.image ?? null,
     role: (session.user as any).role as UserRole,
+    preferredLanguage: ((session.user as any).preferredLanguage as string) || "en",
   };
 }
 

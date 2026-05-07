@@ -19,6 +19,11 @@ export const auth = betterAuth({
         defaultValue: "regular",
         input: false,
       },
+      preferredLanguage: {
+        type: "string",
+        defaultValue: "en",
+        input: false,
+      },
     },
   },
   session: {
