@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSession } from "@/hooks/use-session";
 import { signOut } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,12 +11,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ProfileModal } from "@/components/profile/profile-modal";
 import { User, LogOut, Shield, BookOpen } from "lucide-react";
 import Link from "next/link";
 import type { UserRole } from "@/types/book";
 
 export function UserNav() {
   const { user, isPending } = useSession();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   if (isPending) {
     return <div className="h-8 w-8 animate-pulse rounded-full bg-slate-200" />;
@@ -41,55 +44,59 @@ export function UserNav() {
       .toUpperCase() || "U";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 rounded-full p-1 hover:bg-slate-100">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user.image || undefined} alt={user.name || ""} />
-            <AvatarFallback className="bg-slate-200 text-xs">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <div className="px-2 py-1.5">
-          <p className="text-sm font-medium">{user.name}</p>
-          <p className="text-xs text-muted-foreground">{user.email}</p>
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/my-library" className="cursor-pointer">
-            <BookOpen className="mr-2 h-4 w-4" />
-            My Library
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/profile" className="cursor-pointer">
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-2 rounded-full p-1 hover:bg-slate-100">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user.image || undefined} alt={user.name || ""} />
+              <AvatarFallback className="bg-slate-200 text-xs">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <div className="px-2 py-1.5">
+            <p className="text-sm font-medium">{user.name}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/my-library" className="cursor-pointer">
+              <BookOpen className="mr-2 h-4 w-4" />
+              My Library
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setProfileOpen(true)}
+          >
             <User className="mr-2 h-4 w-4" />
             Profile
-          </Link>
-        </DropdownMenuItem>
-        {role === "admin" && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/admin" className="cursor-pointer">
-                <Shield className="mr-2 h-4 w-4" />
-                Admin Panel
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer text-red-600"
-          onClick={() => signOut()}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign Out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuItem>
+          {role === "admin" && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="cursor-pointer">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin Panel
+                </Link>
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600"
+            onClick={() => signOut()}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
+    </>
   );
 }
