@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T03:10:48.186Z"
+last_updated: "2026-05-07T03:30:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 1
@@ -14,15 +14,15 @@ progress:
 # Project State: BusyReader
 
 **Project:** busyreader-via-pi
-**Last updated:** 2026-05-07 (Phase 1 complete — all 5 plans executed and verified)
+**Last updated:** 2026-05-07 (Phase 2 context gathered, ready for planning)
 
 ---
 
 ## Current Phase
 
-**Phase 1: Foundation** — ✅ COMPLETE. All 5 plans executed and verified (19/19 requirements).
+**Phase 2: Core Reading** — Context gathered, ready for planning.
 
-Phase 1 delivered: Next.js 16 scaffolding, Prisma 5 schema + SQLite, Better Auth with Google OAuth, RBAC with three tiers, EPUB upload with streaming MD5 deduplication, TXT conversion, language detection, Personal Library, Universal Library, admin panel with user management, prompt templates, audit logging, and E2E test stubs.
+Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native rendering, full-screen immersive reader with slide-out ToC, three themes (light/dark/sepia), content-based position persistence.
 
 ---
 
@@ -31,7 +31,7 @@ Phase 1 delivered: Next.js 16 scaffolding, Prisma 5 schema + SQLite, Better Auth
 | Phase | Status | Requirements | Completed | Blockers |
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
-| Phase 2: Core Reading | Ready | 5 | 0 | None |
+| Phase 2: Core Reading | Context gathered | 5 | 0 | None |
 | Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
