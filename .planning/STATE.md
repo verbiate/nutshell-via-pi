@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T07:15:00.000Z"
+last_updated: "2026-05-07T07:03:48.678Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 3: AI Explainers** — Plan 03-01 complete (1/4 plans). Schema and service foundation built. Next: Plan 03-02 (OpenRouter + SSE streaming).
+**Phase 3: AI Explainers** — Plans 03-01 and 03-02 complete (2/4 plans). OpenRouter streaming service and generateExplainer orchestration built. Next: Plan 03-03 (API route wrapping SSE).
 
 Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
 
@@ -32,7 +32,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
-| Phase 3: AI Explainers | Plan 03-01 done (1/4) | 8 | 4 | — |
+| Phase 3: AI Explainers | Plans 03-01 and 03-02 done (2/4) | 8 | 6 | — |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
@@ -42,7 +42,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 
 All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified in `01-VERIFICATION.md`.
 
-Phase 3 partial (EXP-05, EXP-06, EXP-07, LANG-02 completed via plan 03-01; remaining via plans 03-02 onwards).
+Phase 3 partial (EXP-04, EXP-05, EXP-06, EXP-07, LANG-02 completed via plans 03-01 and 03-02; remaining via plans 03-03 onwards).
 
 ---
 
@@ -133,6 +133,12 @@ Establishes: Bidirectional CFI↔paragraph mapping library (buildParagraphMap, c
 Plan 02-03 (ToC Panel, Theme Toggle, Loading/Error) executed 2026-05-07. Commits: `20d8c6d` (toc-panel), `ce4fe56` (theme-toggle), `d8f53c9` (skeleton, error, reader-client).
 
 Establishes: ToC panel with left Sheet + ScrollArea, mount-gated ThemeToggle cycling light/sepia/dark, ReaderSkeleton + ReaderError overlays, ReaderClient orchestration. READ-01/02/03/04 covered.
+
+## Plan 03-02 Completion
+
+Plan 03-02 (OpenRouter Integration & Generation Orchestration) executed 2026-05-07. Commits: `f93b3a3` (OpenRouter SSE streaming service), `713100b` (generateExplainer orchestrator), `63f5863` (unit tests).
+
+Establishes: `streamExplainer` async generator with SSE parsing from OpenRouter, lazy imports to avoid circular dependency, cache-first `generateExplainer` orchestrator (cache check -> stream -> cache write), `REGULAR_MODEL`/`PRO_MODEL` exports, `OpenRouterError` with statusCode. EXP-04, EXP-06, EXP-07 implemented.
 
 ## Plan 03-01 Completion
 
