@@ -77,6 +77,13 @@
 - `react-reader` wraps unmaintained `epubjs`; validate stability or build custom React wrapper (~200 LOC fallback).
 - Content-based position tracking (paragraph index + char offset) must survive theme and font-size changes.
 
+**Plans:**
+| Plan | Status | Summary |
+| --- | --- | --- |
+| 02-01: Reader Infrastructure | ✅ Complete (2026-05-07) | UserBookPosition model, (reader) route group, ThemeProvider with sepia, Open Reader navigation. Commits: `30822a1`, `5003111`, `72490e3` |
+| 02-02 | Pending | - |
+| 02-03 | Pending | - |
+
 ---
 
 ## Phase 3: AI Explainers

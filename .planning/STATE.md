@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T03:30:00.000Z"
+last_updated: "2026-05-07T04:30:10Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 9
+  completed_plans: 6
 ---
 
 # Project State: BusyReader
@@ -20,7 +20,7 @@ progress:
 
 ## Current Phase
 
-**Phase 2: Core Reading** — Context gathered, ready for planning.
+**Phase 2: Core Reading** — Plan 01 complete. Reader infrastructure established.
 
 Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native rendering, full-screen immersive reader with slide-out ToC, three themes (light/dark/sepia), content-based position persistence.
 
@@ -31,7 +31,7 @@ Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native ren
 | Phase | Status | Requirements | Completed | Blockers |
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
-| Phase 2: Core Reading | Context gathered | 5 | 0 | None |
+| Phase 2: Core Reading | In progress (1/3 plans) | 5 | 0 | None |
 | Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
@@ -94,7 +94,7 @@ All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified
 
 | File | Purpose |
 | --- | --- |
-| `src/server/db/schema.prisma` | All Prisma models (8 tables) |
+| `src/server/db/schema.prisma` | All Prisma models (9 tables including UserBookPosition) |
 | `src/server/db/index.ts` | Prisma client singleton |
 | `src/server/storage/types.ts` | StorageProvider interface |
 | `src/server/storage/local.ts` | LocalStorage implementation |
@@ -105,6 +105,14 @@ All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified
 | `vitest.config.ts` | Vitest node environment config |
 | `playwright.config.ts` | Playwright chromium config |
 | `prisma/seed.ts` | 2 PromptTemplate records seeded |
+
+---
+
+## Plan 02-01 Completion
+
+Plan 02-01 (Reader Infrastructure) executed 2026-05-07. Commits: `30822a1` (UserBookPosition model), `5003111` (reader route group), `72490e3` (ThemeProvider + Open Reader button).
+
+Establishes: UserBookPosition persistence model, (reader) route group at `/book/[id]/reader`, next-themes ThemeProvider with sepia, enabled Open Reader navigation.
 
 ---
 
