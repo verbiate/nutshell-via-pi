@@ -1,14 +1,9 @@
 import { requireAuth } from "@/lib/auth-guards";
 import { getBookForUser } from "@/server/services/library";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 export default async function BookDetailPage({
   params,
@@ -67,21 +62,12 @@ export default async function BookDetailPage({
           </div>
 
           <div className="mt-6">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button disabled className="cursor-not-allowed">
-                      <BookOpen className="mr-2 h-4 w-4" />
-                      Open Reader
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Coming in Phase 2</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Button asChild>
+              <Link href={`/book/${book.id}/reader`}>
+                <BookOpen className="mr-2 h-4 w-4" />
+                Open Reader
+              </Link>
+            </Button>
           </div>
 
           {/* TOC Preview */}
