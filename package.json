@@ -1,0 +1,52 @@
+{
+  "name": "busyreader",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "playwright": "playwright test"
+  },
+  "dependencies": {
+    "next": "16.2.5",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "@prisma/client": "5.22.0",
+    "better-auth": "1.6.9",
+    "@likecoin/epub-ts": "0.6.3",
+    "jszip": "3.10.1",
+    "@tanstack/react-query": "5.100.9",
+    "zustand": "5.0.13",
+    "lucide-react": "1.14.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.5.0",
+    "sonner": "2.0.7",
+    "franc": "6.2.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "22",
+    "@types/react": "19",
+    "@types/react-dom": "19",
+    "prisma": "5.22.0",
+    "@types/eslint": "^9",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.5",
+    "@better-auth/cli": "1.4.21",
+    "vitest": "4.1.5",
+    "@vitejs/plugin-react": "4.7.0",
+    "tsx": "4.20.6",
+    "@playwright/test": "1.59.1",
+    "tailwindcss": "4.2.4",
+    "@tailwindcss/postcss": "4.2.4"
+  }
+}
