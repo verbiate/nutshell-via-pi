@@ -188,6 +188,32 @@
 
 ---
 
+## Phase 6: Polish & Scale
+
+**Goal:** Visual polish and operational tooling that improve retention and unit economics.
+
+**Requirements:** (new for Phase 6, not in original v1 REQUIREMENTS.md)
+| ID | Requirement |
+| --- | --- |
+| POL-01 | Beautiful bookshelf with cover extraction from EPUB |
+| POL-02 | Reading progress indicators on bookshelf cards |
+| POL-03 | Tiered AI quality admin configuration (model selection per tier) |
+| POL-04 | Cost tracking dashboard for AI and TTS usage |
+| POL-05 | Pro badges in UI (role indicators, tier banners) |
+
+**Success Criteria (observable user behaviors):**
+1. A user sees extracted cover images on their bookshelf instead of generic placeholders.
+2. A user sees a visual progress bar on each book card showing % read.
+3. An Admin can open a cost dashboard and see cumulative AI/TTS spend by model, tier, and time period.
+4. Pro users see a Pro badge in their profile and on explainer panels; Regular users do not.
+5. The admin panel includes a "Model Configuration" screen where different LLM and TTS models can be assigned to Regular vs Pro tiers.
+
+**Research Flags:**
+- EPUB cover extraction reliability across different EPUB packaging conventions.
+- Cost tracking schema design for accurate per-request attribution.
+
+---
+
 ## Coverage Validation
 
 | Phase | Requirements | Count |
@@ -197,9 +223,10 @@
 | Phase 3: AI Explainers | EXP-01..02, EXP-04..07, LANG-01..02 | 8 |
 | Phase 4: Reading Enhancements | READ-06..08, EXP-03, EXP-08 | 5 |
 | Phase 5: TTS Audio | EXP-09, TTS-01..08, LANG-04 | 10 |
-| **Total** | | **47** |
+| Phase 6: Polish & Scale | POL-01..05 | 5 |
+| **Total** | | **52** |
 
-Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase. No requirements are orphaned, duplicated, or deferred without explicit Out of Scope documentation.
+Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases 1–5). Phase 6 requirements are new additions introduced post-research. No requirements are orphaned, duplicated, or deferred without explicit Out of Scope documentation.
 
 ---
 
@@ -215,4 +242,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase. No req
 ---
 
 *Roadmap created: 2026-05-06*
-*Next step: Phase 1 implementation planning*
+*Updated: 2026-05-07 — Phase 6 added (6 phases total)*
+*Next step: Phase 4 discussion / planning*

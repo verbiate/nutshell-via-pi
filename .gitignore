@@ -4,4 +4,3 @@ node_modules/
 .env.local
 *.db
 *.db-journal
-data/uploads/

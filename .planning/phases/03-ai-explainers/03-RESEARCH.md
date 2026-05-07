@@ -44,6 +44,7 @@ Error codes from OpenRouter:
 **Recommendation:**
 - Use `google/gemini-2.0-flash-001` for Regular tier (best cost/quality/context tradeoff: 1M context at $0.10/$0.40 per million).
 - Reserve `anthropic/claude-sonnet-4.6` or `claude-sonnet-latest` for Pro tier (Phase 5).
+- [Note from Human In Charge: We won't actually be using either of these models. One is woefully outdated and the other is prohibitively expensive. These are fine as placeholders, but we'll be switching to cheap + modern models at the earliest opportunity.]
 - Implement exponential backoff on 429/503 errors.
 - Set a reasonable `max_tokens` (e.g., 4096 for book-level, 2048 for section-level) to cap cost per request.
 - Set `temperature: 0.3` for grounded explanations (lower = less hallucination).

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T07:29:19.991Z"
+last_updated: "2026-05-07T21:20:43.904Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
   total_plans: 13
   completed_plans: 13
@@ -34,7 +34,8 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
 | Phase 4: Reading Enhancements | Ready | 5 | 0 | None |
-| Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
+| Phase 5: TTS Audio | Blocked | 10 | 0 | Phase 4 |
+| Phase 6: Polish & Scale | Blocked | 5 | 0 | Phase 5 |
 
 ---
 
@@ -89,6 +90,7 @@ All Phase 3 requirements (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-0
 | First user can upload and read an EPUB | Phase 2 | ✅ Complete |
 | First Explainer generated and cached | Phase 3 | ✅ Complete |
 | First TTS audio generated and played | Phase 5 | Pending |
+| Cost dashboard and Pro badges live | Phase 6 | Pending |
 | Admin can manage users and prompts end-to-end | Phase 1 | ✅ Complete |
 
 ---
@@ -164,4 +166,5 @@ Establishes: UserBookPosition persistence model, (reader) route group at `/book/
 
 ---
 
+*Updated: 2026-05-07 — Phase 6 added (6 phases total, 3/6 complete)*
 *State updates automatically at phase transitions and milestone completions.*

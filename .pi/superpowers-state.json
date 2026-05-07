@@ -29,7 +29,13 @@
   "tdd": {
     "phase": "idle",
     "testFiles": [],
-    "sourceFiles": [],
+    "sourceFiles": [
+      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/types.ts",
+      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/settings.ts",
+      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/native.ts",
+      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/events.ts",
+      "/opt/homebrew/lib/node_modules/@pi-unipi/notify/platforms/native.ts"
+    ],
     "redVerificationPending": false
   },
   "debug": {
