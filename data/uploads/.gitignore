@@ -1,0 +1,5 @@
+# Track subdirectories, ignore all files inside
+!.gitkeep
+epubs/*
+txts/*
+covers/*
