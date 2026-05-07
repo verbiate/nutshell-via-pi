@@ -33,7 +33,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
-| Phase 4: Reading Enhancements | Ready | 5 | 0 | None |
+| Phase 4: Reading Enhancements | Discussed | 5 | 0 | None |
 | Phase 5: TTS Audio | Blocked | 10 | 0 | Phase 4 |
 | Phase 6: Polish & Scale | Blocked | 5 | 0 | Phase 5 |
 
