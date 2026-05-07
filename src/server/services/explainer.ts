@@ -5,7 +5,7 @@ import { OpenRouterError } from "./openrouter";
 export interface ExplainerLookup {
   contentHash: string;
   language: string;
-  contentType: "book" | "section";
+  contentType: "book" | "section" | "passage";
   tier: "regular" | "pro";
 }
 
@@ -57,6 +57,11 @@ async function getPromptBuilder() {
   return { buildBookPrompt, buildSectionPrompt };
 }
 
+async function getBuildPassagePrompt() {
+  const { buildPassagePrompt } = await import("./prompt-builder");
+  return buildPassagePrompt;
+}
+
 async function getStreamExplainer() {
   const { streamExplainer, REGULAR_MODEL, PRO_MODEL } = await import("./openrouter");
   return { streamExplainer, REGULAR_MODEL, PRO_MODEL };
@@ -64,16 +69,17 @@ async function getStreamExplainer() {
 
 export interface GenerateExplainerParams {
   bookId: string;
-  type: "book" | "section";
+  type: "book" | "section" | "passage";
   language: string;
   tier: "regular" | "pro";
   sectionHref?: string;
+  passageText?: string;
 }
 
 export async function* generateExplainer(
   params: GenerateExplainerParams
 ): AsyncGenerator<string, void, unknown> {
-  const { bookId, type, language, tier, sectionHref } = params;
+  const { bookId, type, language, tier, sectionHref, passageText } = params;
 
   // Build prompt and get source text
   let promptData: {
@@ -85,6 +91,12 @@ export async function* generateExplainer(
 
   if (type === "book") {
     promptData = await buildBookPrompt(bookId, language);
+  } else if (type === "passage") {
+    if (!passageText) {
+      throw new Error("passageText is required for passage-level explainer");
+    }
+    const buildPassagePrompt = await getBuildPassagePrompt();
+    promptData = await buildPassagePrompt(bookId, passageText, language);
   } else {
     if (!sectionHref) {
       throw new Error("sectionHref is required for section-level explainer");
@@ -127,7 +139,7 @@ export async function* generateExplainer(
   const maxChars = 900_000 * APPROX_CHARS_PER_TOKEN; // ~900K tokens for Gemini Flash
   if (promptData.sourceText.length > maxChars) {
     throw new OpenRouterError(
-      `This ${type === "book" ? "book" : "section"} is too large for an AI explainer.`,
+      `This ${type === "book" ? "book" : type === "section" ? "section" : "passage"} is too large for an AI explainer.`,
       400
     );
   }
