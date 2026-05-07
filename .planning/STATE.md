@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T04:51:31.868Z"
+last_updated: "2026-05-07T12:00:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
@@ -14,15 +14,15 @@ progress:
 # Project State: BusyReader
 
 **Project:** busyreader-via-pi
-**Last updated:** 2026-05-07 (Phase 2 context gathered, ready for planning)
+**Last updated:** 2026-05-07 (Phase 3 context gathered, ready for planning)
 
 ---
 
 ## Current Phase
 
-**Phase 2: Core Reading** — ✅ COMPLETE (4/4 plans). EPUB viewer, reader chrome, progress bar, ToC panel, theme toggle, skeleton/error states, position persistence all built and wired. READ-01 through READ-05 all implemented.
+**Phase 3: AI Explainers** — Context gathered, ready for planning. Decisions captured: book-level + section-level triggers, GSAP word-by-word fade-in streaming, profile modal for language preference, cache key includes tier.
 
-Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native rendering, full-screen immersive reader with slide-out ToC, three themes (light/dark/sepia), content-based position persistence.
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans).
 
 ---
 
@@ -32,7 +32,7 @@ Phase 1 complete (19/19 requirements). Phase 2 context captured: EPUB-native ren
 | --- | --- | --- | --- | --- |
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
-| Phase 3: AI Explainers | Blocked | 8 | 0 | Phase 2 |
+| Phase 3: AI Explainers | Context gathered | 8 | 0 | Planning |
 | Phase 4: Reading Enhancements | Blocked | 5 | 0 | Phase 3 |
 | Phase 5: TTS Audio | Blocked | 9 | 0 | Phase 4 |
 
