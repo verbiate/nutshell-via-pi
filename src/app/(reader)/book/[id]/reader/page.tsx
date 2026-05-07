@@ -10,7 +10,7 @@ export default async function ReaderPage({
 }) {
   const { id } = await params;
   const session = await requireAuth();
-  const book = await getBookForUser(id, session.user.id);
+  const book = await getBookForUser(id, session.id);
 
   if (!book) {
     redirect("/my-library");
