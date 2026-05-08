@@ -224,3 +224,40 @@ model ExplainerRequest {
   @@index([userId, bookId])
   @@index([createdAt])
 }
+
+model TtsAudio {
+  id          String   @id @default(cuid())
+  contentHash String
+  language    String
+  voiceId     String
+  model       String
+  provider    String
+  storagePath String
+  fileSize    Int?
+  duration    Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([contentHash, language, voiceId, model])
+  @@index([contentHash])
+}
+
+model TtsProviderConfig {
+  id        String   @id @default(cuid())
+  provider  String
+  userType  String
+  apiKey    String?
+  model     String?
+  voiceId   String?
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, userType])
+}
+
+model OpenRouterConfig {
+  id        String   @id @default(cuid())
+  userType  String   @unique
+  apiKey    String?
+  model     String?
+  updatedAt DateTime @updatedAt
+}
