@@ -165,6 +165,8 @@
 
 **Goal:** Users can generate and listen to audiobook-style audio for books and sections, with tiered quality.
 
+**Status:** In progress — 1/5 plans complete (05-01 executed 2026-05-08)
+
 **Requirements:**
 | ID | Requirement |
 | --- | --- |
@@ -190,6 +192,15 @@
 - TTS cost estimation accuracy with sample books of varying lengths; set hard limits before production.
 - ElevenLabs vs fal.ai voice quality comparison for Regular vs Pro tier differentiation.
 - Async job queue implementation (202 Accepted → poll/notify pattern) validated with slow generation jobs.
+
+**Plans:**
+1/5 plans complete
+| --- | --- | --- |
+| 05-01: Schema & Service Foundation | ✅ Complete (2026-05-08) | TtsAudio + TtsProviderConfig + OpenRouterConfig models, TTS service (computeTtsContentHash, chunkText, generateTtsAudio), ElevenLabs + fal.ai provider clients, OpenRouter refactor (EXP-09: admin-configurable apiKey/model), seed data. Commits: `19712b2`, `9d2ef9f`, `73d6cee`, `9ddf30a`, `3d88851` |
+| 05-02 | Pending | TTS API route (POST /api/tts/generate, GET /api/tts/audio/:id) |
+| 05-03 | Pending | TTS player UI (TtsTrigger, TtsPlayer, useTtsPlayback hook) |
+| 05-04 | Pending | Admin config page (/admin/config) |
+| 05-05 | Pending | End-to-end integration and verification |
 
 ---
 
@@ -247,5 +258,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases
 ---
 
 *Roadmap created: 2026-05-06*
-*Updated: 2026-05-08 — Phase 4 complete (4/6 phases done)*
-*Next step: Phase 5 discussion / planning*
+*Updated: 2026-05-08 — Phase 5 in progress (1/5 plans complete)*
+*Next step: Execute Phase 5 plans 05-02 through 05-05*

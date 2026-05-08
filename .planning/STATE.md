@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-05-08T00:06:56.314Z"
+status: "Phase 5 in progress"
+last_updated: "2026-05-08T02:31:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 22
+  completed_plans: 19
 ---
 
 # Project State: BusyReader
@@ -20,9 +20,9 @@ progress:
 
 ## Current Phase
 
-**Phase 5: TTS Audio** — 10 requirements, ready for planning. TTS generation, audio playback, tiered quality, progress tracking.
+**Phase 5: TTS Audio** — 10 requirements, plan 05-01 executed. TTS generation, audio playback, tiered quality, progress tracking.
 
-Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans).
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans). Phase 5 in progress (1/5 plans: 05-01 complete).
 
 ---
 
@@ -34,7 +34,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
 | Phase 4: Reading Enhancements | ✅ COMPLETE (5/5 plans) | 5 | 5 | None |
-| Phase 5: TTS Audio | Ready to plan | 10 | 0 | None |
+| Phase 5: TTS Audio | In progress (1/5 plans) | 10 | 0 | None |
 | Phase 6: Polish & Scale | Blocked | 5 | 0 | Phase 5 |
 
 ---
@@ -160,6 +160,12 @@ Plan 03-01 (Schema & Explainer Service Foundation) executed 2026-05-07. Commits:
 
 Establishes: `Explainer` model with `@@unique([contentHash, language, contentType, tier])`, `User.preferredLanguage` with better-auth integration, SHA-256 content hash computation, template substitution, section text extraction from EPUB spine. EXP-05, EXP-06, EXP-07, LANG-02 implemented.
 
+## Plan 05-01 Completion
+
+Plan 05-01 (Schema & Service Foundation) executed 2026-05-08. Commits: `19712b2` (TtsAudio + TtsProviderConfig + OpenRouterConfig models), `9d2ef9f` (tts.ts service: computeTtsContentHash, chunkText, getTtsAudio, createTtsAudio, getTtsProviderConfig, generateTtsAudio), `73d6cee` (tts-providers.ts: callElevenLabs, callFalAi), `9ddf30a` (openrouter.ts refactor: getOpenRouterConfig, required apiKey/model in StreamExplainerOptions, removed REGULAR_MODEL/PRO_MODEL; explainer.ts uses getOpenRouterConfig), `3d88851` (seed: OpenRouterConfig rows for regular/pro/admin + TtsProviderConfig 6 rows).
+
+Establishes: Three new Prisma models (TtsAudio, TtsProviderConfig, OpenRouterConfig), TTS service with cache-first orchestration, ElevenLabs and fal.ai provider clients with AbortSignal cancellation, OpenRouter refactored to use admin-configurable per-tier API keys and models (EXP-09), seed data for all 9 config rows. TTS-03, TTS-04, TTS-05, TTS-06, EXP-09, LANG-04 implemented.
+
 ## Plan 02-01 Completion
 
 Plan 02-01 (Reader Infrastructure) executed 2026-05-07. Commits: `30822a1` (UserBookPosition model), `5003111` (reader route group), `72490e3` (ThemeProvider + Open Reader button).
@@ -168,5 +174,5 @@ Establishes: UserBookPosition persistence model, (reader) route group at `/book/
 
 ---
 
-*Updated: 2026-05-08 — Phase 4 complete (6 phases total, 4/6 complete)*
+*Updated: 2026-05-08 — Phase 5 plan 05-01 complete (6 phases total, 4/6 complete, Phase 5 in progress)*
 *State updates automatically at phase transitions and milestone completions.*
