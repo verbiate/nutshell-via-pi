@@ -1,13 +1,38 @@
 import { db } from "@/server/db";
 
 /**
- * Get all books a user has access to (Personal Library).
+ * Get all books a user has access to (Personal Library), with reading progress.
  */
 export async function getPersonalLibrary(userId: string) {
-  return db.userBookAccess.findMany({
-    where: { userId },
-    include: { book: true },
-    orderBy: { createdAt: "desc" },
+  const [accesses, positions] = await Promise.all([
+    db.userBookAccess.findMany({
+      where: { userId },
+      include: { book: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.userBookPosition.findMany({
+      where: { userId },
+    }),
+  ]);
+
+  const positionMap = new Map(positions.map((p) => [p.bookId, p]));
+
+  return accesses.map((access) => {
+    const position = positionMap.get(access.book.id);
+    const totalParagraphs = access.book.totalParagraphs;
+    const progress =
+      totalParagraphs && totalParagraphs > 0 && position
+        ? Math.min(100, Math.round((position.paragraphIndex / totalParagraphs) * 100))
+        : null;
+
+    return {
+      id: access.book.id,
+      title: access.book.title,
+      author: access.book.author,
+      language: access.book.language,
+      coverPath: access.book.coverPath,
+      progress,
+    };
   });
 }
 
