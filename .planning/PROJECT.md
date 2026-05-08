@@ -28,18 +28,18 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - ✅ Section-level (ToC entry) "Explain this to me" with contextual grounding — Phase 3
 - ✅ Explainer caching per (content_hash, language, content_type, tier) — Phase 3
 - ✅ Per-user language preference for Explainer generation (13 languages) — Phase 3
+- ✅ Selected passage "Explain this to me" for arbitrary text selections (EXP-03) — Phase 4
+- ✅ Bookmarks at any position (READ-06) — Phase 4
+- ✅ Text highlighting within books (READ-07) — Phase 4
+- ✅ Full-text search within current book (READ-08) — Phase 4
+- ✅ View list of all generated Explainers for a book (EXP-08) — Phase 4
 
 ### Active
 
-- [ ] Selected passage "Explain this to me" for arbitrary text selections — Phase 4
 - [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai — Phase 5
 - [ ] Audio caching per (content_hash, language, voice_id, model) in the Universal Library — Phase 5
 - [ ] Per-user language preference driving TTS generation — Phase 5
 - [ ] Beautiful bookshelf experience for browsing Personal Library
-- [ ] Bookmarks at any position — Phase 4
-- [ ] Text highlighting within books — Phase 4
-- [ ] Full-text search within current book — Phase 4
-- [ ] View list of all generated Explainers for a book — Phase 4
 
 ### Out of Scope
 
@@ -100,4 +100,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-07 after Phase 3 completion*
+*Last updated: 2026-05-08 after Phase 4 completion*

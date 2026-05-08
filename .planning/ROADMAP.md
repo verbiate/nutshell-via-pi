@@ -134,6 +134,11 @@
 
 **Goal:** Users can bookmark, highlight, search, and request passage-level Explainers.
 
+**Status:** ✅ COMPLETE — All 5 plans executed and verified. 5/5 requirements verified.
+
+**Completed:** 2026-05-07
+**Verification:** `.planning/phases/04-reading-enhancements/04-VERIFICATION.md` (passed, 5/5)
+
 **Requirements:**
 | ID | Requirement |
 | --- | --- |
@@ -242,5 +247,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases
 ---
 
 *Roadmap created: 2026-05-06*
-*Updated: 2026-05-07 — Phase 6 added (6 phases total)*
-*Next step: Phase 4 discussion / planning*
+*Updated: 2026-05-08 — Phase 4 complete (4/6 phases done)*
+*Next step: Phase 5 discussion / planning*

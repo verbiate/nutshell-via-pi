@@ -3,26 +3,26 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-07T23:49:16.024Z"
+last_updated: "2026-05-08T00:06:49.953Z"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 18
 ---
 
 # Project State: BusyReader
 
 **Project:** busyreader-via-pi
-**Last updated:** 2026-05-07 (Phase 3 complete — all 4/4 plans executed)
+**Last updated:** 2026-05-08 (Phase 4 complete — all 5/5 plans executed, verified 5/5 requirements)
 
 ---
 
 ## Current Phase
 
-**Phase 4: Reading Enhancements** — 4 plans created and ready for execution. Bookmarks, highlights, search, passage-level Explainers, and Explainer history list.
+**Phase 5: TTS Audio** — 10 requirements, ready for planning. TTS generation, audio playback, tiered quality, progress tracking.
 
-Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans).
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans).
 
 ---
 
@@ -33,8 +33,8 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 1: Foundation | ✅ COMPLETE | 19 | 19 | None |
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
-| Phase 4: Reading Enhancements | Ready to execute | 5 | 0 | None |
-| Phase 5: TTS Audio | Blocked | 10 | 0 | Phase 4 |
+| Phase 4: Reading Enhancements | ✅ COMPLETE (5/5 plans) | 5 | 5 | None |
+| Phase 5: TTS Audio | Ready to plan | 10 | 0 | None |
 | Phase 6: Polish & Scale | Blocked | 5 | 0 | Phase 5 |
 
 ---
@@ -44,6 +44,8 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 All Phase 1 requirements (AUTH-01..05, LIB-01..06, ADM-01..07, LANG-03) verified in `01-VERIFICATION.md`.
 
 All Phase 3 requirements (EXP-01, EXP-02, EXP-04, EXP-05, EXP-06, EXP-07, LANG-01, LANG-02) completed via plans 03-01, 03-02, 03-03, and 03-04.
+
+All Phase 4 requirements (READ-06, READ-07, READ-08, EXP-03, EXP-08) completed via plans 04-01, 04-02, 04-03, 04-04, and 04-05.
 
 ---
 
@@ -166,5 +168,5 @@ Establishes: UserBookPosition persistence model, (reader) route group at `/book/
 
 ---
 
-*Updated: 2026-05-07 — Phase 6 added (6 phases total, 3/6 complete)*
+*Updated: 2026-05-08 — Phase 4 complete (6 phases total, 4/6 complete)*
 *State updates automatically at phase transitions and milestone completions.*
