@@ -209,6 +209,19 @@
 
 **Goal:** Visual polish and operational tooling that improve retention and unit economics.
 
+**Status:** ✅ COMPLETE — All 2 plans executed and verified. 4/5 requirements verified (POL-04 deferred).
+
+**Completed:** 2026-05-08
+**Verification:** `.planning/phases/06-polish-scale/06-VERIFICATION.md` (passed, 4/5 + 1 deferred)
+
+**Plans:**
+2/2 plans complete
+
+| Plan | Status | Summary |
+| ---- | ------ | ------- |
+| 06-01 | ✅ Complete (2026-05-08) | Progress data pipeline: totalParagraphs field, upload computation, getPersonalLibrary progress join, LibraryBook type, 6 unit tests. POL-02 covered. Commits: `2ba1fef`, `924aa83`, `b1c8815`, `51d3487`, `9aa204d` |
+| 06-02 | ✅ Complete (2026-05-08) | BookCard progress bar + hover effects, RoleBadge extracted, async LibraryLayout, Bookshelf grid polish, EmptyLibrary polish, 3 RoleBadge tests. POL-02/POL-05 covered. Commits: `4f9a011`, `504179b`, `1320d11`, `392dcc9`, `061dbbd` |
+
 **Requirements:** (new for Phase 6, not in original v1 REQUIREMENTS.md)
 | ID | Requirement |
 | --- | --- |
@@ -259,5 +272,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases
 ---
 
 *Roadmap created: 2026-05-06*
-*Updated: 2026-05-08 — Phase 5 complete (3/3 plans, 9/10 requirements verified, TTS-08 deferred)*
-*Next step: Plan and execute Phase 6 (Polish & Scale)*
+*Updated: 2026-05-08 — Phase 6 complete (2/2 plans, 4/5 requirements verified, POL-04 deferred)*
+*All 6 phases complete — v1.0 milestone achieved*
