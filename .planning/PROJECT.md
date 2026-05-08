@@ -34,10 +34,16 @@ Any user can upload an EPUB and immediately receive AI-powered explanations in t
 - ✅ Full-text search within current book (READ-08) — Phase 4
 - ✅ View list of all generated Explainers for a book (EXP-08) — Phase 4
 
+- ✅ TTS audio generation for books and sections via ElevenLabs and fal.ai — Phase 5
+- ✅ Audio caching per (content_hash, language, voice_id, model) in the Universal Library — Phase 5
+- ✅ Reading progress indicators on bookshelf cards (POL-02) — Phase 6
+- ✅ Pro/Admin badges in library header (POL-05) — Phase 6
+- ✅ Bookshelf visual polish (hover effects, typography, grid spacing) — Phase 6
+
 ### Active
 
-- [ ] TTS audio generation for books and sections via ElevenLabs and fal.ai — Phase 5
-- [ ] Audio caching per (content_hash, language, voice_id, model) in the Universal Library — Phase 5
+- [ ] Cost tracking dashboard (POL-04) — Deferred, not v1 scope
+- [ ] TTS waveform visualizer (TTS-08) — Deferred, not v1 scope
 - [ ] Per-user language preference driving TTS generation — Phase 5
 - [ ] Beautiful bookshelf experience for browsing Personal Library
 
@@ -100,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-08 after Phase 5 completion (TTS Audio)*
+*Last updated: 2026-05-08 after Phase 6 completion — v1.0 milestone achieved*
