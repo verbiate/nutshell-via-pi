@@ -108,6 +108,32 @@ describe("EXP-05/06: Explainer cache", () => {
   });
 });
 
+describe("EXP-03: Passage explainer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("getExplainer accepts passage contentType", async () => {
+    vi.mocked(db.explainer.findUnique).mockResolvedValue(null);
+    await getExplainer({
+      contentHash: "abc",
+      language: "en",
+      contentType: "passage",
+      tier: "regular",
+    });
+    expect(db.explainer.findUnique).toHaveBeenCalledWith({
+      where: {
+        contentHash_language_contentType_tier: {
+          contentHash: "abc",
+          language: "en",
+          contentType: "passage",
+          tier: "regular",
+        },
+      },
+    });
+  });
+});
+
 describe("EXP-07: Grounding", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -113,4 +113,19 @@ describe("GET /api/explainers", () => {
     const body = await res.json();
     expect(body.cached).toBe(false);
   });
+
+  it("returns 400 for passage type without passageText", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      id: "u1",
+      preferredLanguage: "en",
+      role: "regular",
+    } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+
+    const req = new Request("http://localhost/api/explainers?bookId=b1&type=passage&lang=en");
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("passageText is required");
+  });
 });
