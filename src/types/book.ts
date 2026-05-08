@@ -18,4 +18,13 @@ export interface BookWithAccess extends Book {
   accessGrantedAt: Date;
 }
 
+export interface LibraryBook {
+  id: string;
+  title: string;
+  author: string | null;
+  language: string;
+  coverPath: string | null;
+  progress: number | null;
+}
+
 export type UserRole = "regular" | "pro" | "admin";
