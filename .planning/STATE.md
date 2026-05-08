@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: "Phase 5 in progress"
-last_updated: "2026-05-08T02:31:00.000Z"
+status: unknown
+last_updated: "2026-05-08T01:33:08.405Z"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 22
+  total_plans: 21
   completed_plans: 19
 ---
 
@@ -22,7 +22,7 @@ progress:
 
 **Phase 5: TTS Audio** — 10 requirements, plan 05-01 executed. TTS generation, audio playback, tiered quality, progress tracking.
 
-Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans). Phase 5 in progress (1/5 plans: 05-01 complete).
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans). Phase 5 in progress (2/5 plans: 05-01, 05-02 complete).
 
 ---
 
@@ -34,7 +34,7 @@ Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 p
 | Phase 2: Core Reading | ✅ COMPLETE (all 4/4 plans) | 5 | 5 | None |
 | Phase 3: AI Explainers | ✅ COMPLETE (4/4 plans) | 8 | 8 | None |
 | Phase 4: Reading Enhancements | ✅ COMPLETE (5/5 plans) | 5 | 5 | None |
-| Phase 5: TTS Audio | In progress (1/5 plans) | 10 | 0 | None |
+| Phase 5: TTS Audio | In progress (2/5 plans) | 10 | 0 | None |
 | Phase 6: Polish & Scale | Blocked | 5 | 0 | Phase 5 |
 
 ---
@@ -159,6 +159,12 @@ Establishes: `streamExplainer` async generator with SSE parsing from OpenRouter,
 Plan 03-01 (Schema & Explainer Service Foundation) executed 2026-05-07. Commits: `5e06c45` (Explainer model + User.preferredLanguage + migration), `ced0eb6` (explainer service: getExplainer, createExplainer, computeContentHash), `feec5d2` (prompt builder: fillTemplate, buildBookPrompt, buildSectionPrompt), `a1a2ed1` (section extractor: extractSectionText via @likecoin/epub-ts spine).
 
 Establishes: `Explainer` model with `@@unique([contentHash, language, contentType, tier])`, `User.preferredLanguage` with better-auth integration, SHA-256 content hash computation, template substitution, section text extraction from EPUB spine. EXP-05, EXP-06, EXP-07, LANG-02 implemented.
+
+## Plan 05-02 Completion
+
+Plan 05-02 (API Routes) executed 2026-05-07. Commits: `0b86222` (POST /api/tts/generate with cache-first TTS audio generation, cancellation via request.signal, 503 for unconfigured provider), `e15ba29` (GET /api/tts/audio serving cached MP3/WAV with correct Content-Type, auth-gated), `067b76c` (GET+PATCH /api/admin/config with requireAdmin, masked API key audit logging for openrouter/elevenlabs/fal), `5419cde` (22 unit tests across 3 test files, all passing).
+
+Establishes: TTS generation and serving API endpoints (TTS-01, TTS-02), admin-configurable provider API keys and models (TTS-05, EXP-09), synchronous wait-with-feedback pattern (satisfies TTS-07 without async queue). All 100 tests pass.
 
 ## Plan 05-01 Completion
 
