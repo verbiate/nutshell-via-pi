@@ -19,6 +19,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
+import { TtsTrigger } from "./tts-trigger";
+import { TtsPlayer } from "./tts-player";
+import { useTtsPlayback } from "@/hooks/use-tts-playback";
+import { cn } from "@/lib/utils";
 
 interface SavedPosition {
   paragraphIndex: number;
@@ -367,9 +371,25 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // ─── TTS Playback ──────────────────────────────────────────────────────────
+  const handleTtsNavigate = useCallback((href: string) => {
+    setCurrentHref(href);
+    viewerRef.current?.navigateTo(href);
+  }, []);
+
+  const tts = useTtsPlayback({
+    bookId,
+    toc,
+    currentHref,
+    onNavigateToSection: handleTtsNavigate,
+  });
+
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="relative h-full w-full">
+    <div className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}>
+      {/* Hidden audio element for TTS playback */}
+      <audio ref={tts.audioRef} className="hidden" />
+
       {/* Error overlay */}
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
 
@@ -459,10 +479,37 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
                 onResultClick={handleSearchResult}
               />
             }
+            ttsTrigger={
+              <TtsTrigger
+                state={
+                  tts.state.state === "GENERATING"
+                    ? "generating"
+                    : tts.state.state === "IDLE"
+                    ? "idle"
+                    : "disabled"
+                }
+                onClick={() => {
+                  if (tts.state.state === "IDLE") {
+                    const currentSection = toc.find((item) => item.href === currentHref);
+                    tts.startSection(currentHref, currentSection?.label || "Reading");
+                  } else {
+                    tts.togglePlayPause();
+                  }
+                }}
+              />
+            }
           />
           <ReadingProgress percentage={percentage} />
         </>
       )}
+
+      {/* TTS audio player — outside the isLoaded check so it persists independently */}
+      <TtsPlayer
+        state={tts.state}
+        onPlayPause={tts.togglePlayPause}
+        onScrub={tts.scrub}
+        onClose={tts.close}
+      />
     </div>
   );
 }
