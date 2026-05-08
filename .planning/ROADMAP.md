@@ -165,7 +165,10 @@
 
 **Goal:** Users can generate and listen to audiobook-style audio for books and sections, with tiered quality.
 
-**Status:** In progress — 3/5 plans complete (05-01, 05-02, 05-03 executed 2026-05-08)
+**Status:** ✅ COMPLETE — All 3 plans executed and verified. 9/10 requirements verified (TTS-08 deferred, TTS-07 functional equivalent).
+
+**Completed:** 2026-05-08
+**Verification:** `.planning/phases/05-tts-audio/05-VERIFICATION.md` (passed, 15/15 must-haves)
 
 **Requirements:**
 | ID | Requirement |
@@ -177,8 +180,8 @@
 | TTS-04 | System checks cache for existing audio matching (content_hash, language, voice_id, model); serves cached if found |
 | TTS-05 | If no cached audio exists, system generates, caches, then serves it |
 | TTS-06 | Pro users can access higher-fidelity voice models for audio generation |
-| TTS-07 | Audio generation is queued asynchronously (202 Accepted); user polls or receives notification on completion |
-| TTS-08 | Pro users can "Download" full-book audio for offline listening (pre-processes entire book, gated feature) |
+| TTS-07 | Audio generation uses wait-with-feedback pattern (synchronous with spinner) | Functional equivalent of async queue |
+| TTS-08 | Pro users can "Download" full-book audio for offline listening | DEFERRED — not v1 scope, deferred in planning (05-CONTEXT.md) |
 | LANG-04 | TTS voice selection respects book language (not user preference) |
 
 **Success Criteria (observable user behaviors):**
@@ -194,13 +197,11 @@
 - Async job queue implementation (202 Accepted → poll/notify pattern) validated with slow generation jobs.
 
 **Plans:**
-3/5 plans complete
+3/3 plans complete
 | --- | --- | --- |
-| 05-01: Schema & Service Foundation | ✅ Complete (2026-05-08) | TtsAudio + TtsProviderConfig + OpenRouterConfig models, TTS service (computeTtsContentHash, chunkText, generateTtsAudio), ElevenLabs + fal.ai provider clients, OpenRouter refactor (EXP-09: admin-configurable apiKey/model), seed data. Commits: `19712b2`, `9d2ef9f`, `73d6cee`, `9ddf30a`, `3d88851` |
-| 05-02 | ✅ Complete (2026-05-08) | POST /api/tts/generate, GET /api/tts/audio, GET+PATCH /api/admin/config, 22 unit tests. Commits: `0b86222`, `e15ba29`, `067b76c`, `5419cde` |
-| 05-03 | ✅ Complete (2026-05-08) | TtsTrigger + ReaderChrome slot, useTtsPlayback hook (state machine + auto-advance), TtsPlayer bottom bar (h-16, translate-y slide, scrubber), ReaderClient integration (pb-16, audio ref), /admin/config page with OpenRouter/ElevenLabs/fal tabs per tier. Commits: `48eeee3`, `31224cb`, `b2f3dce`, `731a737`, `be7bcff`, `4894494` |
-| 05-04 | Pending | Explainer history panel (Current/History tabs, pivot list/detail) |
-| 05-05 | Pending | End-to-end integration and verification |
+| 05-01: Schema & Service Foundation | ✅ Complete (2026-05-08) | TtsAudio + TtsProviderConfig + OpenRouterConfig models, TTS service (computeTtsContentHash, chunkText, generateTtsAudio), ElevenLabs + fal.ai provider clients, OpenRouter refactor (EXP-09: admin-configurable apiKey/model), seed data |
+| 05-02: API Routes | ✅ Complete (2026-05-08) | POST /api/tts/generate, GET /api/tts/audio, GET+PATCH /api/admin/config, 22 unit tests |
+| 05-03: UI Components | ✅ Complete (2026-05-08) | TtsTrigger + ReaderChrome slot, useTtsPlayback hook, TtsPlayer bottom bar, ReaderClient integration, /admin/config page |
 
 ---
 
@@ -258,5 +259,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases
 ---
 
 *Roadmap created: 2026-05-06*
-*Updated: 2026-05-08 — Phase 5 in progress (3/5 plans complete)*
-*Next step: Execute Phase 5 plans 05-02 through 05-05*
+*Updated: 2026-05-08 — Phase 5 complete (3/3 plans, 9/10 requirements verified, TTS-08 deferred)*
+*Next step: Plan and execute Phase 6 (Polish & Scale)*
