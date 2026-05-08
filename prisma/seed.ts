@@ -31,6 +31,41 @@ async function main() {
       version: 1,
     },
   });
+
+  // OpenRouterConfig: seed default model assignments per user type (EXP-09)
+  // apiKey falls back to env var at runtime via getOpenRouterConfig()
+  for (const userType of ["regular", "pro", "admin"] as const) {
+    await prisma.openRouterConfig.upsert({
+      where: { userType },
+      update: {},
+      create: {
+        userType,
+        apiKey: null,
+        model:
+          userType === "pro"
+            ? "anthropic/claude-sonnet-4.6"
+            : "google/gemini-2.0-flash-001",
+      },
+    });
+  }
+
+  // TtsProviderConfig: seed empty rows for elevenlabs and fal.ai per user type
+  // Admin must configure API keys before TTS is available
+  for (const provider of ["elevenlabs", "fal"] as const) {
+    for (const userType of ["regular", "pro", "admin"] as const) {
+      await prisma.ttsProviderConfig.upsert({
+        where: { provider_userType: { provider, userType } },
+        update: {},
+        create: {
+          provider,
+          userType,
+          apiKey: null,
+          model: null,
+          voiceId: null,
+        },
+      });
+    }
+  }
 }
 
 main()
