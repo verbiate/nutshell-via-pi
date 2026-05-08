@@ -152,7 +152,7 @@ describe("PATCH /api/admin/config", () => {
     });
     // Verify masked key in audit log newValue
     const auditCall = vi.mocked(db.auditLog.create).mock.calls[0][0];
-    const newValue = JSON.parse(auditCall.data.newValue);
+    const newValue = JSON.parse(auditCall.data.newValue!);
     expect(newValue.apiKey).toBe("sk-p...4567");
   });
 
@@ -194,7 +194,7 @@ describe("PATCH /api/admin/config", () => {
       }),
     });
     const auditCall = vi.mocked(db.auditLog.create).mock.calls[0][0];
-    const newValue = JSON.parse(auditCall.data.newValue);
+    const newValue = JSON.parse(auditCall.data.newValue!);
     expect(newValue.apiKey).toBe("sk-e...1234");
   });
 

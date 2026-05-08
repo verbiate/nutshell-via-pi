@@ -86,7 +86,7 @@ export async function PATCH(request: Request) {
     if (category === "openrouter") {
       const existing = await db.openRouterConfig.findUnique({
         where: { userType },
-      });
+      }) as { apiKey: string | null; model: string | null } | null;
       await db.openRouterConfig.upsert({
         where: { userType },
         create: {
@@ -107,7 +107,7 @@ export async function PATCH(request: Request) {
           entityId: userType,
           oldValue: existing
             ? JSON.stringify({
-                apiKey: mask(existing.apiKey),
+                apiKey: mask(existing.apiKey ?? undefined),
                 model: existing.model,
               })
             : null,
@@ -117,7 +117,7 @@ export async function PATCH(request: Request) {
     } else {
       const existing = await db.ttsProviderConfig.findUnique({
         where: { provider_userType: { provider: category, userType } },
-      });
+      }) as { apiKey: string | null; model: string | null; voiceId: string | null } | null;
       await db.ttsProviderConfig.upsert({
         where: { provider_userType: { provider: category, userType } },
         create: {
@@ -141,7 +141,7 @@ export async function PATCH(request: Request) {
           entityId: `${category}:${userType}`,
           oldValue: existing
             ? JSON.stringify({
-                apiKey: mask(existing.apiKey),
+                apiKey: mask(existing.apiKey ?? undefined),
                 model: existing.model,
                 voiceId: existing.voiceId,
               })

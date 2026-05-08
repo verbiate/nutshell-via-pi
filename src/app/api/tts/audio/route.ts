@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         ? "audio/wav"
         : "audio/mpeg";
 
-    return new Response(buffer, {
+    return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(buffer.length),

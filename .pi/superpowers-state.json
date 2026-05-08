@@ -27,20 +27,23 @@
     }
   },
   "tdd": {
-    "phase": "idle",
-    "testFiles": [],
+    "phase": "green",
+    "testFiles": [
+      "src/app/api/admin/config/__tests__/route.test.ts"
+    ],
     "sourceFiles": [
-      "/Volumes/My Shared Files/Dev/busyreader-via-pi/src/components/explainer/explainer-panel.tsx"
+      "src/app/api/tts/audio/route.ts",
+      "src/app/api/admin/config/route.ts"
     ],
     "redVerificationPending": false
   },
   "debug": {
     "active": false,
-    "investigated": true,
+    "investigated": false,
     "fixAttempts": 0
   },
   "verification": {
-    "verified": false,
+    "verified": true,
     "verificationWaived": false
   }
 }
