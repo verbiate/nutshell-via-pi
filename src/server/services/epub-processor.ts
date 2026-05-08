@@ -291,6 +291,7 @@ export async function processAndUploadBook(
 
   // Parse the new EPUB
   const parsed = await parseEpub(file);
+  const totalParagraphs = parsed.text.split("\n\n").length;
 
   // Detect language from text sample
   const language = detectLanguage(parsed.text.substring(0, 5000));
@@ -323,6 +324,7 @@ export async function processAndUploadBook(
       txtPath,
       tocJson: JSON.stringify(parsed.toc),
       fileSize: file.size,
+      totalParagraphs,
       uploadedById: userId,
     },
   });
