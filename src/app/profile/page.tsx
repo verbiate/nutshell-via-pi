@@ -1,24 +1,7 @@
 import { requireAuth } from "@/lib/auth-guards";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Shield } from "lucide-react";
-import type { UserRole } from "@/types/book";
-
-function RoleBadge({ role }: { role: UserRole }) {
-  switch (role) {
-    case "admin":
-      return (
-        <Badge variant="outline" className="gap-1">
-          <Shield className="h-3 w-3" />
-          Admin
-        </Badge>
-      );
-    case "pro":
-      return <Badge className="bg-slate-900 text-white">Pro</Badge>;
-    case "regular":
-      return <Badge variant="secondary">Regular</Badge>;
-  }
-}
+import { RoleBadge } from "@/components/auth/role-badge";
 
 export default async function ProfilePage() {
   const user = await requireAuth();
@@ -44,9 +27,13 @@ export default async function ProfilePage() {
           </h1>
           <p className="mt-1 text-base text-muted-foreground">{user.email}</p>
           <div className="mt-2 flex items-center gap-3">
-            <RoleBadge role={user.role} />
+            {user.role === "regular" ? (
+              <Badge variant="secondary">Regular</Badge>
+            ) : (
+              <RoleBadge role={user.role} />
+            )}
             {user.role === "regular" && (
-              <span className="text-sm text-muted-foreground cursor-not-allowed">
+              <span className="cursor-not-allowed text-sm text-muted-foreground">
                 Upgrade to Pro
               </span>
             )}
