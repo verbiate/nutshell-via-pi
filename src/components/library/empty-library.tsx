@@ -3,8 +3,8 @@ import { UploadDropzone } from "./upload-dropzone";
 
 export function EmptyLibrary() {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center">
-      <BookOpen className="h-12 w-12 text-muted-foreground" />
+    <div className="flex min-h-[50vh] flex-col items-center justify-center">
+      <BookOpen className="h-16 w-16 text-muted-foreground" />
       <h2 className="mt-4 text-[28px] font-semibold text-slate-900">
         Your library is empty
       </h2>
