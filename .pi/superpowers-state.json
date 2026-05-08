@@ -27,19 +27,14 @@
     }
   },
   "tdd": {
-    "phase": "green",
-    "testFiles": [
-      "src/app/api/admin/config/__tests__/route.test.ts"
-    ],
-    "sourceFiles": [
-      "src/app/api/tts/audio/route.ts",
-      "src/app/api/admin/config/route.ts"
-    ],
+    "phase": "idle",
+    "testFiles": [],
+    "sourceFiles": [],
     "redVerificationPending": false
   },
   "debug": {
     "active": false,
-    "investigated": false,
+    "investigated": true,
     "fixAttempts": 0
   },
   "verification": {
