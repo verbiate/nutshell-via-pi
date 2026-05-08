@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-08T01:33:08.405Z"
+last_updated: "2026-05-08T01:37:49.492Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 21
 ---
 
 # Project State: BusyReader
@@ -22,7 +22,7 @@ progress:
 
 **Phase 5: TTS Audio** — 10 requirements, plan 05-01 executed. TTS generation, audio playback, tiered quality, progress tracking.
 
-Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans). Phase 5 in progress (2/5 plans: 05-01, 05-02 complete).
+Phase 1 complete (19/19 requirements). Phase 2 complete (5/5 requirements, 4/4 plans). Phase 3 complete (8/8 requirements, 4/4 plans). Phase 4 complete (5/5 requirements, 5/5 plans). Phase 5 in progress (3/5 plans: 05-01, 05-02, 05-03 complete).
 
 ---
 
@@ -166,6 +166,12 @@ Plan 05-02 (API Routes) executed 2026-05-07. Commits: `0b86222` (POST /api/tts/g
 
 Establishes: TTS generation and serving API endpoints (TTS-01, TTS-02), admin-configurable provider API keys and models (TTS-05, EXP-09), synchronous wait-with-feedback pattern (satisfies TTS-07 without async queue). All 100 tests pass.
 
+## Plan 05-03 Completion
+
+Plan 05-03 (UI Components) executed 2026-05-08. Commits: `48eeee3` (shadcn slider), `31224cb` (TtsTrigger + ReaderChrome), `b2f3dce` (useTtsPlayback hook), `731a737` (TtsPlayer bottom bar), `be7bcff` (ReaderClient integration), `4894494` (admin config page + sidebar).
+
+Establishes: TtsTrigger button in ReaderChrome toolbar with idle/generating/disabled states, TtsPlayer h-16 fixed bottom bar with play/pause/scrubber/duration/close, useTtsPlayback state machine (IDLE→GENERATING→READY→PLAYING→ENDED) with auto-advance and pre-buffering, conditional pb-16 on EPUB container, /admin/config page with three tabs (OpenRouter/ElevenLabs/fal.ai) per-tier config cards. TTS-01, TTS-02, TTS-06, LANG-04 implemented. All 100 tests pass.
+
 ## Plan 05-01 Completion
 
 Plan 05-01 (Schema & Service Foundation) executed 2026-05-08. Commits: `19712b2` (TtsAudio + TtsProviderConfig + OpenRouterConfig models), `9d2ef9f` (tts.ts service: computeTtsContentHash, chunkText, getTtsAudio, createTtsAudio, getTtsProviderConfig, generateTtsAudio), `73d6cee` (tts-providers.ts: callElevenLabs, callFalAi), `9ddf30a` (openrouter.ts refactor: getOpenRouterConfig, required apiKey/model in StreamExplainerOptions, removed REGULAR_MODEL/PRO_MODEL; explainer.ts uses getOpenRouterConfig), `3d88851` (seed: OpenRouterConfig rows for regular/pro/admin + TtsProviderConfig 6 rows).
@@ -180,5 +186,5 @@ Establishes: UserBookPosition persistence model, (reader) route group at `/book/
 
 ---
 
-*Updated: 2026-05-08 — Phase 5 plan 05-01 complete (6 phases total, 4/6 complete, Phase 5 in progress)*
+*Updated: 2026-05-08 — Phase 5 plan 05-03 complete (3/5 plans, Phase 5 in progress)*
 *State updates automatically at phase transitions and milestone completions.*

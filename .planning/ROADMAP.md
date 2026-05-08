@@ -165,7 +165,7 @@
 
 **Goal:** Users can generate and listen to audiobook-style audio for books and sections, with tiered quality.
 
-**Status:** In progress — 2/5 plans complete (05-01, 05-02 executed 2026-05-08)
+**Status:** In progress — 3/5 plans complete (05-01, 05-02, 05-03 executed 2026-05-08)
 
 **Requirements:**
 | ID | Requirement |
@@ -194,12 +194,12 @@
 - Async job queue implementation (202 Accepted → poll/notify pattern) validated with slow generation jobs.
 
 **Plans:**
-1/5 plans complete
+3/5 plans complete
 | --- | --- | --- |
 | 05-01: Schema & Service Foundation | ✅ Complete (2026-05-08) | TtsAudio + TtsProviderConfig + OpenRouterConfig models, TTS service (computeTtsContentHash, chunkText, generateTtsAudio), ElevenLabs + fal.ai provider clients, OpenRouter refactor (EXP-09: admin-configurable apiKey/model), seed data. Commits: `19712b2`, `9d2ef9f`, `73d6cee`, `9ddf30a`, `3d88851` |
 | 05-02 | ✅ Complete (2026-05-08) | POST /api/tts/generate, GET /api/tts/audio, GET+PATCH /api/admin/config, 22 unit tests. Commits: `0b86222`, `e15ba29`, `067b76c`, `5419cde` |
-| 05-03 | Pending | TTS player UI (TtsTrigger, TtsPlayer, useTtsPlayback hook) |
-| 05-04 | Pending | Admin config page (/admin/config) |
+| 05-03 | ✅ Complete (2026-05-08) | TtsTrigger + ReaderChrome slot, useTtsPlayback hook (state machine + auto-advance), TtsPlayer bottom bar (h-16, translate-y slide, scrubber), ReaderClient integration (pb-16, audio ref), /admin/config page with OpenRouter/ElevenLabs/fal tabs per tier. Commits: `48eeee3`, `31224cb`, `b2f3dce`, `731a737`, `be7bcff`, `4894494` |
+| 05-04 | Pending | Explainer history panel (Current/History tabs, pivot list/detail) |
 | 05-05 | Pending | End-to-end integration and verification |
 
 ---
@@ -258,5 +258,5 @@ Every v1 requirement from REQUIREMENTS.md is mapped to exactly one phase (Phases
 ---
 
 *Roadmap created: 2026-05-06*
-*Updated: 2026-05-08 — Phase 5 in progress (2/5 plans complete)*
+*Updated: 2026-05-08 — Phase 5 in progress (3/5 plans complete)*
 *Next step: Execute Phase 5 plans 05-02 through 05-05*
