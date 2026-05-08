@@ -1,10 +1,11 @@
+import { db } from "@/server/db";
+
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-export const REGULAR_MODEL = "google/gemini-2.0-flash-001";
-export const PRO_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface StreamExplainerOptions {
   prompt: string;
-  model?: string;
+  apiKey: string;
+  model: string;
   temperature?: number;
   maxTokens?: number;
 }
@@ -18,10 +19,26 @@ export class OpenRouterError extends Error {
   }
 }
 
+/**
+ * Fetch OpenRouter config for a user type. Falls back to env var and
+ * hardcoded defaults to preserve existing Explainer functionality.
+ */
+export async function getOpenRouterConfig(userType: string) {
+  const config = await db.openRouterConfig.findUnique({ where: { userType } });
+  return {
+    apiKey: config?.apiKey || process.env.OPENROUTER_API_KEY || "",
+    model:
+      config?.model ||
+      (userType === "pro"
+        ? "anthropic/claude-sonnet-4.6"
+        : "google/gemini-2.0-flash-001"),
+  };
+}
+
 export async function* streamExplainer(
   options: StreamExplainerOptions
 ): AsyncGenerator<string, void, unknown> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = options.apiKey;
   if (!apiKey) {
     throw new OpenRouterError("OPENROUTER_API_KEY is not configured", 500);
   }
@@ -35,7 +52,7 @@ export async function* streamExplainer(
       "X-Title": "BusyReader",
     },
     body: JSON.stringify({
-      model: options.model || REGULAR_MODEL,
+      model: options.model,
       messages: [
         {
           role: "system",

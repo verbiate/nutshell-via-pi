@@ -63,8 +63,8 @@ async function getBuildPassagePrompt() {
 }
 
 async function getStreamExplainer() {
-  const { streamExplainer, REGULAR_MODEL, PRO_MODEL } = await import("./openrouter");
-  return { streamExplainer, REGULAR_MODEL, PRO_MODEL };
+  const { streamExplainer, getOpenRouterConfig } = await import("./openrouter");
+  return { streamExplainer, getOpenRouterConfig };
 }
 
 export interface GenerateExplainerParams {
@@ -129,9 +129,10 @@ export async function* generateExplainer(
     return;
   }
 
-  // Select model by tier
-  const { streamExplainer, REGULAR_MODEL, PRO_MODEL } = await getStreamExplainer();
-  const model = tier === "pro" ? PRO_MODEL : REGULAR_MODEL;
+  // Resolve API key and model by tier
+  const { streamExplainer, getOpenRouterConfig } = await getStreamExplainer();
+  const { apiKey, model } = await getOpenRouterConfig(tier);
+  if (!apiKey) throw new OpenRouterError("OpenRouter API key not configured", 500);
   const maxTokens = type === "book" ? 4096 : 2048;
 
   // Guard against books that exceed context window
@@ -148,6 +149,7 @@ export async function* generateExplainer(
   let fullContent = "";
   for await (const chunk of streamExplainer({
     prompt: promptData.prompt,
+    apiKey,
     model,
     maxTokens,
   })) {
