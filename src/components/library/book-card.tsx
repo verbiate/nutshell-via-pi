@@ -7,6 +7,7 @@ interface BookCardProps {
   author: string | null;
   language: string;
   coverPath: string | null;
+  progress?: number | null;
 }
 
 const PLACEHOLDER_COLORS = [
@@ -21,22 +22,22 @@ function getPlaceholderColor(title: string): string {
   return PLACEHOLDER_COLORS[Math.abs(hash) % PLACEHOLDER_COLORS.length];
 }
 
-export function BookCard({ id, title, author, language, coverPath }: BookCardProps) {
+export function BookCard({ id, title, author, language, coverPath, progress }: BookCardProps) {
   const bgColor = getPlaceholderColor(title);
 
   return (
     <Link href={`/book/${id}`} className="group block">
-      <div className="overflow-hidden rounded-md">
+      <div className="overflow-hidden rounded-md transition-shadow duration-200 hover:shadow-md">
         <div className="relative aspect-[3/4] w-full bg-slate-100">
           {coverPath ? (
             <img
               src={`/api/files/covers/${id}.jpg`}
               alt={title}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
             <div
-              className="flex h-full w-full items-center justify-center"
+              className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/10 to-black/10"
               style={{ backgroundColor: bgColor }}
             >
               <BookOpen className="h-12 w-12 text-white/40" />
@@ -47,9 +48,29 @@ export function BookCard({ id, title, author, language, coverPath }: BookCardPro
               {language.toUpperCase()}
             </span>
           )}
+          {progress !== undefined && progress !== null && progress > 0 && (
+            <>
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1 bg-black/10"
+                role="progressbar"
+                aria-valuenow={Math.round(progress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Reading progress: ${Math.round(progress)}%`}
+              >
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <span className="absolute bottom-1.5 right-1.5 text-[10px] font-medium text-white drop-shadow-sm">
+                {Math.round(progress)}%
+              </span>
+            </>
+          )}
         </div>
-        <div className="pt-2">
-          <h3 className="line-clamp-2 text-[20px] font-semibold leading-tight text-slate-900">
+        <div className="px-1 pt-2">
+          <h3 className="line-clamp-2 text-base font-semibold leading-tight text-slate-900">
             {title}
           </h3>
           {author && (
