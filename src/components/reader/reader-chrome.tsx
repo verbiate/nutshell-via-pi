@@ -12,6 +12,7 @@ export interface ReaderChromeProps {
   bookmarkTrigger?: ReactNode;
   bookmarkSaveTrigger?: ReactNode;
   searchTrigger?: ReactNode;
+  ttsTrigger?: ReactNode;
 }
 
 export function ReaderChrome({
@@ -22,6 +23,7 @@ export function ReaderChrome({
   bookmarkTrigger,
   bookmarkSaveTrigger,
   searchTrigger,
+  ttsTrigger,
 }: ReaderChromeProps) {
   return (
     <header
@@ -52,9 +54,10 @@ export function ReaderChrome({
         {bookTitle}
       </span>
 
-      {/* Right group: search + theme toggle */}
+      {/* Right group: search + tts + theme toggle */}
       <div className="flex items-center gap-1 shrink-0">
         {searchTrigger}
+        {ttsTrigger}
         {themeToggle}
       </div>
     </header>
