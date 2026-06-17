@@ -29,6 +29,8 @@ export interface EpubViewerProps {
 
 export interface EpubViewerHandle {
   navigateTo: (href: string) => void;
+  next: () => Promise<void>;
+  prev: () => Promise<void>;
   getCurrentCfi: () => string | null;
   clearSelection: () => void;
   addHighlight: (cfi: string, color?: string) => void;
@@ -74,6 +76,14 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       navigateTo: (href: string) => {
         renditionRef.current?.display(href);
       },
+      next: () => {
+        if (!renditionRef.current) return Promise.resolve();
+        return renditionRef.current.next();
+      },
+      prev: () => {
+        if (!renditionRef.current) return Promise.resolve();
+        return renditionRef.current.prev();
+      },
       getCurrentCfi: () => lastCfiRef.current,
       clearSelection: () => {
         // Only clear the native browser selection — do NOT remove persisted annotations
@@ -117,72 +127,85 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       setIsLoaded(false);
       onLoadChange?.(false);
 
-      const book = ePub(url);
-      bookRef.current = book;
-
-      book.ready
-        .then(() => {
+      fetch(url)
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch EPUB: ${res.status} ${res.statusText}`
+            );
+          }
+          return res.arrayBuffer();
+        })
+        .then((arrayBuffer) => {
           if (!mounted || !containerRef.current) return;
 
-          // Extract and expose ToC
-          if (book.navigation?.toc) {
-            onTocLoaded?.(book.navigation.toc);
-          }
+          const book = ePub(arrayBuffer);
+          bookRef.current = book;
 
-          // Render to container iframe
-          const rendition = book.renderTo(containerRef.current, {
-            width: "100%",
-            height: "100%",
-            flow: "paginated",
-          });
-          renditionRef.current = rendition;
+          return book.ready.then(() => {
+            if (!mounted || !containerRef.current) return;
 
-          // Register three themes
-          rendition.themes.register("light", LIGHT_THEME);
-          rendition.themes.register("dark", DARK_THEME);
-          rendition.themes.register("sepia", SEPIA_THEME);
-
-          // Apply current theme
-          rendition.themes.select(theme);
-
-          // Wire relocated event for progress and position
-          rendition.on(
-            "relocated",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (location: any) => {
-              if (!mounted) return;
-              lastCfiRef.current = location.start.cfi ?? null;
-              const percentage = (location.start.percentage ?? 0) * 100;
-              onProgressChange?.(percentage);
-              onPositionChange?.(
-                { paragraphIndex: 0, charOffset: 0 },
-                location.start.cfi
-              );
+            // Extract and expose ToC
+            if (book.navigation?.toc) {
+              onTocLoaded?.(book.navigation.toc);
             }
-          );
 
-          // Wire text selection events
-          rendition.on("selected", (cfiRange: string, contents: unknown) => {
-            if (!mounted) return;
-            onTextSelected?.(cfiRange, contents);
-          });
-
-          // Display the book first
-          const displayPromise = rendition.display();
-
-          // If we have a saved CFI, restore to that position after initial display
-          if (initialCfi) {
-            displayPromise.then(() => {
-              if (!mounted) return;
-              rendition
-                .display(initialCfi)
-                .catch((err: Error) =>
-                  console.warn("[EpubViewer] CFI restore failed:", err)
-                );
+            // Render to container iframe
+            const rendition = book.renderTo(containerRef.current, {
+              width: "100%",
+              height: "100%",
+              flow: "paginated",
+              allowScriptedContent: true,
             });
-          }
+            renditionRef.current = rendition;
 
-          return displayPromise;
+            // Register three themes
+            rendition.themes.register("light", LIGHT_THEME);
+            rendition.themes.register("dark", DARK_THEME);
+            rendition.themes.register("sepia", SEPIA_THEME);
+
+            // Apply current theme
+            rendition.themes.select(theme);
+
+            // Wire relocated event for progress and position
+            rendition.on(
+              "relocated",
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (location: any) => {
+                if (!mounted) return;
+                lastCfiRef.current = location.start.cfi ?? null;
+                const percentage = (location.start.percentage ?? 0) * 100;
+                onProgressChange?.(percentage);
+                onPositionChange?.(
+                  { paragraphIndex: 0, charOffset: 0 },
+                  location.start.cfi
+                );
+              }
+            );
+
+            // Wire text selection events
+            rendition.on("selected", (cfiRange: string, contents: unknown) => {
+              if (!mounted) return;
+              onTextSelected?.(cfiRange, contents);
+            });
+
+            // Display the book first
+            const displayPromise = rendition.display();
+
+            // If we have a saved CFI, restore to that position after initial display
+            if (initialCfi) {
+              displayPromise.then(() => {
+                if (!mounted) return;
+                rendition
+                  .display(initialCfi)
+                  .catch((err: Error) =>
+                    console.warn("[EpubViewer] CFI restore failed:", err)
+                  );
+              });
+            }
+
+            return displayPromise;
+          });
         })
         .then(() => {
           if (!mounted) return;

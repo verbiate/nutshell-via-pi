@@ -27,7 +27,7 @@ export default async function BookDetailPage({
           <div className="relative aspect-[3/4] w-full max-w-[280px] overflow-hidden rounded-md bg-slate-100">
             {book.coverPath ? (
               <img
-                src={`/api/files/covers/${book.id}.jpg`}
+                src={`/api/files/${book.coverPath}`}
                 alt={book.title}
                 className="h-full w-full object-cover"
               />

@@ -213,9 +213,20 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   // ─── Text selection handling ──────────────────────────────────────────────────
   const handleTextSelected = useCallback(
     (cfiRange: string, contents: unknown) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const c = contents as { document?: Document; range?: Range };
-      const text = c.range?.toString() ?? "";
+      const c = contents as { document?: Document; range?: unknown };
+
+      // epub-ts can fire 'selected' during arrow-key navigation with a
+      // synthetic range object that lacks DOM methods. Duck-type a real Range.
+      const range =
+        c.range &&
+        typeof (c.range as Range).getBoundingClientRect === "function" &&
+        typeof (c.range as Range).toString === "function"
+          ? (c.range as Range)
+          : null;
+
+      if (!range) return;
+
+      const text = range.toString();
       if (text.length < 3) return;
 
       setSelectedCfi(cfiRange);
@@ -223,8 +234,8 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
 
       // Compute position from iframe
       const iframe = document.querySelector("iframe");
-      if (iframe && c.range) {
-        const rect = c.range.getBoundingClientRect();
+      if (iframe) {
+        const rect = range.getBoundingClientRect();
         const iframeRect = iframe.getBoundingClientRect();
         const toolbarWidth = 220;
         const toolbarHeight = 36;
@@ -363,8 +374,26 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "t" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        void e;
+      // Ignore when typing in an input/textarea/contenteditable
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      // Don't intercept if modifier keys are held (let browser shortcuts work)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      console.log("[Reader] keydown:", e.key, "viewerRef ready:", !!viewerRef.current);
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        viewerRef.current?.next().catch((err) => console.error("[Reader] next() error:", err));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        viewerRef.current?.prev().catch((err) => console.error("[Reader] prev() error:", err));
       }
     };
     window.addEventListener("keydown", handleKeyDown);

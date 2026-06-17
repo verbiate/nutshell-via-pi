@@ -31,7 +31,7 @@ export function BookCard({ id, title, author, language, coverPath, progress }: B
         <div className="relative aspect-[3/4] w-full bg-slate-100">
           {coverPath ? (
             <img
-              src={`/api/files/covers/${id}.jpg`}
+              src={`/api/files/${coverPath}`}
               alt={title}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />

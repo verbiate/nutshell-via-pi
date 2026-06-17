@@ -1,7 +1,8 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@teispace/next-themes";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useState } from "react";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -26,7 +27,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem={false}
         disableTransitionOnChange={false}
       >
-        {children}
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
