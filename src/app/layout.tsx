@@ -10,7 +10,7 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "BusyReader",
+  title: "Nutshell",
   description: "AI-powered ebook reader for deep understanding",
 };
 

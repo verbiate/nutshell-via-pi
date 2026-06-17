@@ -49,7 +49,7 @@ export async function* streamExplainer(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": process.env.APP_URL || "http://localhost:3000",
-      "X-Title": "BusyReader",
+      "X-Title": "Nutshell",
     },
     body: JSON.stringify({
       model: options.model,

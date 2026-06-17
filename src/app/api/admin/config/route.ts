@@ -14,6 +14,12 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
 
+    const mask = (val?: string | null) => {
+      if (!val) return null;
+      if (val.length <= 12) return "***";
+      return val.slice(0, 4) + "..." + val.slice(-4);
+    };
+
     if (!category || !["openrouter", "elevenlabs", "fal"].includes(category)) {
       return NextResponse.json(
         { error: "category must be openrouter, elevenlabs, or fal" },
@@ -23,13 +29,23 @@ export async function GET(request: Request) {
 
     if (category === "openrouter") {
       const configs = await db.openRouterConfig.findMany();
-      return NextResponse.json({ configs });
+      return NextResponse.json({
+        configs: configs.map((c: { apiKey: string | null }) => ({
+          ...c,
+          apiKey: mask(c.apiKey),
+        })),
+      });
     }
 
     const configs = await db.ttsProviderConfig.findMany({
       where: { provider: category },
     });
-    return NextResponse.json({ configs });
+    return NextResponse.json({
+      configs: configs.map((c: { apiKey: string | null }) => ({
+        ...c,
+        apiKey: mask(c.apiKey),
+      })),
+    });
   } catch (error: any) {
     if (error.statusCode === 401)
       return NextResponse.json(

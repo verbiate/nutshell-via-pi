@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const db = new PrismaClient({
   datasources: {
     db: {
-      url: 'file:/Volumes/My Shared Files/Dev/busyreader-via-pi/prisma/dev.db'
+      url: 'file:/Volumes/My Shared Files/Dev/nutshell-via-pi/prisma/dev.db'
     }
   }
 });

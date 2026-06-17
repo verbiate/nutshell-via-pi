@@ -14,7 +14,7 @@ export default async function LibraryLayout({
     <div className="min-h-screen bg-slate-50">
       <header className="flex h-16 items-center border-b border-slate-200 bg-white px-8">
         <Link href="/my-library" className="text-[20px] font-semibold text-slate-900">
-          BusyReader
+          Nutshell
         </Link>
         <nav className="mx-auto flex items-center gap-6">
           <Link

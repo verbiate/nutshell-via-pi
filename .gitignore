@@ -4,3 +4,8 @@ node_modules/
 .env.local
 *.db
 *.db-journal
+
+# tooling caches / stray lockfiles
+.understand-anything/
+pnpm-lock.yaml
+tsconfig.tsbuildinfo

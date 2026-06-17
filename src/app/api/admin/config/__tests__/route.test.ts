@@ -73,6 +73,9 @@ describe("GET /api/admin/config", () => {
     const body = await res.json();
     expect(body.configs).toHaveLength(2);
     expect(body.configs[0].userType).toBe("regular");
+    // API keys must be masked on GET, not returned raw.
+    expect(body.configs[0].apiKey).toBeNull();
+    expect(body.configs[1].apiKey).toBe("***");
   });
 
   it("returns ttsProviderConfig rows for elevenlabs category", async () => {

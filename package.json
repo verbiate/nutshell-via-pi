@@ -1,5 +1,5 @@
 {
-  "name": "busyreader",
+  "name": "nutshell",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -16,6 +16,7 @@
     "playwright": "playwright test"
   },
   "prisma": {
+    "schema": "src/server/db/schema.prisma",
     "seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
