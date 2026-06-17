@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 export function LoginButton() {
   return (
     <Button
-      onClick={() => signIn.social({ provider: "google" })}
+      onClick={() =>
+        signIn.social({ provider: "google", callbackURL: "/my-library" })
+      }
       className="bg-slate-900 text-white hover:bg-slate-800"
       size="lg"
     >

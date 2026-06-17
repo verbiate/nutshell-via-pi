@@ -89,7 +89,10 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer text-red-600"
-            onClick={() => signOut()}
+            onClick={async () => {
+              await signOut();
+              window.location.href = "/login";
+            }}
           >
             <LogOut className="mr-2 h-4 w-4" />
             Sign Out
