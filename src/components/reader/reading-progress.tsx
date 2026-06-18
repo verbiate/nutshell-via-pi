@@ -5,19 +5,31 @@ export interface ReadingProgressProps {
 }
 
 export function ReadingProgress({ percentage }: ReadingProgressProps) {
+  const clamped = Math.max(0, Math.min(100, percentage));
+  const label = `${Math.round(clamped)}%`;
+
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-50 h-1 bg-muted"
+      className="absolute bottom-0 left-1/2 z-50 flex h-10 max-w-[600px] -translate-x-1/2 items-center"
+      style={{ width: "50vw" }}
       role="progressbar"
-      aria-valuenow={Math.round(percentage)}
+      aria-valuenow={Math.round(clamped)}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Reading progress: ${Math.round(percentage)}%`}
+      aria-label={`Reading progress: ${label}`}
     >
-      <div
-        className="h-full bg-grad transition-all duration-300"
-        style={{ width: `${percentage}%` }}
-      />
+      <div className="relative h-1 w-full rounded-full bg-muted">
+        <div
+          className="absolute left-0 top-0 h-full rounded-full bg-grad transition-all duration-300"
+          style={{ width: `${clamped}%` }}
+        />
+        <div
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-card px-2.5 py-0.5 text-xs font-bold text-espresso shadow-[0_4px_10px_-4px_rgba(43,28,17,0.4)] tabular-nums"
+          style={{ left: `${clamped}%` }}
+        >
+          {label}
+        </div>
+      </div>
     </div>
   );
 }

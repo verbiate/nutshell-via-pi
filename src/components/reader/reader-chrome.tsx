@@ -27,7 +27,7 @@ export function ReaderChrome({
 }: ReaderChromeProps) {
   return (
     <header
-      className="absolute top-0 left-0 right-0 z-50 flex h-12 items-center justify-between px-3 sm:px-4 border-b border-border/50 bg-background/80 backdrop-blur-sm"
+      className="absolute top-0 left-0 right-0 z-50 flex h-12 items-center justify-between px-4 sm:px-6"
       role="banner"
     >
       {/* Left group: back + ToC + bookmark save + bookmarks */}

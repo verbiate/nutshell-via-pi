@@ -11,6 +11,8 @@ import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
 import { FloatingToolbar } from "./floating-toolbar";
+import { ReaderToolRail } from "./reader-tool-rail";
+import type { ReaderTool } from "./reader-tools";
 import { SearchPanel } from "./search-panel";
 import { BookmarkPanel } from "./bookmark-panel";
 import { ExplainerPanel } from "@/components/explainer/explainer-panel";
@@ -60,6 +62,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   const [selectedText, setSelectedText] = useState("");
   const [passageExplainerOpen, setPassageExplainerOpen] = useState(false);
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
+  const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
 
   // ─── Position state ────────────────────────────────────────────────────────────
   const [savedPosition, setSavedPosition] = useState<SavedPosition | null>(null);
@@ -556,6 +559,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             }
           />
           <ReadingProgress percentage={percentage} />
+          <ReaderToolRail activeTool={activeTool} onToolClick={setActiveTool} />
         </>
       )}
 

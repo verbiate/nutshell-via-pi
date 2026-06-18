@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
 import type { ParagraphMap } from "@/lib/reader/position-tracking";
+import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
+import { buildRenditionOptions } from "./rendition-options";
 
 export interface EpubViewerProps {
   url: string;
@@ -36,12 +38,6 @@ export interface EpubViewerHandle {
   addHighlight: (cfi: string, color?: string) => void;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
 }
-
-// epub-ts ThemeEntry format: { rules: { "selector": { "property": "value" } } }
-// See: @likecoin/epub-ts/dist/types.d.ts — ThemeEntry interface
-const LIGHT_THEME = { rules: { body: { background: "#ffffff", color: "#1a1a1a" } } };
-const DARK_THEME = { rules: { body: { background: "#1a1a1a", color: "#e8e8e8" } } };
-const SEPIA_THEME = { rules: { body: { background: "#f4ecd8", color: "#5b4636" } } };
 
 export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
   (
@@ -151,21 +147,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             }
 
             // Render to container iframe
-            const rendition = book.renderTo(containerRef.current, {
-              width: "100%",
-              height: "100%",
-              flow: "paginated",
-              allowScriptedContent: true,
-            });
+            const rendition = book.renderTo(containerRef.current, buildRenditionOptions());
             renditionRef.current = rendition;
 
-            // Register three themes
-            rendition.themes.register("light", LIGHT_THEME);
-            rendition.themes.register("dark", DARK_THEME);
-            rendition.themes.register("sepia", SEPIA_THEME);
+            rendition.themes.register("light", READER_THEMES.light);
+            rendition.themes.register("dark", READER_THEMES.dark);
+            rendition.themes.register("sepia", READER_THEMES.sepia);
 
             // Apply current theme
             rendition.themes.select(theme);
+
+            // ponytail: epub.js sets its own body styles in paginated mode that
+            // override stylesheet rules. Force typography/layout through as
+            // inline !important so margins and fonts actually take effect.
+            for (const [prop, value] of Object.entries(READER_THEME_OVERRIDES)) {
+              rendition.themes.override(prop, value, true);
+            }
 
             // Wire relocated event for progress and position
             rendition.on(
@@ -241,10 +238,18 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     return (
       <div className={cn("relative h-full w-full", className)}>
         <div
-          ref={containerRef}
           className="h-full w-full"
-          aria-label="Book content"
-        />
+          style={{
+            padding:
+              "clamp(56px, 7vh, 96px) clamp(80px, 16vw, 200px)",
+          }}
+        >
+          <div
+            ref={containerRef}
+            className="h-full w-full"
+            aria-label="Book content"
+          />
+        </div>
         {!isLoaded && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background gap-4">
             <Skeleton className="h-8 w-48" />
