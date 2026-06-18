@@ -21,7 +21,7 @@ export interface BookmarksPanelProps {
   currentCfi?: string;
   toc: NavItem[];
   onBookmarkClick: (cfi: string) => void;
-  onSaveBookmark: (cfi: string) => void;
+  onSaveBookmark: (cfi: string) => Promise<void> | void;
 }
 
 function flattenToc(
@@ -109,9 +109,11 @@ export function BookmarksPanel({
     }
   };
 
-  const handleAdd = () => {
+  // ponytail: await the POST before invalidating — otherwise the refetch
+  // races the write and re-caches an empty list.
+  const handleAdd = async () => {
     if (!currentCfi) return;
-    onSaveBookmark(currentCfi);
+    await onSaveBookmark(currentCfi);
     queryClient.invalidateQueries({ queryKey: ["bookmarks", bookId] });
   };
 
