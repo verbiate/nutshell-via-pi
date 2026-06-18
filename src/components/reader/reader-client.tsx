@@ -13,7 +13,7 @@ import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
 import { FloatingToolbar } from "./floating-toolbar";
-import { ReaderToolRail } from "./reader-tool-rail";
+import { ReaderSidebar } from "./reader-sidebar";
 import type { ReaderTool } from "./reader-tools";
 import { SearchPanel } from "./search-panel";
 import { BookmarkPanel } from "./bookmark-panel";
@@ -568,7 +568,12 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             }
           />
           <ReadingProgress percentage={percentage} />
-          <ReaderToolRail activeTool={activeTool} onToolClick={setActiveTool} />
+          <ReaderSidebar
+            activeTool={activeTool}
+            onToolClick={(id) =>
+              setActiveTool((prev) => (prev === id ? null : id))
+            }
+          />
         </>
       )}
 

@@ -11,3 +11,9 @@ export const READER_TOOLS: ReaderTool[] = [
   { id: "bulb", label: "Explain", icon: "lightbulb" },
   { id: "type", label: "Text settings", icon: "type" },
 ];
+
+// ponytail: tools map 1:1 to sections in screenshot order; lookup lives here so it's testable.
+export function sectionNumberFor(id: ReaderTool["id"]): number {
+  const idx = READER_TOOLS.findIndex((t) => t.id === id);
+  return idx + 1;
+}
