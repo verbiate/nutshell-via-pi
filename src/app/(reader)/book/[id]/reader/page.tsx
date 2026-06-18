@@ -26,6 +26,8 @@ export default async function ReaderPage({
       bookCoverPath={book.coverPath}
       bookLanguage={book.language}
       epubUrl={epubUrl}
+      isAdmin={session.role === "admin"}
+      bookCreatedAt={book.createdAt.toISOString()}
     />
   );
 }

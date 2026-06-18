@@ -114,6 +114,8 @@ export interface ReaderPanelProps {
   onNavigate: (href: string) => void;
   initialLanguage: string;
   onListenFromHere: () => void;
+  isAdmin?: boolean;
+  bookCreatedAt?: string;
 }
 
 export function ReaderPanel({
@@ -127,6 +129,8 @@ export function ReaderPanel({
   onNavigate,
   initialLanguage,
   onListenFromHere,
+  isAdmin,
+  bookCreatedAt,
 }: ReaderPanelProps) {
   const [bookExplainerOpen, setBookExplainerOpen] = useState(false);
   const showLang = !!language && language !== "und";
@@ -167,6 +171,11 @@ export function ReaderPanel({
             <span className="mt-2 inline-block rounded-full bg-paper-deep px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
               {language}
             </span>
+          )}
+          {isAdmin && bookCreatedAt && (
+            <p className="mt-1 text-[10px] text-muted-foreground/70">
+              Uploaded {new Date(bookCreatedAt).toLocaleDateString()}
+            </p>
           )}
         </div>
       </div>

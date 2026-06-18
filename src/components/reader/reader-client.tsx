@@ -62,6 +62,8 @@ export interface ReaderClientProps {
   bookCoverPath?: string | null;
   bookLanguage?: string;
   epubUrl: string;
+  isAdmin?: boolean;
+  bookCreatedAt?: string;
 }
 
 export function ReaderClient({
@@ -71,6 +73,8 @@ export function ReaderClient({
   bookCoverPath,
   bookLanguage,
   epubUrl,
+  isAdmin,
+  bookCreatedAt,
 }: ReaderClientProps) {
   const router = useRouter();
   const viewerRef = useRef<EpubViewerHandle>(null);
@@ -577,6 +581,19 @@ export function ReaderClient({
     return () => el.removeEventListener("transitionend", onEnd);
   }, []);
 
+  // ─── Entry sequence: open Contents 200ms after the book first loads ──────────
+  // One-shot (guarded by autoOpenedRef). Uses a functional update so a user who
+  // opens another tool during the delay window isn't overridden.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    const t = setTimeout(() => {
+      setActiveTool((prev) => prev ?? "reader");
+    }, 200);
+    return () => clearTimeout(t);
+  }, [isLoaded]);
+
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
@@ -710,6 +727,8 @@ export function ReaderClient({
                   onNavigate={handleTocNavigate}
                   initialLanguage={initialLanguage}
                   onListenFromHere={handleListenFromHere}
+                  isAdmin={isAdmin}
+                  bookCreatedAt={bookCreatedAt}
                 />
               ),
               bookmark: (

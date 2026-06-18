@@ -31,7 +31,7 @@ export function BookCard({ id, title, author, language, coverPath, progress }: B
   const coverClass = getPlaceholderCover(title);
 
   return (
-    <Link href={`/book/${id}`} className="group block">
+    <Link href={`/book/${id}/reader`} className="group block">
       <div className="overflow-hidden rounded-md transition-shadow duration-200 hover:shadow-card">
         <div className="relative aspect-[3/4] w-full bg-paper-deep">
           {coverPath ? (
