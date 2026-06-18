@@ -23,10 +23,10 @@ export function ProcessingIndicator({ currentStep }: ProcessingIndicatorProps) {
             <div
               className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
                 isCompleted
-                  ? "bg-green-600 text-white"
+                  ? "bg-grad text-white"
                   : isCurrent
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-300 text-transparent"
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border text-transparent"
               }`}
             >
               {isCompleted ? (
@@ -38,10 +38,10 @@ export function ProcessingIndicator({ currentStep }: ProcessingIndicatorProps) {
             <span
               className={`text-sm ${
                 isCurrent
-                  ? "font-semibold text-slate-900"
+                  ? "font-semibold text-foreground"
                   : isCompleted
-                  ? "text-slate-500"
-                  : "text-slate-400"
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground/70"
               }`}
             >
               {step.label}

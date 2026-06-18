@@ -13,7 +13,7 @@ export function UploadBookDialog() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="bg-slate-900 text-white hover:bg-slate-800">
+        <Button>
           <Upload className="mr-2 h-4 w-4" />
           Upload Book
         </Button>

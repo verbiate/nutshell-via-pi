@@ -24,7 +24,7 @@ export default async function BookDetailPage({
       <div className="flex flex-col gap-8 md:flex-row">
         {/* Cover */}
         <div className="flex-shrink-0">
-          <div className="relative aspect-[3/4] w-full max-w-[280px] overflow-hidden rounded-md bg-slate-100">
+          <div className="relative aspect-[3/4] w-full max-w-[280px] overflow-hidden rounded-md bg-paper-deep shadow-card">
             {book.coverPath ? (
               <img
                 src={`/api/files/${book.coverPath}`}
@@ -32,7 +32,7 @@ export default async function BookDetailPage({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-slate-400">
+              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(150deg,#1c1c22,#3a2740)]">
                 <BookOpen className="h-16 w-16 text-white/40" />
               </div>
             )}
@@ -41,17 +41,17 @@ export default async function BookDetailPage({
 
         {/* Metadata */}
         <div className="flex-1">
-          <h1 className="text-[28px] font-semibold text-slate-900">
+          <h1 className="font-serif text-[28px] font-medium text-espresso">
             {book.title}
           </h1>
           {book.author && (
-            <p className="mt-2 text-[20px] text-muted-foreground">
+            <p className="mt-2 font-serif text-[20px] text-muted-foreground">
               {book.author}
             </p>
           )}
           <div className="mt-4 flex items-center gap-3">
             {book.language && book.language !== "und" && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
+              <span className="rounded-full bg-paper-deep px-3 py-1 text-sm font-medium text-foreground">
                 {book.language.toUpperCase()}
               </span>
             )}
@@ -68,7 +68,7 @@ export default async function BookDetailPage({
           {/* TOC Preview */}
           {toc.length > 0 && (
             <div className="mt-8">
-              <h2 className="text-[20px] font-semibold text-slate-900">
+              <h2 className="font-serif text-[20px] font-medium text-espresso">
                 Table of Contents
               </h2>
               <ul className="mt-3 space-y-1">

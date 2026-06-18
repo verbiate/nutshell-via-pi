@@ -106,10 +106,10 @@ export function UploadDropzone({ onUploadComplete }: UploadDropzoneProps) {
         onClick={() => fileInputRef.current?.click()}
         className={`flex min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 px-6 py-8 transition-colors ${
           error
-            ? "border-red-600 bg-red-50"
+            ? "border-destructive bg-destructive/10"
             : isDragging
-            ? "border-solid border-slate-900 bg-slate-50"
-            : "border-dashed border-slate-300 bg-white hover:border-slate-400"
+            ? "border-solid border-primary bg-muted"
+            : "border-dashed border-border bg-card hover:border-lav-ring"
         } ${isUploading ? "pointer-events-none opacity-60" : ""}`}
       >
         {isUploading ? (
@@ -118,9 +118,9 @@ export function UploadDropzone({ onUploadComplete }: UploadDropzoneProps) {
           </div>
         ) : (
           <>
-            <Upload className="h-8 w-8 text-slate-400" />
+            <Upload className="h-8 w-8 text-muted-foreground" />
             <div className="text-center">
-              <p className="text-[20px] font-semibold text-slate-900">
+              <p className="text-[20px] font-semibold text-foreground">
                 Drag and drop your EPUB here
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -142,7 +142,7 @@ export function UploadDropzone({ onUploadComplete }: UploadDropzoneProps) {
         />
       </div>
       {error && (
-        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <p className="mt-2 text-sm text-destructive">{error}</p>
       )}
     </div>
   );

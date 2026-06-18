@@ -11,15 +11,20 @@ export default async function LibraryLayout({
   const user = await requireAuth();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="flex h-16 items-center border-b border-slate-200 bg-white px-8">
-        <Link href="/my-library" className="text-[20px] font-semibold text-slate-900">
-          Nutshell
+    <div className="min-h-screen bg-background">
+      <header className="flex h-16 items-center border-b border-line bg-card px-8">
+        <Link
+          href="/my-library"
+          className="text-[20px] font-semibold tracking-tight text-espresso"
+        >
+          <span className="text-b-teal">(</span>
+          nutshell
+          <span className="text-lav">)</span>
         </Link>
         <nav className="mx-auto flex items-center gap-6">
           <Link
             href="/my-library"
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             My Library
           </Link>

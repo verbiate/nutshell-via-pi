@@ -15,7 +15,7 @@ export default async function MyLibraryPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-[20px] font-semibold text-slate-900">
+        <h1 className="font-serif text-2xl font-medium text-espresso">
           My Library
         </h1>
         <UploadBookDialog />
