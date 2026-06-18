@@ -61,7 +61,7 @@ export function FloatingToolbar({
         className="gap-1.5 h-7 px-2"
         aria-label="Highlight selected text"
       >
-        <Highlighter className="h-3.5 w-3.5 text-amber-500" />
+        <Highlighter className="h-3.5 w-3.5 text-hl-yellow" />
         <span className="text-xs font-medium">Highlight</span>
       </Button>
       <div className="w-px h-4 bg-border mx-1" />
@@ -72,7 +72,7 @@ export function FloatingToolbar({
         className="gap-1.5 h-7 px-2"
         aria-label="Explain selected passage"
       >
-        <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+        <Sparkles className="h-3.5 w-3.5 text-lav" />
         <span className="text-xs font-medium">Explain this to me</span>
       </Button>
     </div>,

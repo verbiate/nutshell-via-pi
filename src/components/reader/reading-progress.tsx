@@ -15,7 +15,7 @@ export function ReadingProgress({ percentage }: ReadingProgressProps) {
       aria-label={`Reading progress: ${Math.round(percentage)}%`}
     >
       <div
-        className="h-full bg-primary transition-all duration-300"
+        className="h-full bg-grad transition-all duration-300"
         style={{ width: `${percentage}%` }}
       />
     </div>

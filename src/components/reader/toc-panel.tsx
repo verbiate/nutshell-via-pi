@@ -63,7 +63,7 @@ function TocEntry({
           }}
           aria-label={`Explain section: ${item.label}`}
         >
-          <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+          <Sparkles className="h-3.5 w-3.5 text-lav" />
         </Button>
       </div>
       <ExplainerPanel
