@@ -176,6 +176,7 @@ model Bookmark {
   paragraphIndex Int
   charOffset     Int
   selectedText   String?
+  sectionHref    String?
   note           String?
   createdAt      DateTime @default(now())
 
@@ -197,6 +198,7 @@ model Highlight {
   charOffsetEnd   Int
   selectedText   String
   color          String   @default("#fbbf24")
+  sectionHref    String?
   note           String?
   createdAt      DateTime @default(now())
 

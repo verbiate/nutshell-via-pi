@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sparkles,
+  Lightbulb,
   Loader2,
   AlertCircle,
   RotateCcw,
@@ -228,7 +228,7 @@ export function ExplainerPanel({
       <SheetContent side="right" className="w-[320px] sm:w-[400px] p-0">
         <SheetHeader className="px-4 py-3 border-b border-border flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-lav" />
+            <Lightbulb className="h-4 w-4 text-lav" />
             <SheetTitle className="text-base font-medium">{title}</SheetTitle>
             {isCached && state === "complete" && (
               <Badge variant="secondary" className="text-xs">
@@ -393,7 +393,7 @@ function ExplainerError({ onRetry }: { onRetry: () => void }) {
 function ExplainerEmpty() {
   return (
     <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-      <Sparkles className="h-10 w-10 text-muted-foreground/40" />
+      <Lightbulb className="h-10 w-10 text-muted-foreground/40" />
       <div>
         <h3 className="text-sm font-medium">No explanation yet</h3>
         <p className="mt-1 text-xs text-muted-foreground max-w-[240px]">

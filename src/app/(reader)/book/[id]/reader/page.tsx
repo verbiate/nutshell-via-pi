@@ -22,6 +22,9 @@ export default async function ReaderPage({
     <ReaderClient
       bookId={book.id}
       bookTitle={book.title}
+      bookAuthor={book.author}
+      bookCoverPath={book.coverPath}
+      bookLanguage={book.language}
       epubUrl={epubUrl}
     />
   );

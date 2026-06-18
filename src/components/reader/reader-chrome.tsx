@@ -8,10 +8,6 @@ import { cn } from "@/lib/utils";
 export interface ReaderChromeProps {
   bookTitle: string;
   onBack: () => void;
-  tocTrigger: ReactNode;
-  themeToggle: ReactNode;
-  bookmarkTrigger?: ReactNode;
-  bookmarkSaveTrigger?: ReactNode;
   searchTrigger?: ReactNode;
   ttsTrigger?: ReactNode;
   sidebarOpen?: boolean;
@@ -20,10 +16,6 @@ export interface ReaderChromeProps {
 export function ReaderChrome({
   bookTitle,
   onBack,
-  tocTrigger,
-  themeToggle,
-  bookmarkTrigger,
-  bookmarkSaveTrigger,
   searchTrigger,
   ttsTrigger,
   sidebarOpen = false,
@@ -38,7 +30,7 @@ export function ReaderChrome({
       )}
       role="banner"
     >
-      {/* Left group: back + ToC + bookmark save + bookmarks */}
+      {/* Left group: back to library */}
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
@@ -49,9 +41,6 @@ export function ReaderChrome({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        {tocTrigger}
-        {bookmarkSaveTrigger}
-        {bookmarkTrigger}
       </div>
 
       {/* Center: book title */}
@@ -62,11 +51,10 @@ export function ReaderChrome({
         {bookTitle}
       </span>
 
-      {/* Right group: search + tts + theme toggle */}
+      {/* Right group: search + tts */}
       <div className="flex items-center gap-1 shrink-0">
         {searchTrigger}
         {ttsTrigger}
-        {themeToggle}
       </div>
     </header>
   );

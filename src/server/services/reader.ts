@@ -114,6 +114,7 @@ export async function createBookmark(
     paragraphIndex: number;
     charOffset: number;
     selectedText?: string;
+    sectionHref?: string;
     note?: string;
   }
 ) {
@@ -125,6 +126,7 @@ export async function createBookmark(
       paragraphIndex: data.paragraphIndex,
       charOffset: data.charOffset,
       selectedText: data.selectedText,
+      sectionHref: data.sectionHref,
       note: data.note,
     },
   });
@@ -160,6 +162,7 @@ export async function createHighlight(
     charOffsetEnd: number;
     selectedText: string;
     color?: string;
+    sectionHref?: string;
     note?: string;
   }
 ) {
@@ -173,7 +176,29 @@ export async function createHighlight(
       charOffsetEnd: data.charOffsetEnd,
       selectedText: data.selectedText,
       color: data.color ?? "#fbbf24",
+      sectionHref: data.sectionHref,
       note: data.note,
+    },
+  });
+}
+
+export async function updateHighlight(
+  userId: string,
+  highlightId: string,
+  data: { note?: string; color?: string }
+) {
+  const highlight = await db.highlight.findUnique({
+    where: { id: highlightId },
+    select: { userId: true },
+  });
+  if (!highlight || highlight.userId !== userId) {
+    throw new Error("Highlight not found or access denied");
+  }
+  return db.highlight.update({
+    where: { id: highlightId },
+    data: {
+      ...(data.note !== undefined ? { note: data.note } : {}),
+      ...(data.color !== undefined ? { color: data.color } : {}),
     },
   });
 }

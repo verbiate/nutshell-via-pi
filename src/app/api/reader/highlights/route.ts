@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       charOffsetEnd?: number;
       selectedText?: string;
       color?: string;
+      sectionHref?: string;
       note?: string;
     };
     try {
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, note } = body;
+    const { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref, note } = body;
     if (!bookId || !cfi || paragraphIndex === undefined || charOffsetStart === undefined || charOffsetEnd === undefined || !selectedText) {
       return NextResponse.json({ error: "bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, and selectedText are required" }, { status: 400 });
     }
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       charOffsetEnd,
       selectedText,
       color,
+      sectionHref,
       note,
     });
 

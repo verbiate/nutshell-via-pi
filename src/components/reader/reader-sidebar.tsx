@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Bookmark,
@@ -10,11 +10,7 @@ import {
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import {
-  READER_TOOLS,
-  type ReaderTool,
-  sectionNumberFor,
-} from "./reader-tools";
+import { READER_TOOLS, type ReaderTool } from "./reader-tools";
 
 const ICONS = {
   "book-open": BookOpen,
@@ -27,9 +23,14 @@ const ICONS = {
 export interface ReaderSidebarProps {
   activeTool: ReaderTool["id"] | null;
   onToolClick: (id: ReaderTool["id"]) => void;
+  panels: Record<ReaderTool["id"], ReactNode>;
 }
 
-export function ReaderSidebar({ activeTool, onToolClick }: ReaderSidebarProps) {
+export function ReaderSidebar({
+  activeTool,
+  onToolClick,
+  panels,
+}: ReaderSidebarProps) {
   const isOpen = activeTool !== null;
 
   // ponytail: hold the last active tool so content stays mounted during the
@@ -40,7 +41,9 @@ export function ReaderSidebar({ activeTool, onToolClick }: ReaderSidebarProps) {
   }, [activeTool]);
 
   const displayedTool = activeTool ?? lastTool;
-  const label = displayedTool ? `Section ${sectionNumberFor(displayedTool)}` : null;
+  const label = displayedTool
+    ? READER_TOOLS.find((t) => t.id === displayedTool)?.label ?? null
+    : null;
 
   return (
     <>
@@ -66,22 +69,13 @@ export function ReaderSidebar({ activeTool, onToolClick }: ReaderSidebarProps) {
           transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
         }}
       >
-        {displayedTool && (
+        {displayedTool && label && (
           <>
             <header className="border-b border-line px-5 py-3">
               <h2 className="text-sm font-semibold text-foreground">{label}</h2>
             </header>
             <ScrollArea className="flex-1">
-              <div className="flex flex-col gap-4 px-5 py-4">
-                {[0, 1, 2].map((i) => (
-                  <p
-                    key={i}
-                    className="text-sm leading-relaxed text-muted-foreground"
-                  >
-                    {label}
-                  </p>
-                ))}
-              </div>
+              {panels[displayedTool]}
             </ScrollArea>
           </>
         )}

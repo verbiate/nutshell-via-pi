@@ -7,21 +7,20 @@ import type { NavItem } from "@likecoin/epub-ts";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
 import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
 import { ReaderChrome } from "./reader-chrome";
-import { TocPanel } from "./toc-panel";
 import { ThemeToggle } from "./theme-toggle";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
 import { FloatingToolbar } from "./floating-toolbar";
 import { ReaderSidebar } from "./reader-sidebar";
+import { ReaderPanel } from "./reader-panel";
+import { BookmarksPanel } from "./bookmarks-panel";
+import { HighlightsPanel } from "./highlights-panel";
 import type { ReaderTool } from "./reader-tools";
 import { SearchPanel } from "./search-panel";
-import { BookmarkPanel } from "./bookmark-panel";
 import { ExplainerPanel } from "@/components/explainer/explainer-panel";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
-import { Bookmark } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
 import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
@@ -34,13 +33,39 @@ interface SavedPosition {
   cfi?: string;
 }
 
+// ponytail: temporary stand-in for sidebar sections not yet built.
+function SidebarPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[120px] flex-col gap-2 px-5 py-4">
+      {[0, 1, 2].map((i) => (
+        <p
+          key={i}
+          className="text-sm leading-relaxed text-muted-foreground"
+        >
+          {label}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export interface ReaderClientProps {
   bookId: string;
   bookTitle?: string;
+  bookAuthor?: string | null;
+  bookCoverPath?: string | null;
+  bookLanguage?: string;
   epubUrl: string;
 }
 
-export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) {
+export function ReaderClient({
+  bookId,
+  bookTitle,
+  bookAuthor,
+  bookCoverPath,
+  bookLanguage,
+  epubUrl,
+}: ReaderClientProps) {
   const router = useRouter();
   const viewerRef = useRef<EpubViewerHandle>(null);
   // Wraps the EpubViewer; its width animates with the sidebar. We listen to
@@ -69,7 +94,6 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   // ─── Selection / floating toolbar state ────────────────────────────────────────
   const [toolbarVisible, setToolbarVisible] = useState(false);
   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
-  const [toolbarPlacement, setToolbarPlacement] = useState<"above" | "below">("above");
   const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState("");
   const [passageExplainerOpen, setPassageExplainerOpen] = useState(false);
@@ -84,6 +108,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Highlights data (via React Query) ────────────────────────────────────────
+  const queryClient = useQueryClient();
   const { data: highlightsData } = useQuery({
     queryKey: ["highlights", bookId],
     queryFn: async () => {
@@ -232,38 +257,47 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   // ─── Text selection handling ──────────────────────────────────────────────────
   const handleTextSelected = useCallback(
     (cfiRange: string, contents: unknown) => {
-      const c = contents as { document?: Document; range?: unknown };
-
-      // epub-ts can fire 'selected' during arrow-key navigation with a
-      // synthetic range object that lacks DOM methods. Duck-type a real Range.
+      // epub-ts passes its Contents instance (the iframe's window/document),
+      // NOT a range. Pull the live selection Range out of the iframe window.
+      const c = contents as { window?: Window; document?: Document };
+      const win = c.window;
+      const selection = win?.getSelection?.() ?? null;
       const range =
-        c.range &&
-        typeof (c.range as Range).getBoundingClientRect === "function" &&
-        typeof (c.range as Range).toString === "function"
-          ? (c.range as Range)
+        selection && selection.rangeCount > 0
+          ? selection.getRangeAt(0)
           : null;
 
-      if (!range) return;
+      // Duck-type a real Range with DOM methods (synthetic ranges lack them).
+      const realRange =
+        range &&
+        typeof range.getBoundingClientRect === "function" &&
+        typeof range.toString === "function"
+          ? range
+          : null;
 
-      const text = range.toString();
+      if (!realRange) return;
+
+      const text = realRange.toString();
       if (text.length < 3) return;
 
       setSelectedCfi(cfiRange);
       setSelectedText(text);
 
-      // Compute position from iframe
+      // Compute position from iframe.
+      // ponytail: menu is now ~168px tall / 220px wide; keep it inside the
+      // viewport so it never renders completely off-screen.
       const iframe = document.querySelector("iframe");
       if (iframe) {
-        const rect = range.getBoundingClientRect();
+        const rect = realRange.getBoundingClientRect();
         const iframeRect = iframe.getBoundingClientRect();
         const toolbarWidth = 220;
-        const toolbarHeight = 36;
+        const toolbarHeight = 168;
         let top = iframeRect.top + rect.top - toolbarHeight - 8;
-        let placement: "above" | "below" = "above";
         if (top < toolbarHeight + 16) {
           top = iframeRect.top + rect.bottom + 8;
-          placement = "below";
         }
+        top = Math.max(8, top);
+        top = Math.min(top, window.innerHeight - toolbarHeight - 8);
         let left =
           iframeRect.left + rect.left + rect.width / 2 - toolbarWidth / 2;
         left = Math.max(
@@ -271,7 +305,6 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
           Math.min(left, window.innerWidth - toolbarWidth - 8)
         );
         setToolbarPos({ top, left });
-        setToolbarPlacement(placement);
         setToolbarVisible(true);
       }
     },
@@ -285,30 +318,38 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   }, []);
 
   // ─── Floating toolbar actions ────────────────────────────────────────────────
-  const handleHighlight = useCallback(async () => {
-    if (!selectedCfi) return;
-    try {
-      const res = await fetch("/api/reader/highlights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookId,
-          cfi: selectedCfi,
-          paragraphIndex: savedPosition?.paragraphIndex ?? 0,
-          charOffsetStart: savedPosition?.charOffset ?? 0,
-          charOffsetEnd: (savedPosition?.charOffset ?? 0) + selectedText.length,
-          selectedText,
-        }),
-      });
-      if (res.ok) {
-        toast.success("Text highlighted");
-        viewerRef.current?.addHighlight(selectedCfi, "#fbbf24");
+  const handleHighlight = useCallback(
+    async (color: string) => {
+      if (!selectedCfi) return;
+      try {
+        const res = await fetch("/api/reader/highlights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookId,
+            cfi: selectedCfi,
+            paragraphIndex: savedPosition?.paragraphIndex ?? 0,
+            charOffsetStart: savedPosition?.charOffset ?? 0,
+            charOffsetEnd: (savedPosition?.charOffset ?? 0) + selectedText.length,
+            selectedText,
+            color,
+            sectionHref: currentHref || undefined,
+          }),
+        });
+        if (res.ok) {
+          toast.success("Text highlighted");
+          viewerRef.current?.addHighlight(selectedCfi, color);
+          void queryClient.invalidateQueries({ queryKey: ["highlights", bookId] });
+        } else {
+          toast.error("Highlight failed");
+        }
+      } catch (err) {
+        console.error("[ReaderClient] highlight failed:", err);
       }
-    } catch (err) {
-      console.error("[ReaderClient] highlight failed:", err);
-    }
-    setToolbarVisible(false);
-  }, [bookId, selectedCfi, selectedText, savedPosition]);
+      setToolbarVisible(false);
+    },
+    [bookId, selectedCfi, selectedText, savedPosition, currentHref, queryClient]
+  );
 
   const handleExplainPassage = useCallback(() => {
     setToolbarVisible(false);
@@ -321,7 +362,8 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   }, []);
 
   // ─── Bookmark actions ──────────────────────────────────────────────────────────
-  const handleBookmarkNavigate = useCallback((cfi: string) => {
+  // ponytail: generic CFI navigator — shared by bookmarks and highlights panels.
+  const handleNavigateToCfi = useCallback((cfi: string) => {
     viewerRef.current?.navigateTo(cfi);
   }, []);
 
@@ -337,6 +379,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             paragraphIndex: savedPosition?.paragraphIndex ?? 0,
             charOffset: savedPosition?.charOffset ?? 0,
             selectedText: null,
+            sectionHref: currentHref || undefined,
           }),
         });
         if (res.ok) toast.success("Bookmark saved");
@@ -344,7 +387,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
         console.error("[ReaderClient] bookmark save failed:", err);
       }
     },
-    [bookId, savedPosition]
+    [bookId, savedPosition, currentHref]
   );
 
   // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -424,8 +467,9 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   useEffect(() => {
     if (!toolbarVisible) return;
     const handleClick = (e: MouseEvent) => {
-      // If click is not inside the toolbar, hide it
-      const toolbarEl = document.querySelector('[role="toolbar"]');
+      // ponytail: query the data attr, not [role=toolbar] — the sidebar rail
+      // also has role=toolbar and would shadow this lookup.
+      const toolbarEl = document.querySelector("[data-floating-toolbar]");
       if (toolbarEl && !toolbarEl.contains(e.target as Node)) {
         setToolbarVisible(false);
       }
@@ -455,6 +499,16 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
     currentHref,
     onNavigateToSection: handleTtsNavigate,
   });
+
+  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry point.
+  const handleListenFromHere = useCallback(() => {
+    if (tts.state.state === "IDLE") {
+      const section = toc.find((item) => item.href === currentHref);
+      tts.startSection(currentHref, section?.label || "Reading");
+    } else {
+      tts.togglePlayPause();
+    }
+  }, [tts, toc, currentHref]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -496,9 +550,10 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
 
       {/* EPUB viewer — wrapped in a width-animating layer (Layer 1).
            When the sidebar opens this div narrows by --reader-sidebar-w +
-           --reader-rail-w, revealing the sidebar (z-20) underneath. During the
-           transition the book fades to 30% opacity so the epub.js reflow snap
-           at the end is hidden; opacity restores once resize() fires. */}
+           --reader-rail-w, revealing the sidebar (z-20) underneath. Its box-shadow
+           stays opaque throughout; only the inner content fades to 0 during the
+           transition so the epub.js reflow snap at the end is hidden, then fades
+           back in once resize() fires. */}
       {!error && (
         <div
           ref={epubWrapperRef}
@@ -507,13 +562,21 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             width: activeTool
               ? "calc(100% - var(--reader-sidebar-w) - var(--reader-rail-w))"
               : "100%",
-            opacity: sidebarAnimating ? 0 : 1,
             boxShadow: "12px 0 18px -12px rgba(43,28,17,0.35)",
-            transitionProperty: "width, opacity",
-            transitionDuration: "var(--reader-dur), 150ms",
-            transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1), cubic-bezier(.5, 0, .2, 1)",
+            transitionProperty: "width",
+            transitionDuration: "var(--reader-dur)",
+            transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
           }}
         >
+          <div
+            className="h-full w-full"
+            style={{
+              opacity: sidebarAnimating ? 0 : 1,
+              transitionProperty: "opacity",
+              transitionDuration: "150ms",
+              transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
+            }}
+          >
           <EpubViewer
             ref={viewerRef}
             url={epubUrl}
@@ -532,6 +595,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             onSelectionCleared={handleSelectionCleared}
             className="h-full w-full"
           />
+          </div>
         </div>
       )}
 
@@ -539,9 +603,9 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
       <FloatingToolbar
         visible={toolbarVisible}
         position={toolbarPos}
-        placement={toolbarPlacement}
+        selectedText={selectedText}
         onHighlight={handleHighlight}
-        onExplain={handleExplainPassage}
+        onAsk={handleExplainPassage}
         onDismiss={handleSelectionCleared}
       />
 
@@ -566,34 +630,6 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             bookTitle={bookTitle ?? "Loading..."}
             onBack={handleBack}
             sidebarOpen={activeTool !== null}
-            tocTrigger={
-              <TocPanel
-                toc={toc}
-                currentHref={currentHref}
-                onNavigate={handleTocNavigate}
-                bookId={bookId}
-                initialLanguage={initialLanguage}
-              />
-            }
-            themeToggle={<ThemeToggle />}
-            bookmarkSaveTrigger={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => currentCfi && handleSaveBookmark(currentCfi)}
-                aria-label="Save bookmark"
-              >
-                <Bookmark className="h-4 w-4" />
-              </Button>
-            }
-            bookmarkTrigger={
-              <BookmarkPanel
-                bookId={bookId}
-                currentCfi={currentCfi}
-                onBookmarkClick={handleBookmarkNavigate}
-                onSaveBookmark={handleSaveBookmark}
-              />
-            }
             searchTrigger={
               <SearchPanel
                 bookId={bookId}
@@ -609,14 +645,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
                     ? "idle"
                     : "disabled"
                 }
-                onClick={() => {
-                  if (tts.state.state === "IDLE") {
-                    const currentSection = toc.find((item) => item.href === currentHref);
-                    tts.startSection(currentHref, currentSection?.label || "Reading");
-                  } else {
-                    tts.togglePlayPause();
-                  }
-                }}
+                onClick={handleListenFromHere}
               />
             }
           />
@@ -626,6 +655,45 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
             onToolClick={(id) =>
               setActiveTool((prev) => (prev === id ? null : id))
             }
+            panels={{
+              reader: (
+                <ReaderPanel
+                  bookId={bookId}
+                  bookTitle={bookTitle ?? ""}
+                  author={bookAuthor}
+                  coverPath={bookCoverPath}
+                  language={bookLanguage}
+                  toc={toc}
+                  currentHref={currentHref}
+                  onNavigate={handleTocNavigate}
+                  initialLanguage={initialLanguage}
+                  onListenFromHere={handleListenFromHere}
+                />
+              ),
+              bookmark: (
+                <BookmarksPanel
+                  bookId={bookId}
+                  currentCfi={currentCfi}
+                  toc={toc}
+                  onBookmarkClick={handleNavigateToCfi}
+                  onSaveBookmark={handleSaveBookmark}
+                />
+              ),
+              pen: (
+                <HighlightsPanel
+                  bookId={bookId}
+                  toc={toc}
+                  onHighlightClick={handleNavigateToCfi}
+                />
+              ),
+              bulb: <SidebarPlaceholder label="Explainers" />,
+              type: (
+                <div className="flex items-center justify-between px-5 py-4">
+                  <span className="text-sm text-foreground">Theme</span>
+                  <ThemeToggle />
+                </div>
+              ),
+            }}
           />
         </>
       )}

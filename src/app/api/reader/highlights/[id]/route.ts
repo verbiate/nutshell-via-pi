@@ -1,6 +1,41 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
-import { deleteHighlight } from "@/server/services/reader";
+import { deleteHighlight, updateHighlight } from "@/server/services/reader";
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await requireAuth();
+    const { id } = await params;
+    let body: { note?: string; color?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    if (body.note === undefined && body.color === undefined) {
+      return NextResponse.json({ error: "note or color is required" }, { status: 400 });
+    }
+
+    const highlight = await updateHighlight(user.id, id, {
+      note: body.note,
+      color: body.color,
+    });
+    return NextResponse.json({ highlight });
+  } catch (error: any) {
+    if (error.statusCode === 401) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (error.message === "Highlight not found or access denied") {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    console.error("[PATCH /api/reader/highlights/[id]]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
 
 export async function DELETE(
   _request: Request,

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Lightbulb, Loader2 } from "lucide-react";
 import { ExplainerPanel } from "./explainer-panel";
 
 interface ExplainerTriggerProps {
@@ -27,7 +27,7 @@ export function ExplainerTrigger({ bookId, initialLanguage }: ExplainerTriggerPr
         {isGenerating && open ? (
           <Loader2 className="mr-2 h-4 w-4 animate-spin text-lav" />
         ) : (
-          <Sparkles className="mr-2 h-4 w-4 text-lav" />
+          <Lightbulb className="mr-2 h-4 w-4 text-lav" />
         )}
         {isGenerating && open ? "Generating..." : "Explain this to me"}
       </Button>

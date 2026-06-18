@@ -2,25 +2,25 @@
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
-import { Highlighter, Sparkles } from "lucide-react";
+import { Lightbulb, Copy, Highlighter } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HIGHLIGHT_COLORS } from "./highlight-colors";
 
 export interface FloatingToolbarProps {
   visible: boolean;
   position: { top: number; left: number };
-  placement: "above" | "below";
-  onHighlight: () => void;
-  onExplain: () => void;
+  selectedText: string;
+  onHighlight: (color: string) => void;
+  onAsk: () => void;
   onDismiss: () => void;
 }
 
 export function FloatingToolbar({
   visible,
   position,
-  placement,
+  selectedText,
   onHighlight,
-  onExplain,
+  onAsk,
   onDismiss,
 }: FloatingToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -39,42 +39,72 @@ export function FloatingToolbar({
 
   if (!visible) return null;
 
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(selectedText);
+    } catch (err) {
+      console.warn("[FloatingToolbar] copy failed:", err);
+    }
+    onDismiss();
+  };
+
   return createPortal(
     <div
       ref={toolbarRef}
       role="toolbar"
       aria-label="Text selection actions"
+      data-floating-toolbar
       className={cn(
-        "fixed z-[70] flex items-center gap-1 h-9 px-2 py-1",
-        "rounded-md border border-border bg-popover shadow-lg",
+        "fixed z-[70] flex w-[220px] flex-col rounded-xl border border-border bg-popover p-1.5",
+        "shadow-[0_8px_30px_-6px_rgba(43,28,17,0.25)]",
         "animate-in fade-in zoom-in-95 duration-150"
       )}
       style={{
         top: position.top,
-        left: Math.max(8, position.left),
+        left: position.left,
       }}
     >
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onHighlight}
-        className="gap-1.5 h-7 px-2"
-        aria-label="Highlight selected text"
+      <button
+        type="button"
+        onClick={onAsk}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        aria-label="Ask about this passage"
       >
-        <Highlighter className="h-3.5 w-3.5 text-hl-yellow" />
-        <span className="text-xs font-medium">Highlight</span>
-      </Button>
-      <div className="w-px h-4 bg-border mx-1" />
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onExplain}
-        className="gap-1.5 h-7 px-2"
-        aria-label="Explain selected passage"
+        <Lightbulb className="h-4 w-4 text-lav" />
+        Ask about this
+      </button>
+
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        aria-label="Copy selected text"
       >
-        <Sparkles className="h-3.5 w-3.5 text-lav" />
-        <span className="text-xs font-medium">Explain this to me</span>
-      </Button>
+        <Copy className="h-4 w-4" />
+        Copy
+      </button>
+
+      <div className="my-1 h-px bg-border" />
+
+      <div className="flex items-center gap-2 px-3 pb-1.5 pt-0.5">
+        <Highlighter className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Create a note:
+        </span>
+      </div>
+
+      <div className="mb-1 ml-auto mr-auto flex items-center justify-center gap-4 rounded-full border border-border/60 bg-background/40 px-4 py-2">
+        {HIGHLIGHT_COLORS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => onHighlight(c.hex)}
+            className="h-6 w-6 rounded-full ring-1 ring-black/5 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lav"
+            style={{ backgroundColor: c.hex }}
+            aria-label={`Highlight in ${c.label}`}
+          />
+        ))}
+      </div>
     </div>,
     document.body
   );
