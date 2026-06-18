@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { DM_Sans, IBM_Plex_Serif } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "@/components/providers";
 
-const geist = Geist({
+const dmSans = DM_Sans({
   subsets: ["latin"],
-  variable: "--font-geist",
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const plexSerif = IBM_Plex_Serif({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -21,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geist.variable} font-sans antialiased`}>
+      <body className={`${dmSans.variable} ${plexSerif.variable} font-sans antialiased`}>
         <Providers>
           {children}
           <Toaster position="bottom-right" />
