@@ -6,7 +6,20 @@ import { Button } from "@/components/ui/button";
 export function LoginButton() {
   return (
     <Button
-      onClick={() => signIn.social({ provider: "google" })}
+      onClick={async () => {
+        // disableRedirect so better-auth returns the auth URL as data; then we
+        // append prompt=select_account to force Google's account chooser
+        // (otherwise a lingering Google session silently re-signs-in).
+        const { data } = await signIn.social({
+          provider: "google",
+          disableRedirect: true,
+        });
+        if (data?.url) {
+          const u = new URL(data.url);
+          u.searchParams.set("prompt", "select_account");
+          window.location.href = u.toString();
+        }
+      }}
       className="bg-primary text-white hover:bg-primary/90"
       size="lg"
     >
