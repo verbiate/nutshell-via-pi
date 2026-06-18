@@ -39,6 +39,9 @@ export interface ReaderClientProps {
 export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) {
   const router = useRouter();
   const viewerRef = useRef<EpubViewerHandle>(null);
+  // ponytail: epub.js renders in an iframe; keydown there doesn't bubble to window,
+  // so we attach the same handler to the iframe's contentDocument and track it for cleanup.
+  const iframeDocRef = useRef<Document | null>(null);
   const { user } = useSession();
 
   const [toc, setToc] = useState<NavItem[]>([]);
@@ -328,10 +331,64 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
     [bookId, savedPosition]
   );
 
+  // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ignore when typing in an input/textarea/contenteditable
+    const target = e.target as HTMLElement;
+    if (
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable
+    ) {
+      return;
+    }
+
+    // Don't intercept if modifier keys are held (let browser shortcuts work)
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      viewerRef.current?.next().catch((err) => console.error("[Reader] next() error:", err));
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      viewerRef.current?.prev().catch((err) => console.error("[Reader] prev() error:", err));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Clean up the iframe keydown listener on unmount
+  useEffect(() => {
+    return () => {
+      iframeDocRef.current?.removeEventListener("keydown", handleKeyDown);
+      iframeDocRef.current = null;
+    };
+  }, [handleKeyDown]);
+
   // ─── Render highlights when rendition is ready ─────────────────────────────────
   const handleRenditionReady = useCallback(
-    (_rendition: unknown) => {
+    (rendition: unknown) => {
       setIsLoaded(true);
+
+      // Attach keydown to the epub iframe document — events inside the iframe
+      // don't bubble to the parent window. 'rendered' fires on every chapter swap
+      // (epub.js swaps the iframe per section), so we re-attach each time.
+      const attachToDoc = (doc: Document | null | undefined) => {
+        if (!doc) return;
+        iframeDocRef.current?.removeEventListener("keydown", handleKeyDown);
+        doc.addEventListener("keydown", handleKeyDown);
+        iframeDocRef.current = doc;
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = rendition as any;
+      attachToDoc(r?.contents?.document);
+      r?.on?.("rendered", (_section: unknown, contents: { document: Document }) => {
+        attachToDoc(contents.document);
+      });
+
       if (highlightsData?.highlights) {
         highlightsData.highlights.forEach(
           (h: { cfi: string; color?: string }) => {
@@ -340,7 +397,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
         );
       }
     },
-    [highlightsData]
+    [highlightsData, handleKeyDown]
   );
 
   const handleError = useCallback((err: Error) => {
@@ -370,36 +427,6 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
       }
     };
   }, []);
-
-  // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when typing in an input/textarea/contenteditable
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      // Don't intercept if modifier keys are held (let browser shortcuts work)
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      console.log("[Reader] keydown:", e.key, "viewerRef ready:", !!viewerRef.current);
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        viewerRef.current?.next().catch((err) => console.error("[Reader] next() error:", err));
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        viewerRef.current?.prev().catch((err) => console.error("[Reader] prev() error:", err));
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   // ─── TTS Playback ──────────────────────────────────────────────────────────
   const handleTtsNavigate = useCallback((href: string) => {
     setCurrentHref(href);
