@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
 import type { ParagraphMap } from "@/lib/reader/position-tracking";
+import { computeProgressPercent } from "@/lib/reader/progress";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
 import { buildRenditionOptions } from "./rendition-options";
 
@@ -226,6 +227,21 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                   );
               });
             }
+
+            // ponytail: epub.js needs locations generated before location.start.percentage
+            // returns a value. Background-generate after first display so the progress bar
+            // reflects the actual reading position without blocking the reader's first paint.
+            displayPromise.then(() => {
+              book.locations
+                .generate(1600)
+                .then(() => {
+                  if (!mounted) return;
+                  onProgressChange?.(computeProgressPercent(book, lastCfiRef.current));
+                })
+                .catch((err: Error) =>
+                  console.warn("[EpubViewer] locations.generate failed:", err),
+                );
+            });
 
             return displayPromise;
           });
