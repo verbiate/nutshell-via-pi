@@ -157,37 +157,38 @@
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    /* Warm espresso-family dark — stays in the Nutshell family, keeps lavender ring */
+    --background: #1A130C;
+    --foreground: #F2E9D4;
+    --card: #241A10;
+    --card-foreground: #F2E9D4;
+    --popover: #241A10;
+    --popover-foreground: #F2E9D4;
+    --primary: #F2E9D4;
+    --primary-foreground: #1A130C;
+    --secondary: #2E2214;
+    --secondary-foreground: #F2E9D4;
+    --muted: #2E2214;
+    --muted-foreground: #A8957A;
+    --accent: #2A2348;
+    --accent-foreground: #ECE8FB;
+    --destructive: #E541C9;
+    --border: #3A2E1E;
+    --input: #3A2E1E;
+    --ring: #9B8FEF;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar: #1A130C;
+    --sidebar-foreground: #F2E9D4;
+    --sidebar-primary: #F2E9D4;
+    --sidebar-primary-foreground: #1A130C;
+    --sidebar-accent: #2A2348;
+    --sidebar-accent-foreground: #ECE8FB;
+    --sidebar-border: #3A2E1E;
+    --sidebar-ring: #9B8FEF;
 }
 
 .sepia {
@@ -208,7 +209,7 @@
     --destructive: #b04a3e;
     --border: #d4c5a9;
     --input: #d4c5a9;
-    --ring: #8a7a6a;
+    --ring: #7E70EA;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -221,7 +222,7 @@
     --sidebar-accent: #e9dfc6;
     --sidebar-accent-foreground: #5b4636;
     --sidebar-border: #d4c5a9;
-    --sidebar-ring: #8a7a6a;
+    --sidebar-ring: #7E70EA;
 }
 
 @keyframes fadeInWord {
@@ -251,7 +252,15 @@
     }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(120% 60% at 18% -8%, rgba(126,112,234,.16), transparent 60%),
+      radial-gradient(90% 55% at 78% -10%, rgba(255,78,140,.14), transparent 58%),
+      radial-gradient(70% 50% at 50% -12%, rgba(46,166,240,.12), transparent 60%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     }
+  /* Reading-comfort themes keep a clean field */
+  .dark body, .sepia body { background-image: none; }
   html {
     @apply font-sans;
     }

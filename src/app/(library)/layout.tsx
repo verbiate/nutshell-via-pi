@@ -11,7 +11,7 @@ export default async function LibraryLayout({
   const user = await requireAuth();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <header className="flex h-16 items-center border-b border-line bg-card px-8">
         <Link
           href="/my-library"
