@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ePub, { Book, Rendition, NavItem } from "@likecoin/epub-ts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -115,6 +115,21 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       },
     }));
 
+    // ponytail: many EPUBs ship `body { background-color: white; color: black; }`,
+    // which beats the registered theme rules on specificity. Force the theme's
+    // page colors with !important so the book background always matches the app.
+    const applyThemeOverrides = useCallback(
+      (selected: "light" | "dark" | "sepia") => {
+        const rendition = renditionRef.current;
+        if (!rendition) return;
+        rendition.themes.select(selected);
+        const body = READER_THEMES[selected].rules.body;
+        rendition.themes.override("background-color", body.background, true);
+        rendition.themes.override("color", body.color, true);
+      },
+      []
+    );
+
     // Initialize EPUB book
     useEffect(() => {
       if (!url || !containerRef.current) return;
@@ -155,7 +170,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             rendition.themes.register("sepia", READER_THEMES.sepia);
 
             // Apply current theme
-            rendition.themes.select(theme);
+            applyThemeOverrides(theme);
 
             // ponytail: epub.js sets its own body styles in paginated mode that
             // override stylesheet rules. Force typography/layout through as
@@ -232,8 +247,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
 
     // Sync theme changes
     useEffect(() => {
-      renditionRef.current?.themes.select(theme);
-    }, [theme]);
+      applyThemeOverrides(theme);
+    }, [theme, applyThemeOverrides]);
 
     return (
       <div className={cn("relative h-full w-full", className)}>

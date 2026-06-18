@@ -2,8 +2,10 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
+import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
 import { ReaderChrome } from "./reader-chrome";
 import { TocPanel } from "./toc-panel";
 import { ThemeToggle } from "./theme-toggle";
@@ -45,6 +47,13 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   // so we attach the same handler to the iframe's contentDocument and track it for cleanup.
   const iframeDocRef = useRef<Document | null>(null);
   const { user } = useSession();
+  const { resolvedTheme } = useTheme();
+
+  const readerTheme: ReaderThemeName = (
+    READER_THEME_NAMES.includes(resolvedTheme as ReaderThemeName)
+      ? resolvedTheme
+      : "light"
+  ) as ReaderThemeName;
 
   const [toc, setToc] = useState<NavItem[]>([]);
   const [currentHref, setCurrentHref] = useState<string>("");
@@ -457,7 +466,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
         <EpubViewer
           ref={viewerRef}
           url={epubUrl}
-          theme={"light"}
+          theme={readerTheme}
           initialCfi={savedPosition?.cfi ?? null}
           initialPosition={
             savedPosition && !savedPosition.cfi ? savedPosition : null

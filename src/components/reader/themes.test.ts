@@ -25,6 +25,14 @@ describe("READER_THEMES", () => {
     expect(bodyRules("light").background).toBe("#FBF7EC");
     expect(bodyRules("light").color).toBe("#33271B");
   });
+
+  it.each(["light", "dark", "sepia"] as const)(
+    "%s theme exposes valid hex background and color for forced overrides",
+    (name) => {
+      expect(bodyRules(name).background).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(bodyRules(name).color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    },
+  );
 });
 
 describe("READER_THEME_OVERRIDES", () => {
