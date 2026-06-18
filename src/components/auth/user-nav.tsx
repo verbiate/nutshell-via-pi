@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/hooks/use-session";
 import { signOut } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,7 +20,15 @@ import type { UserRole } from "@/types/book";
 
 export function UserNav() {
   const { user, isPending } = useSession();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    queryClient.invalidateQueries({ queryKey: ["session"] });
+    router.push("/");
+  };
 
   if (isPending) {
     return <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />;
@@ -89,7 +99,7 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer text-destructive"
-            onClick={() => signOut()}
+            onClick={handleSignOut}
           >
             <LogOut className="mr-2 h-4 w-4" />
             Sign Out
