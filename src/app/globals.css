@@ -159,7 +159,7 @@
     --sidebar-ring: #7E70EA;
 
     /* Reader sidebar geometry + motion tokens */
-    --reader-sidebar-w: 320px;
+    --reader-sidebar-w: 400px;
     --reader-rail-w: 94px;
     --reader-dur: 250ms;
 }

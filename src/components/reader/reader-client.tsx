@@ -75,6 +75,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
   const [passageExplainerOpen, setPassageExplainerOpen] = useState(false);
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
+  const [sidebarAnimating, setSidebarAnimating] = useState(false);
 
   // ─── Position state ────────────────────────────────────────────────────────────
   const [savedPosition, setSavedPosition] = useState<SavedPosition | null>(null);
@@ -457,14 +458,25 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
-  // Once the width settles, tell epub.js to re-measure its container and
-  // re-paginate. Fires on both open (narrow) and close (widen).
+  // During the transition, the book fades to low opacity so the epub.js reflow
+  // snap at the end is hidden behind the dip. Once the width settles, we tell
+  // epub.js to re-measure and re-paginate, then restore full opacity.
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    const isOpen = activeTool !== null;
+    if (prevOpenRef.current !== isOpen) {
+      prevOpenRef.current = isOpen;
+      setSidebarAnimating(true);
+    }
+  }, [activeTool]);
+
   useEffect(() => {
     const el = epubWrapperRef.current;
     if (!el) return;
     const onEnd = (e: TransitionEvent) => {
       if (e.propertyName !== "width") return;
       viewerRef.current?.resize();
+      setSidebarAnimating(false);
     };
     el.addEventListener("transitionend", onEnd);
     return () => el.removeEventListener("transitionend", onEnd);
@@ -483,18 +495,24 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
 
       {/* EPUB viewer — wrapped in a width-animating layer (Layer 1).
-          When the sidebar opens this div narrows by --reader-sidebar-w,
-          revealing the sidebar (z-20) underneath. The right-edge box-shadow
-          is constant; it's only visible once the wrapper moves off the
-          viewport's right edge (i.e., when the sidebar is open). */}
+           When the sidebar opens this div narrows by --reader-sidebar-w +
+           --reader-rail-w, revealing the sidebar (z-20) underneath. During the
+           transition the book fades to 30% opacity so the epub.js reflow snap
+           at the end is hidden; opacity restores once resize() fires. */}
       {!error && (
         <div
           ref={epubWrapperRef}
-          className={cn(
-            "relative z-30 h-full w-full overflow-hidden bg-background transition-[width] duration-[var(--reader-dur)] ease-reader",
-            "[box-shadow:12px_0_18px_-12px_rgba(43,28,17,0.35)]",
-            activeTool && "w-[calc(100%-var(--reader-sidebar-w)-var(--reader-rail-w))]",
-          )}
+          className="relative z-30 h-full w-full overflow-hidden bg-background"
+          style={{
+            width: activeTool
+              ? "calc(100% - var(--reader-sidebar-w) - var(--reader-rail-w))"
+              : "100%",
+            opacity: sidebarAnimating ? 0 : 1,
+            boxShadow: "12px 0 18px -12px rgba(43,28,17,0.35)",
+            transitionProperty: "width, opacity",
+            transitionDuration: "var(--reader-dur), 150ms",
+            transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1), cubic-bezier(.5, 0, .2, 1)",
+          }}
         >
           <EpubViewer
             ref={viewerRef}

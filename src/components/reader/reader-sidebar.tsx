@@ -47,20 +47,24 @@ export function ReaderSidebar({ activeTool, onToolClick }: ReaderSidebarProps) {
       {/*
         Layer 2 — sliding content panel.
         Sits UNDER the book (z-30) so the book's right-edge shadow falls on it
-        as the book narrows. Slides in from off-screen-right; the rail (z-40)
-        overlays its rightmost slice at all times.
+        as the book narrows. Slides in from the right by the rail width so its
+        right edge lands exactly at the viewport edge when closed (no overshoot).
+        Opacity hides the panel's visible-but-translated state — see .wip-
+        reference/sidebar-example-a.html, which uses the same trick.
         Lockstep with the book's width transition (same duration + ease) keeps
         their meeting edge gapless throughout the animation.
       */}
       <aside
         aria-label={label ?? undefined}
         aria-hidden={!isOpen}
-        className={cn(
-          "absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex",
-          "[box-shadow:8px_0_16px_-10px_rgba(43,28,17,0.3)]",
-          "translate-x-full transition-transform duration-[var(--reader-dur)] ease-reader",
-          isOpen && "translate-x-0",
-        )}
+        className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(43,28,17,0.3)]"
+        style={{
+          transform: `translateX(${isOpen ? "0px" : "var(--reader-rail-w)"})`,
+          opacity: isOpen ? 1 : 0,
+          transitionProperty: "transform, opacity",
+          transitionDuration: "var(--reader-dur)",
+          transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
+        }}
       >
         {displayedTool && (
           <>
