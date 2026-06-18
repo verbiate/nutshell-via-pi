@@ -25,9 +25,9 @@ export function ExplainerTrigger({ bookId, initialLanguage }: ExplainerTriggerPr
         disabled={isGenerating && open}
       >
         {isGenerating && open ? (
-          <Loader2 className="mr-2 h-4 w-4 animate-spin text-violet-600" />
+          <Loader2 className="mr-2 h-4 w-4 animate-spin text-lav" />
         ) : (
-          <Sparkles className="mr-2 h-4 w-4 text-violet-600" />
+          <Sparkles className="mr-2 h-4 w-4 text-lav" />
         )}
         {isGenerating && open ? "Generating..." : "Explain this to me"}
       </Button>

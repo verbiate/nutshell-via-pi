@@ -41,15 +41,7 @@ export default function DesignSystemPage() {
   const [sliderVal, setSliderVal] = React.useState<number[]>([62]);
 
   return (
-    <div
-      className="min-h-screen bg-paper text-ink"
-      style={{
-        backgroundImage:
-          "radial-gradient(120% 60% at 18% -8%, rgba(126,112,234,.16), transparent 60%), radial-gradient(90% 55% at 78% -10%, rgba(255,78,140,.14), transparent 58%), radial-gradient(70% 50% at 50% -12%, rgba(46,166,240,.12), transparent 60%)",
-        backgroundRepeat: "no-repeat",
-        backgroundAttachment: "fixed",
-      }}
-    >
+    <div className="min-h-screen text-ink">
       <main className="mx-auto max-w-5xl px-7 py-14">
         <header className="mb-14">
           <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">

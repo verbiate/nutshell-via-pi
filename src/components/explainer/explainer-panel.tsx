@@ -228,7 +228,7 @@ export function ExplainerPanel({
       <SheetContent side="right" className="w-[320px] sm:w-[400px] p-0">
         <SheetHeader className="px-4 py-3 border-b border-border flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-violet-600" />
+            <Sparkles className="h-4 w-4 text-lav" />
             <SheetTitle className="text-base font-medium">{title}</SheetTitle>
             {isCached && state === "complete" && (
               <Badge variant="secondary" className="text-xs">
@@ -352,19 +352,19 @@ export function ExplainerPanel({
 function ExplainerLoading() {
   return (
     <div className="flex flex-col items-center justify-center py-12 gap-3">
-      <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+      <Loader2 className="h-6 w-6 animate-spin text-lav" />
       <p className="text-sm text-muted-foreground">Generating explanation...</p>
       <div className="flex gap-1">
         <span
-          className="h-1.5 w-1.5 rounded-full bg-violet-600 animate-bounce"
+          className="h-1.5 w-1.5 rounded-full bg-lav animate-bounce"
           style={{ animationDelay: "0ms" }}
         />
         <span
-          className="h-1.5 w-1.5 rounded-full bg-violet-600 animate-bounce"
+          className="h-1.5 w-1.5 rounded-full bg-lav animate-bounce"
           style={{ animationDelay: "150ms" }}
         />
         <span
-          className="h-1.5 w-1.5 rounded-full bg-violet-600 animate-bounce"
+          className="h-1.5 w-1.5 rounded-full bg-lav animate-bounce"
           style={{ animationDelay: "300ms" }}
         />
       </div>

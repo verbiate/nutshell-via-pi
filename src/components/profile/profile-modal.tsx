@@ -42,7 +42,7 @@ function RoleBadge({ role }: { role: UserRole }) {
         </Badge>
       );
     case "pro":
-      return <Badge className="bg-slate-900 text-white">Pro</Badge>;
+      return <Badge>Pro</Badge>;
     case "regular":
       return <Badge variant="secondary">Regular</Badge>;
   }
@@ -99,7 +99,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
                 src={(user as any)?.image || undefined}
                 alt={(user as any)?.name || ""}
               />
-              <AvatarFallback className="bg-slate-200">
+              <AvatarFallback className="bg-muted">
                 {initials}
               </AvatarFallback>
             </Avatar>

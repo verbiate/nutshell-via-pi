@@ -28,7 +28,7 @@ export function UserNav() {
     return (
       <Link
         href="/login"
-        className="text-sm font-medium text-foreground hover:text-foreground"
+        className="text-sm font-medium text-muted-foreground hover:text-foreground"
       >
         Sign in
       </Link>
