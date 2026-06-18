@@ -14,6 +14,10 @@ export interface EpubViewerProps {
   theme: "light" | "dark" | "sepia";
   initialCfi?: string | null;
   initialPosition?: { paragraphIndex: number; charOffset: number } | null;
+  // ponytail: dynamic typography overrides (font-size, font-family, line-height,
+  // text-align, hyphens). Applied via themes.override on every change. Empty /
+  // publisher-font = fall back to READER_THEME_OVERRIDES defaults.
+  typography?: Record<string, string>;
   onPositionChange?: (
     position: { paragraphIndex: number; charOffset: number },
     cfi: string
@@ -47,6 +51,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       theme,
       initialCfi,
       initialPosition,
+      typography,
       onPositionChange,
       onTocLoaded,
       onProgressChange,
@@ -255,6 +260,17 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     useEffect(() => {
       applyThemeOverrides(theme);
     }, [theme, applyThemeOverrides]);
+
+    // Apply dynamic typography overrides (font size/family/spacing from settings panel).
+    // ponytail: themes.override updates the registered rule in place, so the last
+    // write wins over READER_THEME_OVERRIDES defaults set at init.
+    useEffect(() => {
+      const rendition = renditionRef.current;
+      if (!rendition || !typography) return;
+      for (const [prop, value] of Object.entries(typography)) {
+        rendition.themes.override(prop, value, true);
+      }
+    }, [typography]);
 
     return (
       <div className={cn("relative h-full w-full", className)}>

@@ -1,13 +1,12 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
 import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
 import { ReaderChrome } from "./reader-chrome";
-import { ThemeToggle } from "./theme-toggle";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
@@ -18,6 +17,13 @@ import { BookmarksPanel } from "./bookmarks-panel";
 import { HighlightsPanel } from "./highlights-panel";
 import type { ReaderTool } from "./reader-tools";
 import { SearchPanel } from "./search-panel";
+import {
+  BookSettingsPanel,
+  DEFAULT_BOOK_SETTINGS,
+  SERIF_STACK,
+  SANS_STACK,
+  type BookSettings,
+} from "./book-settings-panel";
 import { ExplainerPanel } from "@/components/explainer/explainer-panel";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -75,13 +81,25 @@ export function ReaderClient({
   // so we attach the same handler to the iframe's contentDocument and track it for cleanup.
   const iframeDocRef = useRef<Document | null>(null);
   const { user } = useSession();
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const readerTheme: ReaderThemeName = (
     READER_THEME_NAMES.includes(resolvedTheme as ReaderThemeName)
       ? resolvedTheme
       : "light"
   ) as ReaderThemeName;
+
+  // ponytail: current-book-only settings; no persistence yet (per spec).
+  const [bookSettings, setBookSettings] = useState<BookSettings>(
+    DEFAULT_BOOK_SETTINGS,
+  );
+  const handleSettingsChange = useCallback((patch: Partial<BookSettings>) => {
+    setBookSettings((s) => ({ ...s, ...patch }));
+  }, []);
+  const handleThemeChange = useCallback(
+    (t: ReaderThemeName) => setTheme(t),
+    [setTheme],
+  );
 
   const [toc, setToc] = useState<NavItem[]>([]);
   const [currentHref, setCurrentHref] = useState<string>("");
@@ -510,6 +528,29 @@ export function ReaderClient({
     }
   }, [tts, toc, currentHref]);
 
+  // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
+  // effect only fires on actual change. Publisher font = omit font-family so the
+  // book's embedded font shows through.
+  const typography = useMemo<Record<string, string>>(() => {
+    const o: Record<string, string> = {
+      "font-size": `${bookSettings.fontSize}px`,
+      "line-height": String(bookSettings.lineSpacing),
+      "text-align": bookSettings.alignment,
+      hyphens: bookSettings.alignment === "justify" ? "auto" : "manual",
+    };
+    if (bookSettings.fontFamily === "serif") o["font-family"] = SERIF_STACK;
+    else if (bookSettings.fontFamily === "sans") o["font-family"] = SANS_STACK;
+    return o;
+  }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment, bookSettings.fontFamily]);
+
+  // Apply TTS playback speed to the audio element whenever it changes or a new
+  // section loads. ponytail: audio.playbackRate is live-adjustable, no reload.
+  useEffect(() => {
+    if (tts.audioRef.current) {
+      tts.audioRef.current.playbackRate = bookSettings.voiceSpeed;
+    }
+  }, [bookSettings.voiceSpeed, tts.audioRef, tts.state.state]);
+
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
   // During the transition, the book fades to low opacity so the epub.js reflow
@@ -581,6 +622,7 @@ export function ReaderClient({
             ref={viewerRef}
             url={epubUrl}
             theme={readerTheme}
+            typography={typography}
             initialCfi={savedPosition?.cfi ?? null}
             initialPosition={
               savedPosition && !savedPosition.cfi ? savedPosition : null
@@ -688,10 +730,12 @@ export function ReaderClient({
               ),
               bulb: <SidebarPlaceholder label="Explainers" />,
               type: (
-                <div className="flex items-center justify-between px-5 py-4">
-                  <span className="text-sm text-foreground">Theme</span>
-                  <ThemeToggle />
-                </div>
+                <BookSettingsPanel
+                  theme={readerTheme}
+                  onThemeChange={handleThemeChange}
+                  settings={bookSettings}
+                  onChange={handleSettingsChange}
+                />
               ),
             }}
           />

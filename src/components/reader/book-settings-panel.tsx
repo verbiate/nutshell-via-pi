@@ -1,0 +1,279 @@
+"use client";
+
+import { useCallback } from "react";
+import { AlignJustify, AlignLeft, Play } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { ReaderThemeName } from "./themes";
+
+// ponytail: typography stacks kept here so the panel is the single source for
+// what "serif" / "sans" mean visually. Publisher = no override (book's own font).
+export const SERIF_STACK = '"IBM Plex Serif", Georgia, "Times New Roman", serif';
+export const SANS_STACK = '"DM Sans", system-ui, -apple-system, sans-serif';
+
+export type FontFamilyChoice = "serif" | "sans" | "publisher";
+export type AlignmentChoice = "left" | "justify";
+export type LineSpacingChoice = 1.4 | 1.5 | 1.65;
+export type VoiceName = "Val" | "Kim" | "Bo";
+
+export interface BookSettings {
+  fontFamily: FontFamilyChoice;
+  fontSize: number; // px, 14–24
+  alignment: AlignmentChoice;
+  lineSpacing: LineSpacingChoice;
+  voiceSpeed: number; // 0.5–2
+  voiceName: VoiceName;
+}
+
+export const DEFAULT_BOOK_SETTINGS: BookSettings = {
+  fontFamily: "serif",
+  fontSize: 18,
+  alignment: "justify",
+  lineSpacing: 1.5,
+  voiceSpeed: 1,
+  voiceName: "Val",
+};
+
+export const BOOK_SETTINGS_MIN_FONT = 14;
+export const BOOK_SETTINGS_MAX_FONT = 24;
+
+const THEME_SWATCHES: { id: ReaderThemeName; bg: string }[] = [
+  { id: "light", bg: "#FBF7EC" },
+  { id: "sepia", bg: "#f4ecd8" },
+  { id: "dark", bg: "#1A130C" },
+];
+
+const FONT_FAMILY_OPTIONS: { value: FontFamilyChoice; label: string }[] = [
+  { value: "serif", label: "Serif" },
+  { value: "sans", label: "Sans" },
+  { value: "publisher", label: "Publisher" },
+];
+
+const VOICE_OPTIONS: VoiceName[] = ["Val", "Kim", "Bo"];
+
+// ponytail: inline line-stack icons for spacing toggles — lucide has none.
+function LineSpacingIcon({ density }: { density: "tight" | "medium" | "relaxed" }) {
+  const gap = density === "tight" ? 3 : density === "medium" ? 5 : 7;
+  const y2 = 4 + gap + 2;
+  const y3 = 4 + 2 * (gap + 2);
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="2" y1={y2} x2="14" y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="2" y1={y3} x2="14" y2={y3} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+        {children}
+      </span>
+      <span className="ml-1 h-px flex-1 bg-line" />
+    </div>
+  );
+}
+
+export interface BookSettingsPanelProps {
+  theme: ReaderThemeName;
+  onThemeChange: (theme: ReaderThemeName) => void;
+  settings: BookSettings;
+  onChange: (patch: Partial<BookSettings>) => void;
+  onTestVoice?: () => void;
+}
+
+export function BookSettingsPanel({
+  theme,
+  onThemeChange,
+  settings,
+  onChange,
+  onTestVoice,
+}: BookSettingsPanelProps) {
+  const handleVoiceSpeed = useCallback(
+    (v: number[]) => onChange({ voiceSpeed: v[0] }),
+    [onChange],
+  );
+  const handleFontSize = useCallback(
+    (v: number[]) => onChange({ fontSize: v[0] }),
+    [onChange],
+  );
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-serif text-[15px] font-medium leading-tight text-foreground">
+              Book Settings
+            </h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              Any changes will apply to the current book only. You can also apply
+              the change to all books by selecting &ldquo;set as default&rdquo;.
+            </p>
+          </div>
+          <span className="font-serif text-3xl text-muted-foreground/40 select-none">Aa</span>
+        </div>
+      </div>
+
+      {/* PAGE ADJUSTMENTS */}
+      <div className="px-5 py-4 flex flex-col gap-5">
+        <SectionLabel>Page Adjustments</SectionLabel>
+
+        {/* Theme swatches */}
+        <div className="flex items-center gap-3">
+          {THEME_SWATCHES.map((s) => {
+            const active = theme === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onThemeChange(s.id)}
+                aria-label={`Theme: ${s.id}`}
+                aria-pressed={active}
+                className={cn(
+                  "relative h-11 w-11 rounded-full border-2 transition-shadow",
+                  active
+                    ? "border-lav ring-2 ring-lav/20"
+                    : "border-line hover:border-lav-ring",
+                )}
+                style={{ backgroundColor: s.bg }}
+              >
+                {active && (
+                  <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-espresso" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Font size slider with T labels */}
+        <div className="flex items-center gap-3">
+          <span className="font-serif text-sm text-muted-foreground">T</span>
+          <Slider
+            value={[settings.fontSize]}
+            min={BOOK_SETTINGS_MIN_FONT}
+            max={BOOK_SETTINGS_MAX_FONT}
+            step={1}
+            onValueChange={handleFontSize}
+            aria-label="Text size"
+            className="flex-1"
+          />
+          <span className="font-serif text-2xl text-muted-foreground">T</span>
+        </div>
+
+        {/* Alignment */}
+        <ToggleGroup
+          type="single"
+          value={settings.alignment}
+          onValueChange={(v) => {
+            if (v === "left" || v === "justify") onChange({ alignment: v });
+          }}
+          variant="outline"
+        >
+          <ToggleGroupItem value="left" aria-label="Align left">
+            <AlignLeft className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="justify" aria-label="Justify">
+            <AlignJustify className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        {/* Line spacing */}
+        <ToggleGroup
+          type="single"
+          value={String(settings.lineSpacing)}
+          onValueChange={(v) => {
+            const n = parseFloat(v);
+            if (n === 1.4 || n === 1.5 || n === 1.65) {
+              onChange({ lineSpacing: n });
+            }
+          }}
+          variant="outline"
+        >
+          <ToggleGroupItem value="1.4" aria-label="Tight spacing">
+            <LineSpacingIcon density="tight" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="1.5" aria-label="Medium spacing">
+            <LineSpacingIcon density="medium" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="1.65" aria-label="Relaxed spacing">
+            <LineSpacingIcon density="relaxed" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        {/* Font family */}
+        <ToggleGroup
+          type="single"
+          value={settings.fontFamily}
+          onValueChange={(v) => {
+            if (v === "serif" || v === "sans" || v === "publisher") {
+              onChange({ fontFamily: v });
+            }
+          }}
+          variant="outline"
+        >
+          {FONT_FAMILY_OPTIONS.map((opt) => (
+            <ToggleGroupItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+
+      {/* VOICE ADJUSTMENTS */}
+      <div className="px-5 py-4 flex flex-col gap-5">
+        <SectionLabel>Voice Adjustments</SectionLabel>
+
+        {/* Reading speed */}
+        <div className="flex flex-col gap-2">
+          <Slider
+            value={[settings.voiceSpeed]}
+            min={0.5}
+            max={2}
+            step={0.25}
+            onValueChange={handleVoiceSpeed}
+            aria-label="Reading speed"
+          />
+          <div className="flex justify-between text-[10px] font-medium tabular-nums text-muted-foreground">
+            <span>0.5×</span>
+            <span className="text-center">REGULAR<br />SPEED</span>
+            <span>1.25×</span>
+            <span>1.5×</span>
+            <span>2×</span>
+          </div>
+        </div>
+
+        {/* Voice */}
+        <ToggleGroup
+          type="single"
+          value={settings.voiceName}
+          onValueChange={(v) => {
+            if (v === "Val" || v === "Kim" || v === "Bo") {
+              onChange({ voiceName: v });
+            }
+          }}
+          variant="outline"
+        >
+          {VOICE_OPTIONS.map((name) => (
+            <ToggleGroupItem key={name} value={name}>{name}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-1.5"
+          onClick={onTestVoice}
+        >
+          <Play className="h-3.5 w-3.5" />
+          Test voice
+        </Button>
+      </div>
+    </div>
+  );
+}
