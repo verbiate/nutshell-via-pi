@@ -32,7 +32,7 @@ export function ReaderSidebar({ activeTool, onToolClick }: ReaderSidebarProps) {
   const label = activeTool ? `Section ${sectionNumberFor(activeTool)}` : null;
 
   return (
-    <div className="absolute bottom-0 right-0 top-12 z-40 hidden border-l border-line bg-card/80 backdrop-blur-sm sm:flex">
+    <div className="absolute bottom-0 right-0 top-0 z-40 hidden border-l border-line bg-card/80 backdrop-blur-sm sm:flex">
       {/* Content panel — visible only when a tool is active */}
       {activeTool && (
         <aside
