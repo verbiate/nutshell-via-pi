@@ -7,3 +7,5 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+overrides:
+  better-call: 1.3.5
