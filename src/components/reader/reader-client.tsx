@@ -43,6 +43,9 @@ export interface ReaderClientProps {
 export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) {
   const router = useRouter();
   const viewerRef = useRef<EpubViewerHandle>(null);
+  // Wraps the EpubViewer; its width animates with the sidebar. We listen to
+  // transitionend on this element to trigger epub.js re-pagination.
+  const epubWrapperRef = useRef<HTMLDivElement>(null);
   // ponytail: epub.js renders in an iframe; keydown there doesn't bubble to window,
   // so we attach the same handler to the iframe's contentDocument and track it for cleanup.
   const iframeDocRef = useRef<Document | null>(null);
@@ -452,35 +455,66 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
     onNavigateToSection: handleTtsNavigate,
   });
 
+  // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
+  // The EpubViewer wrapper animates its width when the sidebar opens/closes.
+  // Once the width settles, tell epub.js to re-measure its container and
+  // re-paginate. Fires on both open (narrow) and close (widen).
+  useEffect(() => {
+    const el = epubWrapperRef.current;
+    if (!el) return;
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName !== "width") return;
+      viewerRef.current?.resize();
+    };
+    el.addEventListener("transitionend", onEnd);
+    return () => el.removeEventListener("transitionend", onEnd);
+  }, []);
+
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}>
+    <div
+      data-sidebar-open={activeTool ? "true" : "false"}
+      className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}
+    >
       {/* Hidden audio element for TTS playback */}
       <audio ref={tts.audioRef} className="hidden" />
 
       {/* Error overlay */}
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
 
-      {/* EPUB viewer */}
+      {/* EPUB viewer — wrapped in a width-animating layer (Layer 1).
+          When the sidebar opens this div narrows by --reader-sidebar-w,
+          revealing the sidebar (z-20) underneath. The right-edge box-shadow
+          is constant; it's only visible once the wrapper moves off the
+          viewport's right edge (i.e., when the sidebar is open). */}
       {!error && (
-        <EpubViewer
-          ref={viewerRef}
-          url={epubUrl}
-          theme={readerTheme}
-          initialCfi={savedPosition?.cfi ?? null}
-          initialPosition={
-            savedPosition && !savedPosition.cfi ? savedPosition : null
-          }
-          onTocLoaded={handleTocLoaded}
-          onProgressChange={handleProgressChange}
-          onPositionChange={handlePositionChange}
-          onRenditionReady={handleRenditionReady}
-          onError={handleError}
-          onLoadChange={(loaded) => setIsLoaded(loaded)}
-          onTextSelected={handleTextSelected}
-          onSelectionCleared={handleSelectionCleared}
-          className="h-full w-full"
-        />
+        <div
+          ref={epubWrapperRef}
+          className={cn(
+            "relative z-30 h-full w-full overflow-hidden bg-background transition-[width] duration-[var(--reader-dur)] ease-reader",
+            "[box-shadow:12px_0_18px_-12px_rgba(43,28,17,0.35)]",
+            activeTool && "w-[calc(100%-var(--reader-sidebar-w)-var(--reader-rail-w))]",
+          )}
+        >
+          <EpubViewer
+            ref={viewerRef}
+            url={epubUrl}
+            theme={readerTheme}
+            initialCfi={savedPosition?.cfi ?? null}
+            initialPosition={
+              savedPosition && !savedPosition.cfi ? savedPosition : null
+            }
+            onTocLoaded={handleTocLoaded}
+            onProgressChange={handleProgressChange}
+            onPositionChange={handlePositionChange}
+            onRenditionReady={handleRenditionReady}
+            onError={handleError}
+            onLoadChange={(loaded) => setIsLoaded(loaded)}
+            onTextSelected={handleTextSelected}
+            onSelectionCleared={handleSelectionCleared}
+            className="h-full w-full"
+          />
+        </div>
       )}
 
       {/* Floating toolbar for text selection */}
@@ -513,6 +547,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
           <ReaderChrome
             bookTitle={bookTitle ?? "Loading..."}
             onBack={handleBack}
+            sidebarOpen={activeTool !== null}
             tocTrigger={
               <TocPanel
                 toc={toc}
@@ -567,7 +602,7 @@ export function ReaderClient({ bookId, bookTitle, epubUrl }: ReaderClientProps) 
               />
             }
           />
-          <ReadingProgress percentage={percentage} />
+          <ReadingProgress percentage={percentage} sidebarOpen={activeTool !== null} />
           <ReaderSidebar
             activeTool={activeTool}
             onToolClick={(id) =>

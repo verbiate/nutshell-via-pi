@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exported Page</title>
+<style>
+
+/* ============================================================
+   RESET + BASE
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #FEFBF5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+::selection {
+  background: rgba(120, 110, 90, 0.25);
+}
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+:root {
+  --bg: #FEFBF5;
+  --text: #292524;
+  /* stone-800 */
+  --text-strong: #1c1917;
+  /* stone-900 */
+  --text-muted: #78716c;
+  /* stone-500 */
+  --rule: rgba(168, 162, 158, 0.6);
+  /* stone-300/60 */
+  --green: #047857;
+  /* emerald-700 */
+  --green-hover: #065f46;
+  /* emerald-800 */
+  --red: #ef4444;
+  /* red-500 */
+  --red-active: #dc2626;
+  /* red-600 */
+  --red-ring: #fca5a5;
+  /* red-300 */
+  --blue-track: #bfdbfe;
+  /* blue-200 */
+  --blue-fill: #3b82f6;
+  /* blue-500 */
+  --serif: Georgia, "Times New Roman", "Songti SC", serif;
+  --nav-right: 24px;
+  /* right offset of nav column from viewport right */
+  --nav-btn-size: 48px;
+  /* w-12 h-12 */
+  --nav-gap: 24px;
+  /* gap between Layer 2 right edge and nav buttons (left side) */
+  --layer2-rest-right: calc(var(--nav-gap) + var(--nav-btn-size) + var(--nav-right));
+  /* 96px */
+}
+
+/* ============================================================
+   MAIN STAGE
+   ============================================================ */
+main {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ============================================================
+   LAYER 3 (z-0): empty backdrop / visual container for nav.
+   Same tan background as Layers 1 and 2. No drop shadow.
+   The red nav buttons sit on it with equal margins on both sides.
+   ============================================================ */
+.layer3 {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--bg);
+}
+
+/* ============================================================
+   LAYER 2 (z-10): sidebar.
+   Same tan background. Differentiated by right-edge drop shadow ONLY.
+   The CONTAINER is always at full opacity. Only its inner contents
+   fade in/out. Slides in from the right edge for parallax.
+   ============================================================ */
+.layer2 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 30vw;
+  right: var(--layer2-rest-right);
+  /* 96px from viewport right when at rest */
+  background: var(--bg);
+  /* offset-x=12, blur=12 → leftward Gaussian bleed = 0px.
+     Right-side shadow extends 12+12=24px to the right. */
+  box-shadow: 12px 0 12px rgba(0, 0, 0, 0.35), 6px 0 4px rgba(0, 0, 0, 0.2);
+  will-change: transform;
+}
+
+.layer2-inner {
+  height: 100%;
+  overflow-y: auto;
+  will-change: opacity;
+}
+
+.layer2-inner::-webkit-scrollbar {
+  width: 8px;
+}
+
+.layer2-inner::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.35);
+  border-radius: 4px;
+}
+
+.layer2-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+   LAYER 1 (z-20): main content area.
+   Same tan background. Differentiated by right-edge drop shadow
+   (animates in as the area narrows). overflow-hidden crops the
+   right column as it narrows.
+   ============================================================ */
+.layer1 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 100vw;
+  background: var(--bg);
+  overflow: hidden;
+  will-change: width, box-shadow;
+}
+
+/* ----- Header bar (transparent on tan Layer 1) ----- */
+.header-bar {
+  height: 64px;
+  /* h-16 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  /* px-6 */
+}
+
+.brand-pill,
+.close-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--green);
+  color: #ecfdf5;
+  /* emerald-50 */
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.15s ease;
+}
+
+.close-btn {
+  cursor: pointer;
+  will-change: opacity;
+}
+
+.close-btn:hover {
+  background: var(--green-hover);
+}
+
+.close-btn:disabled {
+  pointer-events: none;
+}
+
+.brand-pill svg,
+.close-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ----- Two columns of ebook text ----- */
+.spread {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 64px);
+}
+
+.column {
+  position: absolute;
+  top: 3vh;
+  width: 35vw;
+  height: 78vh;
+  overflow: hidden;
+  will-change: opacity;
+}
+
+.column.left {
+  left: 13vw;
+}
+
+.column.right {
+  left: 52vw;
+}
+
+/* ----- Ebook page typography ----- */
+.page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.page-title {
+  font-family: var(--serif);
+  font-size: 24px;
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.page-body {
+  flex: 1;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.page-body p {
+  margin-bottom: 16px;
+}
+
+.page-body p.dropcap::first-letter {
+  font-size: 48px;
+  font-weight: 700;
+  float: left;
+  margin-right: 8px;
+  line-height: 0.9;
+  color: var(--text-strong);
+}
+
+.page-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  color: var(--text-muted);
+}
+
+.page-footer .page-num {
+  font-family: var(--serif);
+  color: #44403c;
+  /* stone-700 */
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+/* ----- Blue reading-progress bar ----- */
+.progress-wrap {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38%;
+}
+
+.progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.progress-track {
+  background: var(--blue-track);
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: var(--blue-fill);
+  height: 100%;
+  border-radius: 999px;
+  width: 1%;
+}
+
+/* ============================================================
+   RED NAV ITEMS (z-30): fixed to right edge of viewport.
+   ============================================================ */
+.nav {
+  position: absolute;
+  right: var(--nav-right);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nav-btn {
+  position: relative;
+  width: var(--nav-btn-size);
+  height: var(--nav-btn-size);
+  border-radius: 6px;
+  background: var(--red);
+  color: white;
+  font-weight: 700;
+  font-size: 18px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.18);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.nav-btn:hover {
+  background: var(--red-active);
+  transform: scale(1.05);
+}
+
+.nav-btn.active {
+  background: var(--red-active);
+  transform: scale(1.1);
+  /* ring-4 + ring-offset-2 */
+  outline: 4px solid var(--red-ring);
+  outline-offset: 4px;
+  /* 2px offset + 2px to compensate for outline width */
+  box-shadow: 0 0 0 2px var(--bg), 0 4px 8px rgba(0, 0, 0, 0.18);
+}
+
+
+
+
+</style>
+</head>
+<body>
+
+<main>
+  <!-- ============================================================
+       LAYER 3 (z-0): empty backdrop / visual container for nav.
+       ============================================================ -->
+  <div class="layer3" aria-hidden="true"></div>
+
+  <!-- ============================================================
+       LAYER 2 (z-10): sidebar.
+       Container always full opacity; only inner content fades.
+       ============================================================ -->
+  <div class="layer2" id="layer2">
+    <div class="layer2-inner" id="layer2Inner">
+      <div id="sidebarContent"><!-- filled by JS --></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       LAYER 1 (z-20): main content area.
+       ============================================================ -->
+  <div class="layer1" id="layer1">
+    <!-- Header bar (transparent on tan) -->
+    <header class="header-bar">
+      <div class="brand-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+        <span>Reader</span>
+      </div>
+      <button class="close-btn" id="closeBtn" aria-label="Close sidebar" disabled="">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+        <span>Close</span>
+      </button>
+    </header>
+
+    <!-- Two columns of ebook text -->
+    <div class="spread">
+      <!-- Left column — static position -->
+      <div class="column left">
+        <div class="page">
+          <div class="page-header">
+            <div class="page-eyebrow">Chapter One</div>
+            <h1 class="page-title">The Beginning</h1>
+          </div>
+          <div class="page-body" id="leftBody"><!-- filled by JS --></div>
+          <div class="page-footer">
+            <span>The Reader</span>
+            <span class="page-num">2</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column (gets cropped + fades out). Stays put. -->
+      <div class="column right" id="rightColumn">
+        <div class="page">
+          <div class="page-body" id="rightBody" style="margin-top: 56px;"><!-- filled by JS --></div>
+          <div class="page-footer">
+            <span>The Reader</span>
+            <span class="page-num">3</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blue reading-progress bar -->
+      <div class="progress-wrap">
+        <div class="progress-meta">
+          <span>Page 2 of 218</span>
+          <span>1%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       RED NAV ITEMS (z-30): fixed to right edge of viewport.
+       ============================================================ -->
+  <nav class="nav" aria-label="Section navigation" id="nav">
+    <button class="nav-btn" data-section="1">1</button>
+    <button class="nav-btn" data-section="2">2</button>
+    <button class="nav-btn" data-section="3">3</button>
+    <button class="nav-btn" data-section="4">4</button>
+    <button class="nav-btn" data-section="5">5</button>
+  </nav>
+</main>
+
+
+
+<script>
+
+
+import { Pane } from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js';
+
+/* ============================================================
+   DATA — placeholder text
+   ============================================================ */
+const LOREM = [
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
+  'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+  'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.',
+  'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.',
+  'Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.',
+];
+
+const TOTAL_PAGES = 218;
+const SECTION_IDS = [1, 2, 3, 4, 5];
+
+/* ============================================================
+   ANIMATION ENGINE
+   A single `progress` value drives every visual property, exactly
+   like the Framer Motion React version. progress = 0 → State A,
+   progress = 1 → State C. Animating `progress` to a new target
+   mid-flight reverses direction smoothly (interruptible).
+
+   Easing: [0.4, 0, 0.2, 1] (cubic-bezier), 0.55s duration.
+   ============================================================ */
+/* ============================================================
+   TWEAKPANE PARAMS
+   ============================================================ */
+const defaultParams = Object.freeze({
+  duration: 300,
+  easeX1: 0.4, easeY1: 0, easeX2: 0.2, easeY2: 1,
+  contentWidthMin: 60,
+  sidebarXRest: 96,
+  l1ShadowAlpha1: 0.11, l1ShadowAlpha2: 0.11,
+  l1ShadowBlur1: 12, l1ShadowBlur2: 23,
+  l1ShadowOffset1: 17, l1ShadowOffset2: 36,
+  l2ShadowAlpha1: 0.11, l2ShadowAlpha2: 0.11,
+  l2ShadowBlur1: 12, l2ShadowBlur2: 23,
+  l2ShadowOffset1: 17, l2ShadowOffset2: 36,
+  // Per-element timing windows (start/end along 0..1 progress) + ease preset.
+  // 'inherit' uses the global cubic-bezier below; others are local to the element.
+  contentWidthStart: 0, contentWidthEnd: 1, contentWidthEase: 'inherit',
+  sidebarXStart: 0, sidebarXEnd: 1, sidebarXEase: 'inherit',
+  shadowStart: 0, shadowEnd: 1, shadowEase: 'inherit',
+  rightColStart: 0.15, rightColEnd: 0.6, rightColEase: 'inherit',
+  dismissStart: 0.45, dismissEnd: 1, dismissEase: 'inherit',
+  sidebarContentStart: 0, sidebarContentEnd: 1, sidebarContentEase: 'inherit',
+  navRight: 24, navBtnSize: 48, navGap: 24,
+});
+const params = { ...defaultParams };
+
+function reapplyAll() {
+  const rest = params.navGap + params.navBtnSize + params.navRight;
+  document.documentElement.style.setProperty('--nav-right', params.navRight + 'px');
+  document.documentElement.style.setProperty('--nav-btn-size', params.navBtnSize + 'px');
+  document.documentElement.style.setProperty('--nav-gap', params.navGap + 'px');
+  document.documentElement.style.setProperty('--layer2-rest-right', rest + 'px');
+  params.sidebarXRest = rest;
+  layer2.style.boxShadow =
+    `${params.l2ShadowOffset1}px 0 ${params.l2ShadowBlur1}px rgba(0,0,0,${params.l2ShadowAlpha1}), ` +
+    `${params.l2ShadowOffset2}px 0 ${params.l2ShadowBlur2}px rgba(0,0,0,${params.l2ShadowAlpha2})`;
+  render();
+}
+
+let progress = 0;
+let fromValue = 0;
+let toValue = 0;
+let startTime = 0;
+let rafId = null;
+let activeSection = 1;
+let sidebarReachable = false;
+
+// cubic-bezier evaluation (Bezier curve with control points P1, P2)
+function bezier(t, p1x, p1y, p2x, p2y) {
+  // Solve for t given x, then evaluate y at that t.
+  // Standard Newton-Raphson approach.
+  const cx = 3 * p1x;
+  const bx = 3 * (p2x - p1x) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * p1y;
+  const by = 3 * (p2y - p1y) - cy;
+  const ay = 1 - cy - by;
+
+  function sampleX(t) { return ((ax * t + bx) * t + cx) * t; }
+  function sampleY(t) { return ((ay * t + by) * t + cy) * t; }
+  function sampleDX(t) { return (3 * ax * t + 2 * bx) * t + cx; }
+
+  // The parameter `t` here is the input x to the easing curve.
+  // We solve for the corresponding y on the cubic bezier.
+  let guess = t;
+  for (let i = 0; i < 8; i++) {
+    const cx2 = sampleX(guess) - t;
+    if (Math.abs(cx2) < 1e-6) break;
+    const dx = sampleDX(guess);
+    if (Math.abs(dx) < 1e-6) break;
+    guess -= cx2 / dx;
+  }
+  return sampleY(Math.max(0, Math.min(1, guess)));
+}
+
+function animateTo(target) {
+  fromValue = progress;
+  toValue = target;
+  startTime = performance.now();
+  if (rafId === null) {
+    rafId = requestAnimationFrame(tick);
+  }
+}
+
+// progress advances LINEARLY in time; easing is applied per-element in derived().
+function tick(now) {
+  const elapsed = now - startTime;
+  const t = Math.min(1, elapsed / params.duration);
+  progress = fromValue + (toValue - fromValue) * t;
+  render();
+
+  if (t < 1) {
+    rafId = requestAnimationFrame(tick);
+  } else {
+    rafId = null;
+  }
+}
+
+/* ============================================================
+   DERIVED VALUES (match the React useTransform chains)
+   ============================================================ */
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+/* Per-element easing presets. 'inherit' defers to the global cubic-bezier. */
+const EASE_FNS = {
+  linear: (t) => t,
+  easeIn: (t) => t * t,
+  easeOut: (t) => 1 - (1 - t) * (1 - t),
+  easeInOut: (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
+  inherit: (t) => bezier(t, params.easeX1, params.easeY1, params.easeX2, params.easeY2),
+};
+
+/* Map global progress p to a 0..1 local window [start..end], then apply ease. */
+function windowed(p, start, end, easeName) {
+  if (end <= start) return p >= end ? 1 : 0;
+  let local = (p - start) / (end - start);
+  local = local < 0 ? 0 : local > 1 ? 1 : local;
+  return (EASE_FNS[easeName] || EASE_FNS.inherit)(local);
+}
+
+function derived(p) {
+  return {
+    contentWidth: lerp(100, params.contentWidthMin, windowed(p, params.contentWidthStart, params.contentWidthEnd, params.contentWidthEase)),
+    rightColOpacity: 1 - windowed(p, params.rightColStart, params.rightColEnd, params.rightColEase),
+    dismissBtnOpacity: windowed(p, params.dismissStart, params.dismissEnd, params.dismissEase),
+    sidebarContentOpacity: windowed(p, params.sidebarContentStart, params.sidebarContentEnd, params.sidebarContentEase),
+    sidebarX: lerp(params.sidebarXRest, 0, windowed(p, params.sidebarXStart, params.sidebarXEnd, params.sidebarXEase)),
+    shadowFactor: windowed(p, params.shadowStart, params.shadowEnd, params.shadowEase),
+  };
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const layer1 = document.getElementById('layer1');
+const layer2 = document.getElementById('layer2');
+const layer2Inner = document.getElementById('layer2Inner');
+const rightColumn = document.getElementById('rightColumn');
+const closeBtn = document.getElementById('closeBtn');
+const navButtons = document.querySelectorAll('.nav-btn');
+const sidebarContent = document.getElementById('sidebarContent');
+
+function render() {
+  const d = derived(progress);
+
+  // Layer 1: width + box-shadow (animates in)
+  layer1.style.width = d.contentWidth + 'vw';
+  const shadowAlpha1 = params.l1ShadowAlpha1 * d.shadowFactor;
+  const shadowAlpha2 = params.l1ShadowAlpha2 * d.shadowFactor;
+  layer1.style.boxShadow =
+    d.shadowFactor > 0.001
+      ? `${params.l1ShadowOffset1}px 0 ${params.l1ShadowBlur1}px rgba(0,0,0,${shadowAlpha1}), ${params.l1ShadowOffset2}px 0 ${params.l1ShadowBlur2}px rgba(0,0,0,${shadowAlpha2})`
+      : 'none';
+
+  // Layer 2: translateX (container is full opacity)
+  layer2.style.transform = `translateX(${d.sidebarX}px)`;
+
+  // Layer 2 inner: opacity
+  layer2Inner.style.opacity = d.sidebarContentOpacity;
+
+  // Right column: opacity
+  rightColumn.style.opacity = d.rightColOpacity;
+
+  // Close button: opacity + disabled state
+  closeBtn.style.opacity = d.dismissBtnOpacity;
+  const newReachable = progress > 0.4;
+  if (newReachable !== sidebarReachable) {
+    sidebarReachable = newReachable;
+    closeBtn.disabled = !newReachable;
+    updateNavActiveState();
+  }
+}
+
+function updateNavActiveState() {
+  navButtons.forEach((btn) => {
+    const id = parseInt(btn.dataset.section, 10);
+    if (id === activeSection && sidebarReachable) {
+      btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
+    } else {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+    }
+  });
+}
+
+/* ============================================================
+   CONTENT BUILDERS
+   ============================================================ */
+function buildLeftColumn() {
+  const body = document.getElementById('leftBody');
+  body.innerHTML = '';
+  const p1 = document.createElement('p');
+  p1.className = 'dropcap';
+  p1.textContent = LOREM[0];
+  const p2 = document.createElement('p');
+  p2.textContent = LOREM[1];
+  const p3 = document.createElement('p');
+  p3.textContent = LOREM[2];
+  body.append(p1, p2, p3);
+}
+
+function buildRightColumn() {
+  const body = document.getElementById('rightBody');
+  body.innerHTML = '';
+  [LOREM[3], LOREM[4], LOREM[0], LOREM[1]].forEach((text) => {
+    const p = document.createElement('p');
+    p.textContent = text;
+    body.appendChild(p);
+  });
+}
+
+function buildSidebarContent(sectionId) {
+  sidebarContent.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.style.padding = '28px 28px 64px';
+  const h = document.createElement('h2');
+  h.textContent = 'Section ' + sectionId;
+  h.style.fontSize = '30px';
+  h.style.fontWeight = '700';
+  h.style.color = 'var(--text-strong)';
+  h.style.marginBottom = '24px';
+  wrap.appendChild(h);
+  const body = document.createElement('div');
+  body.style.fontSize = '14px';
+  body.style.lineHeight = '1.625';
+  body.style.color = 'var(--text-strong)';
+  // duplicate LOREM to make the sidebar scrollable
+  [...LOREM, ...LOREM].forEach((text) => {
+    const p = document.createElement('p');
+    p.textContent = text;
+    p.style.marginBottom = '12px';
+    body.appendChild(p);
+  });
+  wrap.appendChild(body);
+  sidebarContent.appendChild(wrap);
+}
+
+/* ============================================================
+   INTERACTIONS
+   - Click nav button N:
+     - If sidebar is mostly open AND N is already active → close (toggle off)
+     - Otherwise: switch to N (if different) and ensure open
+   - Click Close button: close
+   All animations are interruptible: animateTo() starts from the
+   current progress value, so mid-flight clicks reverse direction.
+   ============================================================ */
+function toggleOrSwitch(n) {
+  if (progress > 0.5 && activeSection === n) {
+    animateTo(0);
+    return;
+  }
+  if (activeSection !== n) {
+    activeSection = n;
+    buildSidebarContent(n);
+    updateNavActiveState();
+  }
+  animateTo(1);
+}
+
+function closeSidebar() {
+  animateTo(0);
+}
+
+navButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    toggleOrSwitch(parseInt(btn.dataset.section, 10));
+  });
+});
+closeBtn.addEventListener('click', closeSidebar);
+
+/* ============================================================
+   TWEAKPANE PANEL
+   ============================================================ */
+const pane = new Pane({ title: 'Sidebar Controls', expanded: false });
+const bindings = {};
+
+function addResetButton(binding, key) {
+  setTimeout(() => {
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'tp-reset-button';
+    resetBtn.textContent = '⟲';
+    resetBtn.title = 'Reset to default';
+    resetBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      params[key] = defaultParams[key];
+      binding.refresh();
+      reapplyAll();
+    });
+    const textInput = binding.element.querySelector('.tp-txtv');
+    if (textInput) {
+      textInput.style.display = 'flex';
+      textInput.style.alignItems = 'center';
+      textInput.appendChild(resetBtn);
+    }
+  }, 50);
+}
+
+function enableUnclampedEntry(binding, key, config) {
+  const hasRange = config && (config.min !== undefined || config.max !== undefined);
+  if (!hasRange) return false;
+
+  let lastTypedRaw = null;
+
+  setTimeout(() => {
+    const input = binding.element.querySelector('.tp-txtv_i');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const v = parseFloat(input.value);
+      if (!isNaN(v)) lastTypedRaw = v;
+    });
+    function deferredOverrideCheck() {
+      setTimeout(() => {
+        if (lastTypedRaw === null) return;
+        const raw = lastTypedRaw;
+        lastTypedRaw = null;
+        if (params[key] !== raw) {
+          params[key] = raw;
+          reapplyAll();
+        }
+        const fix = () => { if (input.value != raw) input.value = raw; };
+        fix();
+        requestAnimationFrame(fix);
+        setTimeout(fix, 16);
+      }, 0);
+    }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') deferredOverrideCheck();
+    }, true);
+    input.addEventListener('blur', deferredOverrideCheck, true);
+  }, 50);
+
+  binding.on('change', (ev) => {
+    params[key] = ev.value;
+    reapplyAll();
+  });
+
+  const originalRefresh = binding.refresh.bind(binding);
+  binding.refresh = () => {
+    const saved = params[key];
+    originalRefresh();
+    if (typeof saved === 'number' && params[key] !== saved) {
+      params[key] = saved;
+      setTimeout(() => {
+        const input = binding.element.querySelector('.tp-txtv_i');
+        if (input) input.value = saved;
+      }, 0);
+    }
+  };
+  return true;
+}
+
+function addBindingWithReset(target, key, config) {
+  const binding = target.addBinding(params, key, config);
+  const hasUnclampedHandler = enableUnclampedEntry(binding, key, config);
+  if (!hasUnclampedHandler) {
+    binding.on('change', (ev) => {
+      params[key] = ev.value;
+      reapplyAll();
+    });
+  }
+  addResetButton(binding, key);
+  bindings[key] = binding;
+  return binding;
+}
+
+// Shared dropdown options for per-element easing presets.
+const EASE_OPTIONS = {
+  'Inherit (global bézier)': 'inherit',
+  'Linear': 'linear',
+  'Ease In (quad)': 'easeIn',
+  'Ease Out (quad)': 'easeOut',
+  'Ease In-Out (quad)': 'easeInOut',
+};
+
+// Global animation timeline.
+const fAnim = pane.addFolder({ title: 'Global Timeline', expanded: true });
+addBindingWithReset(fAnim, 'duration', { min: 100, max: 2000, step: 10, label: 'Duration (ms)' });
+addBindingWithReset(fAnim, 'easeX1', { min: 0, max: 1, step: 0.01, label: 'Master Ease X1' });
+addBindingWithReset(fAnim, 'easeY1', { min: 0, max: 1, step: 0.01, label: 'Master Ease Y1' });
+addBindingWithReset(fAnim, 'easeX2', { min: 0, max: 1, step: 0.01, label: 'Master Ease X2' });
+addBindingWithReset(fAnim, 'easeY2', { min: 0, max: 1, step: 0.01, label: 'Master Ease Y2' });
+
+// Per-element timing folders. start/end are positions on the 0..1 progress bar.
+const fContent = pane.addFolder({ title: 'Content Width (Layer 1)', expanded: true });
+addBindingWithReset(fContent, 'contentWidthMin', { min: 30, max: 90, step: 1, label: 'Open Width (vw)' });
+addBindingWithReset(fContent, 'contentWidthStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fContent, 'contentWidthEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fContent, 'contentWidthEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+const fSlide = pane.addFolder({ title: 'Sidebar Slide (Layer 2)', expanded: true });
+addBindingWithReset(fSlide, 'sidebarXStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fSlide, 'sidebarXEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fSlide, 'sidebarXEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+const fShadowT = pane.addFolder({ title: 'Shadow Fade-in (Layer 1)', expanded: false });
+addBindingWithReset(fShadowT, 'shadowStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fShadowT, 'shadowEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fShadowT, 'shadowEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+const fRightCol = pane.addFolder({ title: 'Right Column Fade', expanded: true });
+addBindingWithReset(fRightCol, 'rightColStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fRightCol, 'rightColEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fRightCol, 'rightColEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+const fDismiss = pane.addFolder({ title: 'Dismiss Button Fade', expanded: true });
+addBindingWithReset(fDismiss, 'dismissStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fDismiss, 'dismissEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fDismiss, 'dismissEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+const fSidebarC = pane.addFolder({ title: 'Sidebar Content Fade', expanded: true });
+addBindingWithReset(fSidebarC, 'sidebarContentStart', { min: 0, max: 1, step: 0.01, label: 'Start @' });
+addBindingWithReset(fSidebarC, 'sidebarContentEnd', { min: 0, max: 1, step: 0.01, label: 'End @' });
+addBindingWithReset(fSidebarC, 'sidebarContentEase', { options: EASE_OPTIONS, label: 'Ease' });
+
+// Shadow style folders.
+const fL1 = pane.addFolder({ title: 'Layer 1 Shadow Style', expanded: false });
+addBindingWithReset(fL1, 'l1ShadowAlpha1', { min: 0, max: 1, step: 0.01, label: 'Alpha 1' });
+addBindingWithReset(fL1, 'l1ShadowAlpha2', { min: 0, max: 1, step: 0.01, label: 'Alpha 2' });
+addBindingWithReset(fL1, 'l1ShadowBlur1', { min: 0, max: 60, step: 1, label: 'Blur 1 (px)' });
+addBindingWithReset(fL1, 'l1ShadowBlur2', { min: 0, max: 60, step: 1, label: 'Blur 2 (px)' });
+addBindingWithReset(fL1, 'l1ShadowOffset1', { min: 0, max: 60, step: 1, label: 'Offset 1 (px)' });
+addBindingWithReset(fL1, 'l1ShadowOffset2', { min: 0, max: 60, step: 1, label: 'Offset 2 (px)' });
+
+const fL2 = pane.addFolder({ title: 'Layer 2 Shadow Style', expanded: false });
+addBindingWithReset(fL2, 'l2ShadowAlpha1', { min: 0, max: 1, step: 0.01, label: 'Alpha 1' });
+addBindingWithReset(fL2, 'l2ShadowAlpha2', { min: 0, max: 1, step: 0.01, label: 'Alpha 2' });
+addBindingWithReset(fL2, 'l2ShadowBlur1', { min: 0, max: 60, step: 1, label: 'Blur 1 (px)' });
+addBindingWithReset(fL2, 'l2ShadowBlur2', { min: 0, max: 60, step: 1, label: 'Blur 2 (px)' });
+addBindingWithReset(fL2, 'l2ShadowOffset1', { min: 0, max: 60, step: 1, label: 'Offset 1 (px)' });
+addBindingWithReset(fL2, 'l2ShadowOffset2', { min: 0, max: 60, step: 1, label: 'Offset 2 (px)' });
+
+// Nav folder
+const fNav = pane.addFolder({ title: 'Nav', expanded: false });
+addBindingWithReset(fNav, 'navRight', { min: 0, max: 100, step: 1, label: 'Right Offset (px)' });
+addBindingWithReset(fNav, 'navBtnSize', { min: 20, max: 100, step: 1, label: 'Button Size (px)' });
+addBindingWithReset(fNav, 'navGap', { min: 0, max: 100, step: 1, label: 'Gap (px)' });
+
+// Copy / Paste buttons
+const copyBtn = pane.addButton({ title: 'Copy Parameters' });
+copyBtn.on('click', () => {
+  const json = JSON.stringify(params, null, 2);
+  const btnEl = copyBtn.element.querySelector('.tp-btnv_b');
+  const original = btnEl?.textContent || 'Copy Parameters';
+  const showFeedback = (success) => {
+    if (btnEl) {
+      btnEl.textContent = success ? '✓ Copied!' : '✗ Failed';
+      setTimeout(() => btnEl.textContent = original, 1500);
+    }
+  };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(json)
+      .then(() => showFeedback(true))
+      .catch(() => fallbackCopy(json, showFeedback));
+  } else {
+    fallbackCopy(json, showFeedback);
+  }
+});
+
+function fallbackCopy(text, callback) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { callback(document.execCommand('copy')); } catch { callback(false); }
+  document.body.removeChild(ta);
+}
+
+const pasteBtn = pane.addButton({ title: 'Paste Parameters' });
+pasteBtn.on('click', async () => {
+  const btnEl = pasteBtn.element.querySelector('.tp-btnv_b');
+  const original = btnEl?.textContent || 'Paste Parameters';
+  const showFeedback = (msg, duration = 1500) => {
+    if (btnEl) {
+      btnEl.textContent = msg;
+      setTimeout(() => btnEl.textContent = original, duration);
+    }
+  };
+  try {
+    const text = await navigator.clipboard.readText();
+    const incoming = JSON.parse(text);
+    let applied = 0;
+    for (const key of Object.keys(incoming)) {
+      if (key in defaultParams && typeof incoming[key] === typeof defaultParams[key]) {
+        params[key] = incoming[key];
+        if (bindings[key]) bindings[key].refresh();
+        applied++;
+      }
+    }
+    reapplyAll();
+    showFeedback(applied > 0 ? `✓ Applied ${applied} param${applied === 1 ? '' : 's'}` : '⚠ No matching keys');
+  } catch (err) {
+    showFeedback(err.name === 'SyntaxError' ? '✗ Invalid JSON' : '✗ Clipboard denied');
+  }
+});
+
+/* ============================================================
+   DRAGGABLE PANE
+   ============================================================ */
+const DRAG_THRESHOLD = 5;
+let isDragging = false;
+let dragStartPos = { x: 0, y: 0 };
+let pointerOffset = { x: 0, y: 0 };
+let paneElement = null;
+let titleElement = null;
+let suppressNextClick = false;
+
+function startDrag(e) {
+  if (!paneElement) return;
+  const rect = paneElement.getBoundingClientRect();
+  dragStartPos = { x: e.clientX, y: e.clientY };
+  pointerOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  isDragging = false;
+  document.addEventListener('mousemove', handleDrag, { passive: false });
+  document.addEventListener('mouseup', stopDrag, { passive: false });
+}
+function handleDrag(e) {
+  const dist = Math.hypot(e.clientX - dragStartPos.x, e.clientY - dragStartPos.y);
+  if (!isDragging && dist > DRAG_THRESHOLD) {
+    isDragging = true;
+    suppressNextClick = true;
+    paneElement.style.position = 'fixed';
+    paneElement.style.right = 'auto';
+    paneElement.style.bottom = 'auto';
+  }
+  if (isDragging) {
+    e.preventDefault();
+    paneElement.style.left = `${e.clientX - pointerOffset.x}px`;
+    paneElement.style.top = `${e.clientY - pointerOffset.y}px`;
+  }
+}
+function stopDrag(e) {
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', stopDrag);
+  if (isDragging) { e.preventDefault(); e.stopPropagation(); }
+  isDragging = false;
+}
+setTimeout(() => {
+  paneElement = document.querySelector('.tp-rotv');
+  if (!paneElement) return;
+  // main has no stacking context, so the layers' z-indexes (0/10/20/30) sit in
+  // the root context. A static pane would render below all of them. Pin it.
+  paneElement.style.zIndex = '1000';
+  paneElement.style.position = 'fixed';
+  paneElement.style.top = '24px';
+  paneElement.style.right = '24px';
+  titleElement = paneElement.querySelector('.tp-rotv_t');
+  if (!titleElement) return;
+  titleElement.style.cursor = 'grab';
+  titleElement.addEventListener('mousedown', startDrag);
+  titleElement.addEventListener('click', (e) => {
+    if (suppressNextClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      suppressNextClick = false;
+    }
+  }, true);
+}, 100);
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildLeftColumn();
+buildRightColumn();
+buildSidebarContent(activeSection);
+reapplyAll();
+
+
+
+</script>
+</body>
+</html>

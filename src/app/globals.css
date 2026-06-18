@@ -71,6 +71,9 @@
 
     --shadow-card: 0 1px 0 rgba(43,28,17,.04), 0 18px 40px -28px rgba(43,28,17,.35);
     --shadow-float: 0 24px 60px -30px rgba(43,28,17,.45);
+
+    /* Reader sidebar animation — matches .wip-reference/sidebar-example-b.html */
+    --ease-reader: cubic-bezier(.5, 0, .2, 1);
 }
 
 :root {
@@ -154,6 +157,11 @@
     --sidebar-accent-foreground: #2B1C11;
     --sidebar-border: #E7DFCC;
     --sidebar-ring: #7E70EA;
+
+    /* Reader sidebar geometry + motion tokens */
+    --reader-sidebar-w: 320px;
+    --reader-rail-w: 94px;
+    --reader-dur: 250ms;
 }
 
 .dark {
@@ -223,6 +231,10 @@
     --sidebar-accent-foreground: #5b4636;
     --sidebar-border: #d4c5a9;
     --sidebar-ring: #7E70EA;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root { --reader-dur: 1ms; }
 }
 
 @keyframes fadeInWord {

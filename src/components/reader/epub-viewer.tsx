@@ -37,6 +37,7 @@ export interface EpubViewerHandle {
   clearSelection: () => void;
   addHighlight: (cfi: string, color?: string) => void;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
+  resize: () => void;
 }
 
 export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
@@ -112,6 +113,11 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         renditionRef.current.display(cfi).catch((err: Error) =>
           console.warn("[EpubViewer] navigateToParagraph failed:", err)
         );
+      },
+      resize: () => {
+        // ponytail: no args — epub.js re-measures the container, so it picks up
+        // the post-transition width automatically. Called on sidebar transitionend.
+        renditionRef.current?.resize();
       },
     }));
 

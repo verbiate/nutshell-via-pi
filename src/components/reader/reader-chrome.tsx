@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface ReaderChromeProps {
   bookTitle: string;
@@ -13,6 +14,7 @@ export interface ReaderChromeProps {
   bookmarkSaveTrigger?: ReactNode;
   searchTrigger?: ReactNode;
   ttsTrigger?: ReactNode;
+  sidebarOpen?: boolean;
 }
 
 export function ReaderChrome({
@@ -24,10 +26,16 @@ export function ReaderChrome({
   bookmarkSaveTrigger,
   searchTrigger,
   ttsTrigger,
+  sidebarOpen = false,
 }: ReaderChromeProps) {
   return (
     <header
-      className="absolute top-0 left-0 right-0 sm:right-[60px] z-50 flex h-12 items-center justify-between px-4 sm:px-6"
+      className={cn(
+        "absolute top-0 left-0 z-50 flex h-12 items-center justify-between px-4 transition-[right] duration-[var(--reader-dur)] ease-reader sm:px-6",
+        sidebarOpen
+          ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w))]"
+          : "sm:right-[var(--reader-rail-w)]",
+      )}
       role="banner"
     >
       {/* Left group: back + ToC + bookmark save + bookmarks */}
