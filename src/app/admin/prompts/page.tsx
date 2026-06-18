@@ -23,7 +23,7 @@ export default function PromptTemplatesPage() {
 
   return (
     <div>
-      <h1 className="text-[20px] font-semibold text-slate-900">
+      <h1 className="text-[20px] font-semibold text-foreground">
         Prompt Templates
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">

@@ -17,12 +17,12 @@ export default async function ProfilePage() {
       <div className="flex items-center gap-6">
         <Avatar size="lg" className="h-20 w-20">
           <AvatarImage src={user.image || undefined} alt={user.name || ""} />
-          <AvatarFallback className="bg-slate-200 text-xl">
+          <AvatarFallback className="bg-muted text-xl">
             {initials}
           </AvatarFallback>
         </Avatar>
         <div>
-          <h1 className="text-[28px] font-semibold text-slate-900">
+          <h1 className="text-[28px] font-semibold text-foreground">
             {user.name || "User"}
           </h1>
           <p className="mt-1 text-base text-muted-foreground">{user.email}</p>

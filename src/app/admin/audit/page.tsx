@@ -23,7 +23,7 @@ export default function AuditLogPage() {
 
   return (
     <div>
-      <h1 className="text-[20px] font-semibold text-slate-900">Audit Log</h1>
+      <h1 className="text-[20px] font-semibold text-foreground">Audit Log</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Record of all admin actions
       </p>
@@ -45,18 +45,18 @@ export default function AuditLogPage() {
               ? Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell colSpan={6} className="h-12">
-                      <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                      <div className="h-4 w-full animate-pulse rounded bg-muted" />
                     </TableCell>
                   </TableRow>
                 ))
               : logs.map((log: any) => (
-                  <TableRow key={log.id} className="hover:bg-slate-50">
+                  <TableRow key={log.id} className="hover:bg-background">
                     <TableCell className="whitespace-nowrap text-sm">
                       {new Date(log.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>{log.actor?.name || log.actorId}</TableCell>
                     <TableCell>
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium">
+                        <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium">
                         {log.action}
                       </span>
                     </TableCell>

@@ -105,7 +105,7 @@ function ConfigRow({
 export default function ConfigPage() {
   return (
     <div>
-      <h1 className="text-[20px] font-semibold text-slate-900">API Keys & Models</h1>
+      <h1 className="text-[20px] font-semibold text-foreground">API Keys & Models</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Configure TTS providers and AI model assignments per user tier
       </p>

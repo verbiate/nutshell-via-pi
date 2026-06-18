@@ -21,14 +21,14 @@ export function UserNav() {
   const [profileOpen, setProfileOpen] = useState(false);
 
   if (isPending) {
-    return <div className="h-8 w-8 animate-pulse rounded-full bg-slate-200" />;
+    return <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />;
   }
 
   if (!user) {
     return (
       <Link
         href="/login"
-        className="text-sm font-medium text-slate-900 hover:text-slate-700"
+        className="text-sm font-medium text-foreground hover:text-foreground"
       >
         Sign in
       </Link>
@@ -47,10 +47,10 @@ export function UserNav() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-2 rounded-full p-1 hover:bg-slate-100">
+          <button className="flex items-center gap-2 rounded-full p-1 hover:bg-muted">
             <Avatar className="h-8 w-8">
               <AvatarImage src={user.image || undefined} alt={user.name || ""} />
-              <AvatarFallback className="bg-slate-200 text-xs">
+              <AvatarFallback className="bg-muted text-xs">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -88,7 +88,7 @@ export function UserNav() {
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="cursor-pointer text-red-600"
+            className="cursor-pointer text-destructive"
             onClick={() => signOut()}
           >
             <LogOut className="mr-2 h-4 w-4" />

@@ -17,15 +17,15 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="hidden w-[260px] flex-shrink-0 border-r border-slate-200 bg-slate-100 lg:block">
+      <aside className="hidden w-[260px] flex-shrink-0 border-r border-border bg-muted lg:block">
         <div className="p-4">
-          <h2 className="text-[20px] font-semibold text-slate-900">Admin</h2>
+          <h2 className="text-[20px] font-semibold text-foreground">Admin</h2>
         </div>
         <AdminSidebar />
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-slate-50 p-8">{children}</main>
+      <main className="flex-1 overflow-auto bg-background p-8">{children}</main>
     </div>
   );
 }

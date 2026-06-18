@@ -7,7 +7,7 @@ export function LoginButton() {
   return (
     <Button
       onClick={() => signIn.social({ provider: "google" })}
-      className="bg-slate-900 text-white hover:bg-slate-800"
+      className="bg-primary text-white hover:bg-primary/90"
       size="lg"
     >
       <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">

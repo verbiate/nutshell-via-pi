@@ -28,8 +28,8 @@ export function AdminSidebar() {
             className={cn(
               "flex h-10 items-center gap-2 rounded-md px-4 text-sm",
               isActive
-                ? "bg-slate-900 text-white border-l-[3px] border-slate-900"
-                : "text-slate-600 hover:bg-slate-200 border-l-[3px] border-transparent"
+                ? "bg-primary text-white border-l-[3px] border-primary"
+                : "text-muted-foreground hover:bg-muted border-l-[3px] border-transparent"
             )}
           >
             <item.icon className="h-[18px] w-[18px]" />

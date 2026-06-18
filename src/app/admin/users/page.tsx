@@ -75,7 +75,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <h1 className="text-[20px] font-semibold text-slate-900">Users</h1>
+      <h1 className="text-[20px] font-semibold text-foreground">Users</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Manage user roles and access
       </p>
@@ -111,12 +111,12 @@ export default function UsersPage() {
               ? Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell colSpan={5} className="h-12">
-                      <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                      <div className="h-4 w-full animate-pulse rounded bg-muted" />
                     </TableCell>
                   </TableRow>
                 ))
               : users.map((user) => (
-                  <TableRow key={user.id} className="hover:bg-slate-50">
+                  <TableRow key={user.id} className="hover:bg-background">
                     <TableCell className="font-medium">
                       {user.name || "Unknown"}
                     </TableCell>

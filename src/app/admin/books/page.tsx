@@ -23,7 +23,7 @@ export default function AdminBooksPage() {
 
   return (
     <div>
-      <h1 className="text-[20px] font-semibold text-slate-900">
+      <h1 className="text-[20px] font-semibold text-foreground">
         Universal Library
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
@@ -47,12 +47,12 @@ export default function AdminBooksPage() {
               ? Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell colSpan={6} className="h-12">
-                      <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                      <div className="h-4 w-full animate-pulse rounded bg-muted" />
                     </TableCell>
                   </TableRow>
                 ))
               : books.map((book: any) => (
-                  <TableRow key={book.id} className="hover:bg-slate-50">
+                  <TableRow key={book.id} className="hover:bg-background">
                     <TableCell className="font-medium">{book.title}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {book.author || "Unknown"}

@@ -16,7 +16,7 @@ export function RoleBadge({ role }: RoleBadgeProps) {
         </Badge>
       );
     case "pro":
-      return <Badge className="bg-slate-900 text-white">Pro</Badge>;
+      return <Badge className="bg-primary text-white">Pro</Badge>;
     case "regular":
     default:
       return null;

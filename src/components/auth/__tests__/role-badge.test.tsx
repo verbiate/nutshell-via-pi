@@ -10,7 +10,7 @@ describe("POL-05: RoleBadge", () => {
   it("renders Pro badge for pro role", () => {
     const html = render(<RoleBadge role="pro" />);
     expect(html).toContain("Pro");
-    expect(html).toContain("bg-slate-900");
+    expect(html).toContain("bg-primary");
   });
 
   it("renders Admin badge with Shield icon for admin role", () => {
