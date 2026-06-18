@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nutshell — Component Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* Surfaces — eyedropper estimates from the screenshots */
+    --paper:#FBF7EC;
+    --paper-deep:#F4EEDC;
+    --card:#FFFDF8;
+    --card-plain:#FFFFFF;
+
+    /* Ink */
+    --espresso:#2B1C11;
+    --ink:#33271B;
+    --muted:#9B8A76;
+    --line:#E7DFCC;
+    --line-soft:#EFE9D8;
+
+    /* Lavender active state */
+    --lav:#7E70EA;
+    --lav-soft:#ECE8FB;
+    --lav-ring:#C8C1F4;
+
+    /* Signature gradient */
+    --g1:#FF7A4D;
+    --g2:#FF4E8C;
+    --g3:#C932A6;
+    --grad:linear-gradient(90deg,var(--g1),var(--g2) 55%,var(--g3));
+
+    /* Brand accents */
+    --b-orange:#FF7A4D;
+    --b-magenta:#E541C9;
+    --b-purple:#8A6FE8;
+    --b-blue:#2EA6F0;
+    --b-teal:#3FD9B0;
+
+    /* Highlighter set */
+    --hl-yellow:#EAC85B;
+    --hl-teal:#5FC5AE;
+    --hl-pink:#E79AB7;
+    --hl-green:#7FC98C;
+    --hl-blue:#6FA8E0;
+    --hl-purple:#B49BE8;
+
+    /* Status */
+    --warn:linear-gradient(90deg,#FF6A5E,#FF2E7E);
+    --success:linear-gradient(90deg,#4FD18B,#2FA86A);
+
+    --r-sm:10px; --r-md:16px; --r-lg:22px; --r-pill:999px;
+    --shadow-card:0 1px 0 rgba(43,28,17,.04), 0 18px 40px -28px rgba(43,28,17,.35);
+    --shadow-float:0 24px 60px -30px rgba(43,28,17,.45);
+    --ui:"DM Sans",system-ui,sans-serif;
+    --serif:"IBM Plex Serif",Georgia,serif;
+  }
+
+  *{box-sizing:border-box}
+  html{ -webkit-text-size-adjust:100% }
+  body{
+    margin:0;
+    font-family:var(--ui);
+    color:var(--ink);
+    background:var(--paper);
+    /* iridescent wash bleeding from the top, like the app chrome */
+    background-image:
+      radial-gradient(120% 60% at 18% -8%, rgba(126,112,234,.16), transparent 60%),
+      radial-gradient(90% 55% at 78% -10%, rgba(255,78,140,.14), transparent 58%),
+      radial-gradient(70% 50% at 50% -12%, rgba(46,166,240,.12), transparent 60%);
+    background-repeat:no-repeat;
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+
+  .wrap{max-width:1080px;margin:0 auto;padding:56px 28px 120px}
+
+  /* ---------- page intro ---------- */
+  .masthead{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:14px}
+  .logo{font-family:var(--ui);font-weight:700;font-size:34px;letter-spacing:-.02em;color:var(--espresso);line-height:1;display:inline-flex;align-items:center;gap:.04em}
+  .logo .br{color:var(--lav);font-weight:700;transform:scaleY(1.35);display:inline-block;transform-origin:center}
+  .logo .br.l{color:var(--b-teal)}
+  .logo .br.r{color:var(--lav)}
+  .kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:14px}
+  .title{font-family:var(--serif);font-weight:500;font-size:40px;line-height:1.05;color:var(--espresso);margin:.18em 0 .25em;letter-spacing:-.01em}
+  .lede{max-width:60ch;color:#5e5142;font-size:15.5px}
+  .lede code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--paper-deep);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:.85em;color:var(--espresso)}
+
+  /* ---------- section scaffold ---------- */
+  section.block{margin-top:54px;opacity:0;transform:translateY(14px)}
+  .reveal{animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .seclabel{display:flex;align-items:baseline;gap:12px;margin-bottom:20px}
+  .seclabel h2{font-family:var(--serif);font-weight:500;font-size:23px;color:var(--espresso);margin:0;letter-spacing:-.01em}
+  .seclabel .num{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--muted);font-variant-numeric:tabular-nums}
+  .seclabel .rule{flex:1;height:1px;background:var(--line)}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-card);padding:26px}
+  .grid{display:grid;gap:18px}
+  .cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .caption{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px}
+
+  /* ---------- swatches ---------- */
+  .swatches{display:flex;flex-wrap:wrap;gap:14px}
+  .sw{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+  .chip{width:74px;height:54px;border-radius:14px;border:1px solid rgba(43,28,17,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+  .sw small{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .sw b{font-size:12px;color:var(--ink);font-weight:600}
+  .dotrow{display:flex;gap:12px;align-items:center}
+  .dot{width:34px;height:34px;border-radius:50%}
+
+  /* ---------- type specimen ---------- */
+  .specimen{display:grid;gap:18px}
+  .spec-serif{font-family:var(--serif)}
+  .spec-line{display:flex;align-items:baseline;gap:16px;border-bottom:1px dashed var(--line);padding-bottom:14px}
+  .spec-line .tag{font-size:11px;color:var(--muted);min-width:120px;letter-spacing:.04em}
+  .body-serif{font-family:var(--serif);font-size:16px;line-height:1.62;color:var(--ink);max-width:62ch;text-align:justify;hyphens:auto}
+  .body-serif .it{font-style:italic}
+
+  /* ---------- buttons ---------- */
+  .btnrow{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  button{font-family:var(--ui);cursor:pointer;border:none;background:none}
+  .btn{display:inline-flex;align-items:center;gap:10px;font-size:15px;font-weight:600;border-radius:var(--r-pill);padding:14px 22px;transition:transform .15s ease, box-shadow .2s ease, background .2s ease;color:var(--espresso)}
+  .btn:active{transform:translateY(1px)}
+  .btn-dark{background:var(--espresso);color:#FBF7EC;box-shadow:0 10px 26px -14px rgba(43,28,17,.8)}
+  .btn-dark:hover{box-shadow:0 14px 30px -12px rgba(43,28,17,.9)}
+  .btn-grad{background:var(--grad);color:#fff;box-shadow:0 12px 28px -12px rgba(201,50,166,.6)}
+  .btn-grad:hover{filter:saturate(1.08)}
+  .btn-outline{background:var(--card-plain);border:1px solid var(--line);color:var(--espresso)}
+  .btn-outline:hover{border-color:#d8cdb2;background:#fff}
+  .btn .ic{display:inline-flex}
+  .iconbtn{width:42px;height:42px;border-radius:50%;display:inline-grid;place-items:center;border:1px solid var(--line);background:var(--card-plain);color:var(--espresso);transition:.18s}
+  .iconbtn:hover{border-color:var(--lav-ring);color:var(--lav)}
+
+  /* ---------- segmented / tabs ---------- */
+  .segment{display:inline-flex;background:var(--paper-deep);border:1px solid var(--line);border-radius:14px;padding:5px;gap:4px}
+  .segment button{font-size:14px;font-weight:600;color:#7a6c5b;padding:10px 20px;border-radius:10px;transition:.16s}
+  .segment button[aria-pressed="true"]{background:var(--card-plain);color:var(--espresso);box-shadow:0 2px 6px -2px rgba(43,28,17,.25)}
+
+  .underbar{display:flex;gap:26px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .underbar button{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--muted);padding:0 1px 12px;position:relative;text-transform:uppercase}
+  .underbar button[aria-pressed="true"]{color:var(--espresso)}
+  .underbar button[aria-pressed="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--espresso);border-radius:2px}
+
+  /* ---------- right rail ---------- */
+  .rail{display:inline-flex;flex-direction:column;gap:14px;padding:14px;background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0));border-radius:30px}
+  .rail .nav{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--card-plain);color:#6f6253;transition:.18s;cursor:pointer}
+  .rail .nav:hover{color:var(--espresso);border-color:#d8cdb2}
+  .rail .nav[aria-current="true"]{background:var(--lav-soft);border-color:var(--lav-ring);color:var(--lav);box-shadow:0 0 0 4px rgba(126,112,234,.12)}
+
+  /* ---------- book card ---------- */
+  .shelf{display:flex;gap:22px;flex-wrap:wrap}
+  .book{width:128px;cursor:pointer}
+  .book .cover{aspect-ratio:3/4.2;border-radius:6px 9px 9px 6px;box-shadow:-3px 0 0 rgba(0,0,0,.12) inset, 0 14px 26px -16px rgba(43,28,17,.6);display:flex;flex-direction:column;justify-content:space-between;padding:14px 14px 16px;color:#fff;transition:transform .2s ease}
+  .book:hover .cover{transform:translateY(-4px)}
+  .book .ttl{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.1;letter-spacing:.01em}
+  .book .ath{font-size:11px;opacity:.85;letter-spacing:.02em}
+  .prog{height:3px;border-radius:3px;background:var(--line);margin-top:11px;overflow:hidden}
+  .prog > i{display:block;height:100%;background:var(--grad);border-radius:3px}
+  .cv-a{background:linear-gradient(150deg,#3b6ea5,#21456e)}
+  .cv-b{background:linear-gradient(150deg,#1c1c22,#3a2740)}
+  .cv-c{background:linear-gradient(150deg,#f2c94c,#e89b1f);color:#2b1c11}
+  .cv-c .ath{opacity:.7}
+
+  /* ---------- chapter rows ---------- */
+  .clist{display:flex;flex-direction:column}
+  .crow{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:14px 4px;border-bottom:1px solid var(--line-soft)}
+  .crow:last-child{border-bottom:none}
+  .crow .meta .ch{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .crow .meta .nm{font-family:var(--serif);font-size:17px;color:var(--ink);margin-top:2px}
+  .crow.current .meta .nm{font-weight:600;color:var(--espresso)}
+  .crow .acts{display:flex;align-items:center;gap:8px;color:#8a7c6b}
+  .crow .acts .mini{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;transition:.15s;cursor:pointer}
+  .crow .acts .mini:hover{background:var(--paper-deep);color:var(--espresso)}
+  .crow.current .acts .play{background:var(--espresso);color:#FBF7EC}
+  .crow.current .acts .play:hover{background:var(--espresso);color:#fff}
+  .crow .arrow{color:var(--espresso);font-weight:700;margin-right:2px}
+
+  /* ---------- notes / highlights ---------- */
+  .group-h{display:flex;align-items:center;gap:8px;margin:18px 0 4px;font-size:13px;font-weight:700;color:var(--espresso)}
+  .group-h .cnt{font-size:11px;font-weight:700;color:var(--muted);background:var(--paper-deep);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-variant-numeric:tabular-nums}
+  .group-h .chev{color:var(--muted)}
+  .note{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line-soft)}
+  .note .body{padding-left:14px;border-left:3px solid var(--hl-teal)}
+  .note .quote{font-family:var(--serif);font-size:15px;color:var(--ink);line-height:1.4}
+  .note .pg{font-size:10.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-top:5px}
+  .hl-yellow{border-left-color:var(--hl-yellow)!important}
+  .hl-teal{border-left-color:var(--hl-teal)!important}
+  .hl-pink{border-left-color:var(--hl-pink)!important}
+  .more{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;color:#8a7c6b;cursor:pointer;transition:.15s;background:var(--card-plain)}
+  .more:hover{border-color:var(--lav-ring);color:var(--lav)}
+
+  /* ---------- settings controls ---------- */
+  .field{margin-bottom:26px}
+  .field > .caption{margin-bottom:14px}
+  .pagecolors{display:flex;gap:16px;align-items:center}
+  .pc{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);cursor:pointer;transition:.16s}
+  .pc[aria-checked="true"]{box-shadow:0 0 0 2px var(--espresso)}
+  .pc .core{width:18px;height:18px;border-radius:50%}
+  .pc.cream{background:var(--paper)} .pc.cream .core{background:var(--espresso)}
+  .pc.white{background:#fff} .pc.white .core{background:transparent}
+  .pc.dark{background:var(--espresso)} .pc.dark .core{background:transparent}
+
+  .slider{display:flex;align-items:center;gap:16px}
+  .slider .lab{font-family:var(--serif);color:var(--muted)}
+  .slider .lab.sm{font-size:14px} .slider .lab.lg{font-size:24px}
+  .track{position:relative;flex:1;height:4px;background:var(--line);border-radius:4px;cursor:pointer}
+  .track .knob{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:var(--card-plain);border:1px solid var(--line);box-shadow:0 2px 6px -1px rgba(43,28,17,.4);transform:translate(-50%,-50%);transition:left .1s ease}
+  .track.grad-fill .fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:var(--grad)}
+  .track.grad-fill .knob{background:var(--card-plain)}
+
+  .ticktrack{position:relative;height:30px;display:flex;align-items:center}
+  .ticktrack .baseline{position:absolute;left:0;right:0;top:50%;height:2px;background:var(--line);border-radius:2px}
+  .ticktrack .tick{position:absolute;top:50%;width:7px;height:7px;border-radius:50%;background:#cdbfa6;transform:translate(-50%,-50%)}
+  .ticktrack .knob{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:var(--card-plain);border:1px solid var(--line);box-shadow:0 2px 6px -1px rgba(43,28,17,.4);transform:translate(-50%,-50%);cursor:pointer;z-index:2}
+  .speedlabels{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--muted);font-weight:600}
+  .speedlabels .on{color:var(--espresso)}
+  .speedlabels span{position:relative;text-align:center}
+  .speedlabels .center{font-size:10.5px;letter-spacing:.08em}
+
+  .alignset{display:flex;gap:20px;flex-wrap:wrap}
+  .alignset .grp{display:flex;background:var(--paper-deep);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .alignset .ab{width:46px;height:38px;border-radius:9px;display:grid;place-items:center;color:#8a7c6b;cursor:pointer;transition:.14s}
+  .alignset .ab[aria-pressed="true"]{background:var(--card-plain);color:var(--espresso);box-shadow:0 2px 5px -2px rgba(43,28,17,.3)}
+
+  /* ---------- scrubber ---------- */
+  .scrub{display:flex;align-items:center;gap:0;position:relative;height:40px}
+  .scrub .bar{flex:1;height:4px;border-radius:4px;background:var(--line);position:relative}
+  .scrub .bar .done{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:var(--grad)}
+  .scrub .bubble{position:absolute;top:50%;transform:translate(-50%,-50%);background:var(--card-plain);border:1px solid var(--line);border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700;color:var(--espresso);box-shadow:0 4px 10px -4px rgba(43,28,17,.4);font-variant-numeric:tabular-nums}
+
+  /* ---------- search ---------- */
+  .search{display:flex;align-items:center;gap:12px;background:var(--card-plain);border:1px solid var(--line);border-radius:var(--r-pill);padding:15px 22px;box-shadow:var(--shadow-float);color:#8a7c6b}
+  .search input{flex:1;border:none;outline:none;background:none;font-family:var(--ui);font-size:16px;color:var(--ink)}
+  .search input::placeholder{color:#a8997f}
+
+  .footnote{margin-top:60px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px}
+  .footnote b{color:var(--ink);font-weight:600}
+
+  svg{display:block}
+  @media (max-width:720px){
+    .cols-2,.cols-3{grid-template-columns:1fr}
+    .title{font-size:32px}
+    .body-serif{text-align:left}
+  }
+  @media (prefers-reduced-motion:reduce){
+    section.block{opacity:1;transform:none}
+    .reveal{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- MASTHEAD -->
+  <div class="masthead">
+    <div>
+      <div class="logo"><span class="br l">(</span>nutshell<span class="br r">)</span></div>
+      <div class="kicker">Component Gallery · iPad reader</div>
+      <h1 class="title">A reading surface with a quiet voice</h1>
+      <p class="lede">Every control here is drawn in the Nutshell system: warm paper, espresso ink, a coral-to-magenta accent reserved for progress and primary action, and a lavender ring for the active tool. UI text is set in <b>DM Sans</b>; book copy and headlines are set in <b>IBM Plex Serif</b>.</p>
+    </div>
+  </div>
+
+  <!-- 01 FOUNDATIONS -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">01</span><h2>Foundations</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <p class="caption">Surfaces &amp; ink</p>
+        <div class="swatches">
+          <div class="sw"><div class="chip" style="background:var(--paper)"></div><b>Paper</b><small>#FBF7EC</small></div>
+          <div class="sw"><div class="chip" style="background:var(--paper-deep)"></div><b>Paper deep</b><small>#F4EEDC</small></div>
+          <div class="sw"><div class="chip" style="background:var(--espresso)"></div><b>Espresso</b><small>#2B1C11</small></div>
+          <div class="sw"><div class="chip" style="background:var(--lav-soft)"></div><b>Lavender</b><small>#ECE8FB</small></div>
+          <div class="sw"><div class="chip" style="background:var(--lav)"></div><b>Active</b><small>#7E70EA</small></div>
+        </div>
+        <p class="caption" style="margin-top:24px">Brand accents</p>
+        <div class="dotrow">
+          <span class="dot" style="background:var(--b-orange)"></span>
+          <span class="dot" style="background:var(--b-magenta)"></span>
+          <span class="dot" style="background:var(--b-purple)"></span>
+          <span class="dot" style="background:var(--b-blue)"></span>
+          <span class="dot" style="background:var(--b-teal)"></span>
+          <span class="dot" style="width:64px;border-radius:999px;background:var(--grad)"></span>
+        </div>
+        <p class="caption" style="margin-top:24px">Status</p>
+        <div class="dotrow">
+          <span class="dot" style="width:90px;border-radius:999px;background:var(--warn)"></span><small style="color:var(--muted);font-size:12px">Warn</small>
+          <span class="dot" style="width:90px;border-radius:999px;background:var(--success);margin-left:8px"></span><small style="color:var(--muted);font-size:12px">Success</small>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="caption">Type — IBM Plex Serif &amp; DM Sans</p>
+        <div class="specimen">
+          <div class="spec-line"><span class="tag">Chapter eyebrow</span><span style="font-family:var(--ui);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700">CHAPTER 5</span></div>
+          <div class="spec-line"><span class="tag">Display / Serif 500</span><span class="spec-serif" style="font-size:30px;color:var(--espresso)">The Beginning</span></div>
+          <div class="spec-line"><span class="tag">UI label / Sans 600</span><span style="font-family:var(--ui);font-weight:600;font-size:16px;color:var(--ink)">Listen from here</span></div>
+          <div class="spec-line" style="border-bottom:none"><span class="tag">Reading / Serif 400</span><span class="spec-serif" style="font-size:16px;color:var(--ink)">Quid latine dictum sit, <span class="it">altum videtur.</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <p class="caption">Reading paragraph · justified, IBM Plex Serif</p>
+      <p class="body-serif">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi sit amet metus mollis, porttitor ante sed, pretium elit. Donec vulputate fermentum nisl, ut euismod mauris auctor dictum. Duis porta sapien eu orci consequat, et ornare metus pellentesque. Nulla luctus massa augue, id feugiat ex scelerisque vel. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; <span class="it">ipsum bibendum</span> tincidunt. Praesent dapibus metus quis porttitor pharetra.</p>
+    </div>
+  </section>
+
+  <!-- 02 ACTIONS -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">02</span><h2>Actions</h2><span class="rule"></span></div>
+    <div class="panel">
+      <p class="caption">Buttons</p>
+      <div class="btnrow">
+        <button class="btn btn-dark"><span class="ic" data-icon="play"></span> Listen from here</button>
+        <button class="btn btn-grad"><span class="ic" data-icon="play"></span> Listen now</button>
+        <button class="btn btn-outline"><span class="ic" data-icon="bulb"></span> Ask the book</button>
+        <button class="btn btn-outline"><span class="ic" data-icon="bookmark"></span> Add bookmark</button>
+        <button class="btn btn-dark"><span class="ic" data-icon="plus"></span> Add a book</button>
+      </div>
+      <p class="caption" style="margin-top:26px">Icon buttons</p>
+      <div class="btnrow">
+        <button class="iconbtn" data-icon="play" title="Play"></button>
+        <button class="iconbtn" data-icon="pause" title="Pause"></button>
+        <button class="iconbtn" data-icon="back15" title="Back 15"></button>
+        <button class="iconbtn" data-icon="fwd30" title="Forward 30"></button>
+        <button class="iconbtn" data-icon="more" title="More"></button>
+        <button class="iconbtn" data-icon="user" title="Account"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 NAVIGATION -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">03</span><h2>Navigation</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <p class="caption">Segmented — shelf tabs</p>
+        <div class="segment" role="tablist">
+          <button aria-pressed="true">Bookshelf</button>
+          <button aria-pressed="false">Explainers</button>
+          <button aria-pressed="false">Find more books</button>
+        </div>
+        <p class="caption" style="margin-top:26px">Sort — underline tabs</p>
+        <div class="underbar">
+          <button aria-pressed="true">Date</button>
+          <button aria-pressed="false">Chapter</button>
+          <button aria-pressed="false">Color</button>
+        </div>
+      </div>
+      <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:20px">
+        <div>
+          <p class="caption">Tool rail</p>
+          <p style="font-size:13.5px;color:#6f6253;max-width:30ch;margin:0">Reader, bookmarks, highlights, explainers, and book settings. The active tool carries the lavender ring.</p>
+        </div>
+        <div class="rail">
+          <div class="nav" data-icon="reader" aria-current="false"></div>
+          <div class="nav" data-icon="bookmark" aria-current="false"></div>
+          <div class="nav" data-icon="pen" aria-current="false"></div>
+          <div class="nav" data-icon="bulb" aria-current="true"></div>
+          <div class="nav" data-icon="aa" aria-current="false"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 BOOKSHELF -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">04</span><h2>Bookshelf</h2><span class="rule"></span></div>
+    <div class="panel">
+      <p class="caption">Book card · cover, title, author, progress</p>
+      <div class="shelf">
+        <div class="book"><div class="cover cv-a"><div><div class="ttl">Think Again</div></div><div class="ath">Adam Grant</div></div><div class="prog"><i style="width:62%"></i></div></div>
+        <div class="book"><div class="cover cv-b"><div><div class="ttl">Quantum Supremacy</div></div><div class="ath">Michio Kaku</div></div><div class="prog"><i style="width:18%"></i></div></div>
+        <div class="book"><div class="cover cv-c"><div><div class="ttl">Story Genius</div></div><div class="ath">Lisa Cron</div></div><div class="prog"><i style="width:90%"></i></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 CHAPTERS -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">05</span><h2>Chapters</h2><span class="rule"></span></div>
+    <div class="panel">
+      <p class="caption">Chapter list · current chapter emphasised</p>
+      <div class="clist">
+        <div class="crow"><div class="meta"><div class="ch">CH 4</div><div class="nm">Melchizedek</div></div><div class="acts"><span class="mini play" data-icon="play"></span><span class="mini" data-icon="bulb"></span><span class="mini" data-icon="more"></span></div></div>
+        <div class="crow current"><div class="meta"><div class="ch"><span class="arrow">&rsaquo;</span> CH 5</div><div class="nm">The Englishman</div></div><div class="acts"><span class="mini play" data-icon="play"></span><span class="mini" data-icon="bulb"></span><span class="mini" data-icon="more"></span></div></div>
+        <div class="crow"><div class="meta"><div class="ch">CH 6</div><div class="nm">The Alchemist</div></div><div class="acts"><span class="mini play" data-icon="play"></span><span class="mini" data-icon="bulb"></span><span class="mini" data-icon="more"></span></div></div>
+        <div class="crow"><div class="meta"><div class="ch">CH 7</div><div class="nm">The Oasis</div></div><div class="acts"><span class="mini play" data-icon="play"></span><span class="mini" data-icon="bulb"></span><span class="mini" data-icon="more"></span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 NOTES + BOOKMARKS -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">06</span><h2>Notes, Highlights &amp; Bookmarks</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <p class="caption">Highlight cards · color = source highlight</p>
+        <div class="group-h"><span class="chev" data-icon="chev"></span> Today <span class="cnt">3</span></div>
+        <div class="note"><div class="body hl-yellow"><div class="quote">We revere people who are “right,” but reward those who change their minds.</div><div class="pg">Page 19</div></div><span class="more" data-icon="more"></span></div>
+        <div class="note"><div class="body hl-teal"><div class="quote">Quid latine dictum sit, altum videtur.</div><div class="pg">Page 81</div></div><span class="more" data-icon="more"></span></div>
+        <div class="note"><div class="body hl-pink"><div class="quote">This reframes so many situations at work.</div><div class="pg">Page 82</div></div><span class="more" data-icon="more"></span></div>
+      </div>
+      <div class="panel">
+        <p class="caption">Bookmark list · grouped by chapter</p>
+        <div class="group-h"><span class="chev" data-icon="chev"></span> Chapter 1 <span class="cnt">2</span></div>
+        <div class="note"><div class="body" style="border-left:none;padding-left:0"><div class="quote" style="font-size:15px">Page 32</div></div><span class="more" data-icon="more"></span></div>
+        <div class="note"><div class="body" style="border-left:none;padding-left:0"><div class="quote" style="font-size:15px">Page 41</div></div><span class="more" data-icon="more"></span></div>
+        <div class="group-h" style="margin-top:14px"><span class="chev" data-icon="chev"></span> Chapter 2 <span class="cnt">5</span></div>
+        <div class="note"><div class="body" style="border-left:none;padding-left:0"><div class="quote" style="font-size:15px">Page 55</div></div><span class="more" data-icon="more"></span></div>
+        <div class="note"><div class="body" style="border-left:none;padding-left:0"><div class="quote" style="font-size:15px">Page 56</div></div><span class="more" data-icon="more"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 SETTINGS -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">07</span><h2>Book Settings</h2><span class="rule"></span></div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="field">
+          <p class="caption">Page color</p>
+          <div class="pagecolors" role="radiogroup">
+            <div class="pc cream" aria-checked="true" role="radio"><span class="core"></span></div>
+            <div class="pc white" aria-checked="false" role="radio"><span class="core"></span></div>
+            <div class="pc dark" aria-checked="false" role="radio"><span class="core"></span></div>
+          </div>
+        </div>
+        <div class="field">
+          <p class="caption">Text size</p>
+          <div class="slider">
+            <span class="lab sm">T</span>
+            <div class="track" data-track="size"><span class="knob" style="left:42%"></span></div>
+            <span class="lab lg">T</span>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <p class="caption">Typeface</p>
+          <div class="segment"><button aria-pressed="true">Serif</button><button aria-pressed="false">Sans</button><button aria-pressed="false">Publisher</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="field">
+          <p class="caption">Alignment &amp; spacing</p>
+          <div class="alignset">
+            <div class="grp"><div class="ab" aria-pressed="true" data-icon="alignl"></div><div class="ab" aria-pressed="false" data-icon="alignj"></div></div>
+            <div class="grp"><div class="ab" aria-pressed="true" data-icon="lead1"></div><div class="ab" aria-pressed="false" data-icon="lead2"></div><div class="ab" aria-pressed="false" data-icon="lead3"></div></div>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <p class="caption">Voice speed</p>
+          <div class="ticktrack" data-track="speed">
+            <div class="baseline"></div>
+            <span class="tick" style="left:2%"></span><span class="tick" style="left:27%"></span><span class="tick" style="left:50%"></span><span class="tick" style="left:73%"></span><span class="tick" style="left:98%"></span>
+            <span class="knob" style="left:27%"></span>
+          </div>
+          <div class="speedlabels"><span>0.5×</span><span class="center on">REGULAR<br>SPEED</span><span>1.25×</span><span>1.5×</span><span>2×</span></div>
+          <p class="caption" style="margin:24px 0 12px">Voice</p>
+          <div class="segment"><button aria-pressed="true">Val</button><button aria-pressed="false">Kim</button><button aria-pressed="false">Bo</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 PROGRESS + SEARCH -->
+  <section class="block" data-stagger>
+    <div class="seclabel"><span class="num">08</span><h2>Progress &amp; Search</h2><span class="rule"></span></div>
+    <div class="panel">
+      <p class="caption">Page scrubber · gradient fill, draggable page bubble</p>
+      <div class="scrub" data-track="scrub">
+        <div class="bar"><div class="done" style="width:38%"></div></div>
+        <div class="bubble" style="left:38%">121</div>
+      </div>
+      <p class="caption" style="margin-top:30px">Ask bar</p>
+      <div class="search"><span data-icon="bulb"></span><input placeholder="Search or ask your books" /></div>
+    </div>
+  </section>
+
+  <p class="footnote"><b>Notes for handoff.</b> Tokens live as CSS custom properties on <code>:root</code> — map them to your Tailwind theme and shadcn variables. Hex values are estimated from the screenshots; swap in the exact brand tokens when you wire this up. The serif/sans split, the lavender active ring, and the coral-to-magenta gradient reserved for primary action and progress are the three rules that keep the surface recognisably Nutshell.</p>
+
+</div>
+
+<script>
+/* ---- inline icon set (thin-stroke, matching the app rail) ---- */
+const I = {
+  play:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5Z"/></svg>',
+  pause:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>',
+  plus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  bulb:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M8.5 14.5A5.5 5.5 0 1 1 17 10c0 2-1 3.2-1.8 4.2-.5.7-.7 1.2-.7 1.8H9.5c0-.6-.2-1.1-.7-1.8"/></svg>',
+  bookmark:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M7 4h10a1 1 0 0 1 1 1v15l-6-3.6L6 20V5a1 1 0 0 1 1-1Z"/></svg>',
+  reader:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 6.5C10.5 5 8 4.5 4 5v12c4-.5 6.5 0 8 1.5 1.5-1.5 4-2 8-1.5V5c-4-.5-6.5 0-8 1.5Z"/><path d="M12 6.5v12"/></svg>',
+  pen:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 19l3-.8 9.3-9.3a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L4.8 15l-.8 3 1 1Z"/><path d="M13.5 6.5l3.8 3.8"/></svg>',
+  aa:'<svg width="20" height="14" viewBox="0 0 28 16" fill="currentColor"><text x="0" y="13" font-family="IBM Plex Serif, serif" font-size="15">Aa</text></svg>',
+  more:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>',
+  user:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5 20c.6-3.6 3.4-5.5 7-5.5s6.4 1.9 7 5.5"/></svg>',
+  back15:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4 7 8l4 4"/><path d="M7 8h7a5 5 0 1 1-5 5"/></svg>',
+  fwd30:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4l4 4-4 4"/><path d="M17 8h-7a5 5 0 1 0 5 5"/></svg>',
+  chev:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  alignl:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 7h14M5 11h9M5 15h12M5 19h7"/></svg>',
+  alignj:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 7h14M5 11h14M5 15h14M5 19h14"/></svg>',
+  lead1:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>',
+  lead2:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
+  lead3:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h14"/></svg>'
+};
+document.querySelectorAll('[data-icon]').forEach(el=>{ const k=el.getAttribute('data-icon'); if(I[k]) el.innerHTML=I[k]; });
+
+/* ---- segmented + underline + radio toggles ---- */
+function bindGroup(container, attr, exclusive=true){
+  const btns=[...container.children].filter(c=>c.matches('button,[role]'));
+}
+document.querySelectorAll('.segment,.underbar').forEach(g=>{
+  g.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+  }));
+});
+document.querySelectorAll('.alignset .grp').forEach(g=>{
+  g.querySelectorAll('.ab').forEach(b=>b.addEventListener('click',()=>{
+    g.querySelectorAll('.ab').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+  }));
+});
+document.querySelectorAll('.pagecolors').forEach(g=>{
+  g.querySelectorAll('.pc').forEach(b=>b.addEventListener('click',()=>{
+    g.querySelectorAll('.pc').forEach(x=>x.setAttribute('aria-checked','false'));
+    b.setAttribute('aria-checked','true');
+  }));
+});
+document.querySelectorAll('.rail .nav').forEach(b=>b.addEventListener('click',()=>{
+  b.parentElement.querySelectorAll('.nav').forEach(x=>x.setAttribute('aria-current','false'));
+  b.setAttribute('aria-current','true');
+}));
+
+/* ---- draggable sliders ---- */
+function dragTrack(track, onPct){
+  const move=(clientX)=>{
+    const r=track.getBoundingClientRect();
+    let p=Math.min(100,Math.max(0,((clientX-r.left)/r.width)*100));
+    onPct(p);
+  };
+  const down=(e)=>{
+    const x=e.touches?e.touches[0].clientX:e.clientX; move(x);
+    const mv=(ev)=>move(ev.touches?ev.touches[0].clientX:ev.clientX);
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('touchmove',mv);document.removeEventListener('mouseup',up);document.removeEventListener('touchend',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('touchmove',mv,{passive:false});
+    document.addEventListener('mouseup',up);document.addEventListener('touchend',up);
+  };
+  track.addEventListener('mousedown',down);track.addEventListener('touchstart',down,{passive:true});
+}
+const sizeTrack=document.querySelector('[data-track="size"]');
+if(sizeTrack){ const knob=sizeTrack.querySelector('.knob'); dragTrack(sizeTrack,p=>knob.style.left=p+'%'); }
+const speed=document.querySelector('[data-track="speed"]');
+if(speed){ const knob=speed.querySelector('.knob'); const stops=[2,27,50,73,98]; const labels=document.querySelectorAll('.speedlabels span');
+  dragTrack(speed,p=>{ let nearest=stops.reduce((a,b)=>Math.abs(b-p)<Math.abs(a-p)?b:a); knob.style.left=nearest+'%';
+    labels.forEach(l=>l.classList.remove('on')); labels[stops.indexOf(nearest)].classList.add('on'); }); }
+const scrub=document.querySelector('[data-track="scrub"]');
+if(scrub){ const bar=scrub.querySelector('.bar'); const done=scrub.querySelector('.done'); const bubble=scrub.querySelector('.bubble');
+  dragTrack(bar,p=>{ done.style.width=p+'%'; bubble.style.left=p+'%'; bubble.textContent=Math.round(8+p*3.1); }); }
+
+/* ---- staggered page-load reveal ---- */
+const blocks=[...document.querySelectorAll('[data-stagger]')];
+if(window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+  blocks.forEach(b=>b.style.opacity=1);
+}else{
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('reveal'); io.unobserve(e.target);} });},{threshold:.12});
+  blocks.forEach((b,i)=>{ b.style.animationDelay=(i%3)*0.06+'s'; io.observe(b); });
+}
+</script>
+</body>
+</html>
