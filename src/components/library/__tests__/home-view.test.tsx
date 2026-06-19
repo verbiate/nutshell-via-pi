@@ -46,13 +46,15 @@ describe("HomeView", () => {
     expect(html).toContain("pb-[138px]");
   });
 
-  it("mirrors the page grid gap so the bar centers exactly over the book column", () => {
+  it("centers the search bar within the bookshelf scroll column at lg", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
-    const row = html.match(/class="([^"]*max-w-\[1280px\][^"]*)"/)?.[1] ?? null;
+    // Bar now lives inside the scrollable book column; inner row just centers.
+    const row = html.match(/class="([^"]*h-full items-center justify-center px-8[^"]*)"/)?.[1] ?? null;
     expect(row).not.toBeNull();
-    expect(row!).toContain("gap-6");
+    // The old 2fr page-grid spacer must be gone.
+    expect(html).not.toContain("lg:flex-[2]");
   });
 });
 
@@ -79,7 +81,6 @@ describe("HomeView scroll containment (lg+)", () => {
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
     expect(html).toContain("lg:grid-rows-1");
-    expect(html).toContain("lg:items-stretch");
     expect(html).toContain("lg:flex-1");
   });
 
@@ -110,5 +111,15 @@ describe("HomeView scroll containment (lg+)", () => {
     expect(html).toContain("lg:sticky");
     expect(html).toContain("fixed");
     expect(html).toContain("bottom-0");
+  });
+
+  it("keeps DailyDigest at fixed height while stretching only the tab-content column", () => {
+    const html = render(
+      <HomeView userName="Mary" books={books} digestImage={null} />,
+    );
+    // ponytail: grid must NOT stretch all items (that fills the digest card);
+    // only the right-hand tab-content column opts in via self-stretch.
+    expect(html).not.toContain("lg:items-stretch");
+    expect(html).toContain("lg:self-stretch");
   });
 });

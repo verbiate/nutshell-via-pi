@@ -12,7 +12,7 @@ export default async function LibraryLayout({
 
   return (
     <div className="flex min-h-screen flex-col pt-12 lg:h-screen lg:overflow-hidden">
-      <header className="mx-auto flex h-16 shrink-0 max-w-[1280px] items-center justify-between px-8">
+      <header className="mx-auto flex h-16 w-full shrink-0 max-w-[1280px] items-center justify-between px-8">
         <Link href="/my-library">
           <img
             src="/images/nutshell_logo_chocolate.svg"
@@ -25,7 +25,7 @@ export default async function LibraryLayout({
           <UserNav />
         </div>
       </header>
-      <main className="mx-auto flex min-h-0 max-w-[1280px] flex-1 flex-col px-8 py-8">{children}</main>
+      <main className="mx-auto flex min-h-0 w-full max-w-[1280px] flex-1 flex-col px-8 py-8">{children}</main>
     </div>
   );
 }

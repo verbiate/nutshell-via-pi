@@ -57,5 +57,22 @@ describe("Library layout top bar", () => {
       const html = renderToStaticMarkup(tree);
       expect(html).toContain("shrink-0");
     });
+
+    // ponytail: header + main live in a flex column; without w-full, mx-auto
+    // shrinks them to content width and justify-between collapses.
+    it("makes the header and main fill the flex width up to the page max-width", async () => {
+      const tree = await LibraryLayout({ children: <main>kids</main> });
+      const html = renderToStaticMarkup(tree);
+      const header = html.match(/<header[^>]*class="([^"]*)"/)?.[1] ?? null;
+      expect(header).not.toBeNull();
+      expect(header!).toContain("w-full");
+      expect(header!).toContain("max-w-[1280px]");
+      expect(header!).toContain("justify-between");
+
+      const main = html.match(/<main[^>]*class="([^"]*)"/)?.[1] ?? null;
+      expect(main).not.toBeNull();
+      expect(main!).toContain("w-full");
+      expect(main!).toContain("max-w-[1280px]");
+    });
   });
 });
