@@ -33,26 +33,14 @@ export function ReaderChrome({
       role="banner"
     >
       <div className="flex items-center pointer-events-auto">
-        {sidebarOpen ? (
-          <Button
-            onClick={onBack}
-            aria-label="Back to bookshelf"
-            className="h-[46px] bg-transparent text-foreground"
-          >
-            <ChevronLeft className="mr-2 h-4 w-4" />
-            Bookshelf
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onBack}
-            aria-label="Back to library"
-            className="shrink-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-        )}
+        <Button
+          onClick={onBack}
+          aria-label="Back to bookshelf"
+          className="h-[46px] bg-transparent text-foreground"
+        >
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Bookshelf
+        </Button>
       </div>
 
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}

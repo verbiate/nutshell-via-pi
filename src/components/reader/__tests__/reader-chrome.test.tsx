@@ -18,9 +18,9 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(html).toContain("Bookshelf");
   });
 
-  it("hides Bookshelf label when sidebarOpen=false", () => {
+  it("renders Bookshelf label when sidebarOpen=false", () => {
     const html = render(<ReaderChrome {...baseProps} />);
-    expect(html).not.toContain("Bookshelf");
+    expect(html).toContain("Bookshelf");
   });
 
   it("never renders a book title in the top bar", () => {
