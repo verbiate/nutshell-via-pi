@@ -74,4 +74,24 @@ describe("Design system page", () => {
       expect(html).toContain("Your library is empty");
     });
   });
+
+  describe("Section 07 — Reader chrome", () => {
+    it("renders the ReaderChrome Bookshelf back button inside the frame", () => {
+      expect(render()).toContain("Bookshelf");
+    });
+
+    it("renders the ReadingProgress region with role=progressbar", () => {
+      expect(render()).toContain('role="progressbar"');
+    });
+
+    it("renders the initial 38% progress label", () => {
+      expect(render()).toContain("38%");
+    });
+
+    it("renders the TTS player mirror with the Play icon and a section label", () => {
+      const html = render();
+      expect(html).toContain("Section 1 · The Beginning");
+      expect(html).toContain('aria-label="Play"');
+    });
+  });
 });

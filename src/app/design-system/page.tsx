@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Play, Plus, Search } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Pause, Play, Plus, Search, Search as SearchIcon, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { BookCard } from "@/components/library/book-card";
 import { DailyDigest } from "@/components/library/daily-digest";
+import { ReaderChrome } from "@/components/reader/reader-chrome";
+import { ReadingProgress } from "@/components/reader/reading-progress";
 
 const SURFACES = [
   { name: "Paper", token: "bg-paper", hex: "#FBF7EC" },
@@ -41,6 +43,8 @@ function SectionLabel({ num, title }: { num: string; title: string }) {
 
 export default function DesignSystemPage() {
   const [sliderVal, setSliderVal] = React.useState<number[]>([62]);
+  const [progressVal, setProgressVal] = React.useState<number[]>([38]);
+  const [ttsPlaying, setTtsPlaying] = React.useState(false);
 
   return (
     <div className="min-h-screen text-ink">
@@ -435,6 +439,62 @@ export default function DesignSystemPage() {
               </Card>
             </div>
           </div>
+        </section>
+
+        {/* 07 Reader chrome */}
+        <section className="mb-14">
+          <SectionLabel num="07" title="Reader chrome" />
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardDescription>ReaderChrome + ReadingProgress + TtsPlayer mirror · all in a contained frame</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* ponytail: relative frame so absolute-positioned children anchor here, not the viewport. */}
+              <div className="relative h-[460px] overflow-hidden rounded-xl border border-line bg-paper">
+                <ReaderChrome
+                  onBack={() => {}}
+                  searchTrigger={
+                    <button aria-label="Search in book" className="flex h-[46px] w-[46px] items-center justify-center bg-transparent text-foreground">
+                      <SearchIcon className="h-4 w-4" />
+                    </button>
+                  }
+                  ttsTrigger={
+                    <button aria-label="Read aloud" className="flex h-[46px] w-[46px] items-center justify-center bg-transparent text-foreground">
+                      <Volume2 className="h-4 w-4" />
+                    </button>
+                  }
+                  sidebarOpen={false}
+                />
+                <ReadingProgress percentage={progressVal[0]} />
+
+                {/* ponytail: demo mirror — original TtsPlayer uses `fixed bottom-0` bound to reader viewport; mirrored here with relative so the showcase frame contains it. */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 flex h-16 items-center gap-3 border-t border-border bg-background/95 px-4 backdrop-blur-sm"
+                  role="region"
+                  aria-label="Audio player (demo mirror)"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setTtsPlaying((p) => !p)}
+                    aria-label={ttsPlaying ? "Pause" : "Play"}
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
+                  >
+                    {ttsPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  </button>
+                  <span className="truncate text-sm font-medium text-foreground">Section 1 · The Beginning</span>
+                  <div className="flex-1" />
+                  <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">0:00 / 4:12</span>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-3 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Scrub the progress bar
+                </p>
+                <Slider value={progressVal} onValueChange={setProgressVal} max={100} aria-label="Progress" />
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
         <footer className="mt-14 border-t border-line pt-5 text-xs text-muted-foreground">
