@@ -23,15 +23,16 @@ export function ReaderChrome({
   return (
     <header
       className={cn(
-        // ponytail: left margin = 48px from viewport; right margin = 48px from nav icons (closed) / sidebar (open).
-        "absolute top-12 left-0 z-50 flex h-12 items-center justify-between pl-12 pr-6 transition-[right] duration-[var(--reader-dur)] ease-reader",
+        // ponytail: full viewport width when closed (right-0) so the right group sits 48px from the
+        // viewport edge; pointer-events-none on the header keeps the rail below clickable.
+        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right] duration-[var(--reader-dur)] ease-reader",
         sidebarOpen
           ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
-          : "sm:right-[var(--reader-rail-w)]",
+          : "",
       )}
       role="banner"
     >
-      <div className="flex items-center">
+      <div className="flex items-center pointer-events-auto">
         {sidebarOpen ? (
           <Button
             onClick={onBack}
@@ -55,7 +56,7 @@ export function ReaderChrome({
       </div>
 
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 pointer-events-auto">
         {searchTrigger}
         {ttsTrigger}
         <div

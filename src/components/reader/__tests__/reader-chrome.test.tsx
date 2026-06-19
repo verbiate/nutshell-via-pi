@@ -53,7 +53,7 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(match).toBe(true);
   });
 
-  it("floats with 48px margins and accounts for the nav rail / sidebar", () => {
+  it("floats with 48px viewport margins when closed, 48px from sidebar when open", () => {
     const open = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
     const closed = render(<ReaderChrome {...baseProps} />);
     const closedHeader = closed.match(/<header[^>]*>/)?.[0];
@@ -64,16 +64,20 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     for (const html of [closedHeader!, openHeader!]) {
       expect(html).toContain("top-12");
       expect(html).not.toContain("top-0");
-      expect(html).toContain("pl-12");
-      expect(html).toContain("pr-6");
+      expect(html).toContain("px-12");
+      expect(html).toContain("pointer-events-none");
     }
 
-    // Closed: header stops at the rail; pr-6 puts the right group 48px clear of the nav icons.
-    expect(closedHeader!).toContain("sm:right-[var(--reader-rail-w)]");
-    // Open: header stops 48px before the sidebar.
+    // Closed: header spans full viewport width so the right group is 48px from the viewport edge.
+    expect(closedHeader!).toContain("right-0");
+    expect(closedHeader!).not.toContain("sm:right-[");
+    // Open: header right edge stops 48px before the sidebar.
     expect(openHeader!).toContain(
       "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
     );
+
+    // Interactive groups re-enable pointer events so buttons remain clickable.
+    expect(closed).toContain("pointer-events-auto");
   });
 
   it("Bookshelf and Hide-controls buttons share the Add-a-book class with no fill or border", () => {
