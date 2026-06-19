@@ -23,9 +23,10 @@ export function ReaderChrome({
   return (
     <header
       className={cn(
-        "absolute top-12 left-0 z-50 flex h-12 items-center justify-between px-12 transition-[right] duration-[var(--reader-dur)] ease-reader",
+        // ponytail: left margin = 48px from viewport; right margin = 48px from nav icons (closed) / sidebar (open).
+        "absolute top-12 left-0 z-50 flex h-12 items-center justify-between pl-12 pr-6 transition-[right] duration-[var(--reader-dur)] ease-reader",
         sidebarOpen
-          ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w))]"
+          ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
           : "sm:right-[var(--reader-rail-w)]",
       )}
       role="banner"

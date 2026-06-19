@@ -53,16 +53,27 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(match).toBe(true);
   });
 
-  it("floats with 48px margins from the top and sides (persisting across sidebar state)", () => {
+  it("floats with 48px margins and accounts for the nav rail / sidebar", () => {
     const open = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
     const closed = render(<ReaderChrome {...baseProps} />);
-    for (const html of [open, closed]) {
-      const header = html.match(/<header[^>]*>/)?.[0];
-      expect(header, "header opening tag should be present").toBeTruthy();
-      expect(header!).toContain("top-12");
-      expect(header!).toContain("px-12");
-      expect(header!).not.toContain("top-0");
+    const closedHeader = closed.match(/<header[^>]*>/)?.[0];
+    const openHeader = open.match(/<header[^>]*>/)?.[0];
+    expect(closedHeader, "closed header should be present").toBeTruthy();
+    expect(openHeader, "open header should be present").toBeTruthy();
+
+    for (const html of [closedHeader!, openHeader!]) {
+      expect(html).toContain("top-12");
+      expect(html).not.toContain("top-0");
+      expect(html).toContain("pl-12");
+      expect(html).toContain("pr-6");
     }
+
+    // Closed: header stops at the rail; pr-6 puts the right group 48px clear of the nav icons.
+    expect(closedHeader!).toContain("sm:right-[var(--reader-rail-w)]");
+    // Open: header stops 48px before the sidebar.
+    expect(openHeader!).toContain(
+      "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
+    );
   });
 
   it("Bookshelf and Hide-controls buttons share the Add-a-book class with no fill or border", () => {
