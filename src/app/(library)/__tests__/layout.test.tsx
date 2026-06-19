@@ -35,4 +35,27 @@ describe("Library layout top bar", () => {
     const html = renderToStaticMarkup(tree);
     expect(html).not.toContain("bg-lav");
   });
+
+  // ponytail: structural proxy for "page is locked, only inner regions scroll" at lg.
+  describe("app-shell scroll lock (lg+)", () => {
+    it("locks the viewport at lg so the body itself does not scroll", async () => {
+      const tree = await LibraryLayout({ children: <main>kids</main> });
+      const html = renderToStaticMarkup(tree);
+      expect(html).toContain("lg:h-screen");
+      expect(html).toContain("lg:overflow-hidden");
+    });
+
+    it("makes main a flex container that passes height down to the tab shell", async () => {
+      const tree = await LibraryLayout({ children: <main>kids</main> });
+      const html = renderToStaticMarkup(tree);
+      expect(html).toContain("flex-1");
+      expect(html).toContain("min-h-0");
+    });
+
+    it("keeps the header from compressing so it stays pinned", async () => {
+      const tree = await LibraryLayout({ children: <main>kids</main> });
+      const html = renderToStaticMarkup(tree);
+      expect(html).toContain("shrink-0");
+    });
+  });
 });

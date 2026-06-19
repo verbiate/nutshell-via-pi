@@ -54,8 +54,8 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
   const first = userName?.split(" ")[0] || "reader";
 
   return (
-    <Tabs defaultValue="bookshelf" className="w-full">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <Tabs defaultValue="bookshelf" className="flex w-full flex-col lg:min-h-0 lg:flex-1">
+      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-serif text-[34px] font-medium leading-tight text-espresso">
             {greeting}, {first}
@@ -71,14 +71,15 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
         </TabsList>
       </div>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[2fr_3fr]">
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[2fr_3fr] lg:grid-rows-1 lg:min-h-0 lg:flex-1 lg:items-stretch">
         <DailyDigest imageSrc={digestImage} />
-        <div>
-          <TabsContent value="bookshelf">
+        <div className="lg:relative lg:min-h-0 lg:overflow-hidden">
+          <TabsContent value="bookshelf" className="lg:absolute lg:inset-0 lg:overflow-y-auto">
             <div className="pb-[138px]">
               <Bookshelf books={books} />
             </div>
-            <div className="fixed inset-x-0 bottom-0 h-[138px]">
+            {/* ponytail: sticky to the bookshelf scroll box at lg; ceiling — on a near-empty shelf the bar sits at end of flow rather than pinned. Upgrade: lift as sibling overlay + controlled Tabs. */}
+            <div className="fixed inset-x-0 bottom-0 h-[138px] lg:sticky lg:bottom-0">
               <div className="absolute inset-0">
                 {BLUR_LAYERS.map((layer, i) => (
                   <div
@@ -117,8 +118,8 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
               </div>
             </div>
           </TabsContent>
-          <TabsContent value="explainers">
-            <div className="flex min-h-[50vh] flex-col items-center justify-center">
+          <TabsContent value="explainers" className="lg:absolute lg:inset-0 lg:overflow-y-auto">
+            <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
               <Sparkles className="h-16 w-16 text-muted-foreground" />
               <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
                 Explainers are brewing
@@ -128,8 +129,8 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
               </p>
             </div>
           </TabsContent>
-          <TabsContent value="find">
-            <div className="flex min-h-[50vh] flex-col items-center justify-center">
+          <TabsContent value="find" className="lg:absolute lg:inset-0 lg:overflow-y-auto">
+            <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
               <Compass className="h-16 w-16 text-muted-foreground" />
               <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
                 Find your next read
