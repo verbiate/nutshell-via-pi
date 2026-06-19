@@ -28,12 +28,13 @@ describe("HomeView", () => {
     expect(html).toContain("Search books");
   });
 
-  it("anchors the search region to a 138px blurred bottom bar", () => {
+  it("anchors the search region to a 138px progressively-blurred bottom bar", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
     expect(html).toContain("h-[138px]");
-    expect(html).toContain("backdrop-blur-[14px]");
+    expect(html).toContain("backdrop-filter:blur(");
+    expect(html).toContain("linear-gradient(to top,");
     expect(html).toContain("fixed");
     expect(html).toContain("bottom-0");
   });

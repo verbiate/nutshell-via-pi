@@ -11,8 +11,8 @@ export default async function LibraryLayout({
   await requireAuth();
 
   return (
-    <div className="min-h-screen">
-      <header className="flex h-16 items-center justify-between px-8">
+    <div className="min-h-screen pt-12">
+      <header className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-8">
         <Link href="/my-library">
           <img
             src="/images/nutshell_logo_chocolate.svg"

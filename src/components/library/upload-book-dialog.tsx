@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { Plus } from "lucide-react";
 import { VisuallyHidden } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +16,7 @@ export function UploadBookDialog() {
     <Dialog>
       <DialogTrigger asChild>
         <Button className="h-[46px] bg-white text-espresso hover:bg-white/90">
-          <Upload className="mr-2 h-4 w-4" />
+          <Plus className="mr-2 h-4 w-4 text-blue-600" />
           Add a book
         </Button>
       </DialogTrigger>

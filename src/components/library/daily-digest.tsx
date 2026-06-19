@@ -25,12 +25,12 @@ export function DailyDigest({ imageSrc }: DailyDigestProps) {
           />
         </>
       )}
-      <div className="relative flex flex-col justify-between p-8">
+      <div className="relative flex flex-col items-center justify-center gap-8 p-8 text-center">
         <div className="space-y-5">
           <img
             src="/images/nutshell_badge_white.svg"
             alt=""
-            className="h-6 w-auto"
+            className="mx-auto h-6 w-auto"
           />
           <p className="font-serif text-[24px] leading-snug">
             Your daily digest, ready when you are.
@@ -39,7 +39,7 @@ export function DailyDigest({ imageSrc }: DailyDigestProps) {
             A short audio catch-up from your shelf, brewed fresh.
           </p>
         </div>
-        <Button className="mt-8 w-fit bg-b-orange text-white hover:bg-b-orange/90">
+        <Button className="w-fit bg-b-orange text-white hover:bg-b-orange/90">
           <Headphones className="mr-2 h-4 w-4" />
           Listen now
         </Button>

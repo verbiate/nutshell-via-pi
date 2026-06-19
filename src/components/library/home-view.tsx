@@ -7,6 +7,30 @@ import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import type { LibraryBook } from "@/types/book";
 
+// ponytail: progressive blur = stacked masked backdrop-filter layers (geometric
+// blur staircase) + a tint gradient on top. Tunable via NUM/MAX/EXP/SOLID_STOP.
+const BLUR_LAYERS = (() => {
+  const numLayers = 4;
+  const maxBlur = 10;
+  const exponent = 2;
+  const bandWidth = 100 / (numLayers + 1);
+  const layers: { blur: number; mask: string }[] = [];
+  for (let i = 0; i < numLayers; i++) {
+    const normalized = exponent ** i / exponent ** (numLayers - 1);
+    const blur = maxBlur * normalized;
+    const fadeIn = i * bandWidth;
+    const peakIn = (i + 1) * bandWidth;
+    const peakOut = Math.min((i + 2) * bandWidth, 100);
+    const fadeOut = (i + 3) * bandWidth;
+    const isLast = fadeOut >= 100;
+    const mask = isLast
+      ? `linear-gradient(to bottom, rgba(0,0,0,0) ${fadeIn}%, rgba(0,0,0,1) ${peakIn}%, rgba(0,0,0,1) 100%)`
+      : `linear-gradient(to bottom, rgba(0,0,0,0) ${fadeIn}%, rgba(0,0,0,1) ${peakIn}%, rgba(0,0,0,1) ${peakOut}%, rgba(0,0,0,0) ${fadeOut}%)`;
+    layers.push({ blur, mask });
+  }
+  return layers;
+})();
+
 function timeGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -54,8 +78,29 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
             <div className="pb-[138px]">
               <Bookshelf books={books} />
             </div>
-            <div className="fixed inset-x-0 bottom-0 h-[138px] backdrop-blur-[14px] bg-paper/60">
-              <div className="mx-auto flex h-full max-w-[1280px] items-center gap-6 px-8">
+            <div className="fixed inset-x-0 bottom-0 h-[138px]">
+              <div className="absolute inset-0">
+                {BLUR_LAYERS.map((layer, i) => (
+                  <div
+                    key={i}
+                    className="absolute inset-0"
+                    style={{
+                      backdropFilter: `blur(${layer.blur}px)`,
+                      WebkitBackdropFilter: `blur(${layer.blur}px)`,
+                      maskImage: layer.mask,
+                      WebkitMaskImage: layer.mask,
+                    }}
+                  />
+                ))}
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      "linear-gradient(to top, color-mix(in srgb, var(--paper) 60%, transparent) 0%, color-mix(in srgb, var(--paper) 54%, transparent) 25%, transparent 100%)",
+                  }}
+                />
+              </div>
+              <div className="relative mx-auto flex h-full max-w-[1280px] items-center gap-6 px-8">
                 {/* ponytail: mirror the 2fr/3fr page grid so the bar centers over the book column */}
                 <div className="hidden lg:block lg:flex-[2]" aria-hidden />
                 <div className="flex flex-[3] justify-center">
