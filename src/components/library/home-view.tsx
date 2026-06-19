@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Sparkles, Compass } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import type { LibraryBook } from "@/types/book";
@@ -46,14 +47,36 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
         </TabsList>
       </div>
 
-      <TabsContent value="bookshelf">
-        <div className="mt-8 grid gap-6 lg:grid-cols-[2fr_3fr]">
-          <DailyDigest imageSrc={digestImage} />
-          <Bookshelf books={books} />
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[2fr_3fr]">
+        <DailyDigest imageSrc={digestImage} />
+        <div>
+          <TabsContent value="bookshelf">
+            <Bookshelf books={books} />
+          </TabsContent>
+          <TabsContent value="explainers">
+            <div className="flex min-h-[50vh] flex-col items-center justify-center">
+              <Sparkles className="h-16 w-16 text-muted-foreground" />
+              <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
+                Explainers are brewing
+              </h2>
+              <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
+                Your saved explainers will live here, ready to revisit anytime.
+              </p>
+            </div>
+          </TabsContent>
+          <TabsContent value="find">
+            <div className="flex min-h-[50vh] flex-col items-center justify-center">
+              <Compass className="h-16 w-16 text-muted-foreground" />
+              <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
+                Find your next read
+              </h2>
+              <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
+                Discover and add new books to your shelf from here.
+              </p>
+            </div>
+          </TabsContent>
         </div>
-      </TabsContent>
-      <TabsContent value="explainers" />
-      <TabsContent value="find" />
+      </div>
     </Tabs>
   );
 }

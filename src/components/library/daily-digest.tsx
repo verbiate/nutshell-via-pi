@@ -8,7 +8,7 @@ interface DailyDigestProps {
 export function DailyDigest({ imageSrc }: DailyDigestProps) {
   return (
     <aside
-      className={`relative flex h-full min-h-[320px] overflow-hidden rounded-2xl text-paper ${
+      className={`relative flex min-h-[320px] overflow-hidden rounded-2xl text-paper ${
         imageSrc ? "" : "bg-espresso"
       }`}
     >
