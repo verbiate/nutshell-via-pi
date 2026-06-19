@@ -142,6 +142,48 @@ function SectionLabel({ num, title }: { num: string; title: string }) {
   );
 }
 
+const TWEAKPANE_URL = "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js";
+type TweakpaneModule = typeof import("https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js");
+
+// ponytail: load Tweakpane by injecting a <script type="module"> at runtime
+// rather than dynamic import(). Turbopack intercepts import() calls even with
+// /* @vite-ignore */ (a Vite-only pragma) and crashes with
+// `__turbopack_context__.x is not a function`. The bundler never sees the URL
+// string inside an injected script's textContent, so the browser's native
+// module loader fetches Tweakpane directly. Cache on window so HMR re-runs
+// of the effect reuse the already-loaded module.
+function loadTweakpane(): Promise<TweakpaneModule> {
+  return new Promise((resolve, reject) => {
+    const w = window as unknown as { __tweakpaneMod?: TweakpaneModule };
+    if (w.__tweakpaneMod) {
+      resolve(w.__tweakpaneMod);
+      return;
+    }
+    const cleanup = () => {
+      window.removeEventListener("tweakpane:loaded", onReady);
+      clearTimeout(timer);
+    };
+    const onReady = () => {
+      cleanup();
+      if (w.__tweakpaneMod) resolve(w.__tweakpaneMod);
+      else reject(new Error("Tweakpane loaded event fired without module"));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Tweakpane script load timed out"));
+    }, 10000);
+    window.addEventListener("tweakpane:loaded", onReady);
+    const script = document.createElement("script");
+    script.type = "module";
+    script.textContent = `import * as mod from "${TWEAKPANE_URL}"; window.__tweakpaneMod = mod; window.dispatchEvent(new Event("tweakpane:loaded"));`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Tweakpane script load error"));
+    };
+    document.head.appendChild(script);
+  });
+}
+
 export default function DesignSystemPage() {
   const [sliderVal, setSliderVal] = React.useState<number[]>([62]);
   const [progressVal, setProgressVal] = React.useState<number[]>([38]);
@@ -200,10 +242,7 @@ export default function DesignSystemPage() {
     }
 
     (async () => {
-      const mod = await import(
-        /* @vite-ignore */
-        "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js"
-      );
+      const mod = await loadTweakpane();
       if (disposed) return;
       const { Pane } = mod;
 

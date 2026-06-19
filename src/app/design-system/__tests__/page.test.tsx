@@ -233,5 +233,18 @@ describe("Design system page", () => {
     it("wires a Paste Parameters button", () => {
       expect(PAGE_SRC).toContain("Paste Parameters");
     });
+
+    // ponytail: regression guard. Turbopack intercepts dynamic import() of a
+    // CDN URL (the /* @vite-ignore */ pragma is Vite-only, meaningless to
+    // Turbopack) and crashes at runtime with __turbopack_context__.x is not
+    // a function. The fix is to inject a <script type="module"> element at
+    // runtime so the bundler never sees the URL string.
+    it("does not load Tweakpane via intercepted dynamic import()", () => {
+      expect(PAGE_SRC).not.toContain("await import(");
+    });
+
+    it("loads Tweakpane via injected <script type=\"module\">", () => {
+      expect(PAGE_SRC).toContain('createElement("script")');
+    });
   });
 });
