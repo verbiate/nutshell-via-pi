@@ -85,6 +85,11 @@ describe("Design system page", () => {
       expect(render()).toContain("var(--book-hover-lift");
     });
 
+    it("lifts only the cover wrapper, not the whole card, on hover", () => {
+      const html = render();
+      expect(html).toContain(".ds-book-card:hover .ds-book-lift");
+    });
+
     it("consumes var(--tts-bar-h) on the TTS bar mirror", () => {
       expect(render()).toContain("var(--tts-bar-h");
     });

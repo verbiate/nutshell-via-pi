@@ -504,8 +504,9 @@ export default function DesignSystemPage() {
   return (
     <div className="ds-gallery min-h-screen text-ink">
       <style>{`
-.ds-gallery .ds-book-card { transition: transform 200ms ease-out; }
-.ds-gallery .ds-book-card:hover { transform: translateY(calc(-1 * var(--book-hover-lift, 1%))); }
+.ds-gallery .ds-book-lift { transition: transform 200ms ease-out; }
+.ds-gallery .ds-book-card:hover .ds-book-lift { transform: translateY(calc(-1 * var(--book-hover-lift, 1%))); }
+/* ponytail: shadow values hardcoded to mirror @utility shadow-book/shadow-book-lifted; re-point at the utilities if group-hover is ever restored. */
 .ds-gallery .ds-book-shadow { transition: box-shadow 200ms ease-out;
   box-shadow: 0 2px 2px rgba(0,0,0,.25), 0 8px 8px rgba(0,0,0,.22); }
 .ds-gallery .ds-book-card:hover .ds-book-shadow {
@@ -842,9 +843,9 @@ export default function DesignSystemPage() {
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6">
                   {/* ponytail: placeholder variant exercises the built-in fallback when there is no cover image. */}
                   <BookCard id="demo-0" title="The Rustic Drawer" author="Nutra Vell" coverPath={null} />
-                  {/* ponytail: demo-cover variants inline — BookCard's coverPath routes through /api/files/, which a public asset can't satisfy. Mirrors BookCard's classes verbatim so the shadow reads identically. */}
+                  {/* ponytail: demo-cover variants inline — BookCard's coverPath routes through /api/files/, which a public asset can't satisfy. Scoped .ds-book-card/.ds-book-lift/.ds-book-shadow classes mirror BookCard's hover lift + shadow via var(--book-hover-lift) so Tweakpane can dial it; real BookCard stays untouched. */}
                   <a href="/book/demo-1/reader" className="ds-book-card block rounded-md">
-                    <div className="">
+                    <div className="ds-book-lift">
                       <div className="overflow-hidden rounded-md bg-paper-deep ds-book-shadow">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
@@ -853,7 +854,7 @@ export default function DesignSystemPage() {
                   </a>
 
                   <a href="/book/demo-2/reader" className="ds-book-card block rounded-md">
-                    <div className="">
+                    <div className="ds-book-lift">
                       <div className="overflow-hidden rounded-md bg-paper-deep ds-book-shadow">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
