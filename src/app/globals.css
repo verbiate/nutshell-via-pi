@@ -105,16 +105,20 @@
     --b-teal: #3FD9B0;
 
     /* Highlighter set */
-    --hl-yellow: #EAC85B;
-    --hl-teal: #5FC5AE;
-    --hl-pink: #E79AB7;
+    --hl-yellow: #FEC405;
+    --hl-teal: #19E1CA;
+    --hl-pink: #F168F5;
     --hl-green: #7FC98C;
     --hl-blue: #6FA8E0;
     --hl-purple: #B49BE8;
 
     /* Status */
-    --warn: linear-gradient(90deg, #FF6A5E, #FF2E7E);
-    --success: linear-gradient(90deg, #4FD18B, #2FA86A);
+    --warn-from: #FF6A5E;
+    --warn-to: #FF2E7E;
+    --success-from: #4FD18B;
+    --success-to: #2FA86A;
+    --warn: linear-gradient(90deg, var(--warn-from), var(--warn-to));
+    --success: linear-gradient(90deg, var(--success-from), var(--success-to));
 
     /* Radii + warm shadows */
     --r-sm: 10px;
