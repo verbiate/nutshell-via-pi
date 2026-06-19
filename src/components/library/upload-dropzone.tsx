@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 import { ProcessingIndicator } from "./processing-indicator";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ interface UploadDropzoneProps {
 }
 
 export function UploadDropzone({ onUploadComplete }: UploadDropzoneProps) {
+  const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
@@ -66,6 +68,8 @@ export function UploadDropzone({ onUploadComplete }: UploadDropzoneProps) {
 
         toast.success(`${data.book.title} added to your library`);
 
+        // ponytail: refetch server-component book list (my-library/page.tsx) without a full reload
+        router.refresh();
         onUploadComplete?.(data.book);
       } catch (err: any) {
         setError(err.message || "Something went wrong");
