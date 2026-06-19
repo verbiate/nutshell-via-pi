@@ -53,6 +53,18 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(match).toBe(true);
   });
 
+  it("floats with 48px margins from the top and sides (persisting across sidebar state)", () => {
+    const open = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
+    const closed = render(<ReaderChrome {...baseProps} />);
+    for (const html of [open, closed]) {
+      const header = html.match(/<header[^>]*>/)?.[0];
+      expect(header, "header opening tag should be present").toBeTruthy();
+      expect(header!).toContain("top-12");
+      expect(header!).toContain("px-12");
+      expect(header!).not.toContain("top-0");
+    }
+  });
+
   it("Bookshelf and Hide-controls buttons share the Add-a-book class with no fill or border", () => {
     const html = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
     const bookshelfBtn = html.match(/<button[^>]*aria-label="Back to bookshelf"[^>]*>/)?.[0];

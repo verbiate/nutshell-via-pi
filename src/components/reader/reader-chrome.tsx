@@ -23,7 +23,7 @@ export function ReaderChrome({
   return (
     <header
       className={cn(
-        "absolute top-0 left-0 z-50 flex h-12 items-center justify-between px-4 transition-[right] duration-[var(--reader-dur)] ease-reader sm:px-6",
+        "absolute top-12 left-0 z-50 flex h-12 items-center justify-between px-12 transition-[right] duration-[var(--reader-dur)] ease-reader",
         sidebarOpen
           ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w))]"
           : "sm:right-[var(--reader-rail-w)]",
