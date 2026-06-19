@@ -126,4 +126,28 @@ describe("Design system page", () => {
       expect(html).toContain("Voice Adjustments");
     });
   });
+
+  describe("Section 09 — Selection & settings", () => {
+    it("renders the FloatingToolbar mirror with Ask and Copy actions", () => {
+      const html = render();
+      expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
+      expect(html).toContain("Ask about this");
+      expect(html).toContain("Copy");
+      expect(html).toContain("Create a note:");
+    });
+
+    it("renders the three highlight swatches in the floating toolbar", () => {
+      const html = render();
+      expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
+      expect(html).toContain("#19E1CA");
+      expect(html).toContain("#FEC405");
+      expect(html).toContain("#F168F5");
+    });
+
+    it("renders a sample paragraph with the highlighted phrase", () => {
+      const html = render();
+      expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
+      expect(html).toContain("It was the best of times");
+    });
+  });
 });

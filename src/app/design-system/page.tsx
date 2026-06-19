@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Lightbulb, Pause, Play, Plus, Search as SearchIcon, StickyNote, Volume2 } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Copy, Highlighter, Lightbulb, Pause, Play, Plus, Search as SearchIcon, StickyNote, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -612,13 +612,60 @@ export default function DesignSystemPage() {
           </Card>
         </section>
 
+        {/* 09 Selection & settings */}
+        <section className="mb-14">
+          <SectionLabel num="09" title="Selection & settings" />
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardDescription>FloatingToolbar mirror · Ask / Copy / highlight swatches</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* ponytail: relative frame positions the toolbar statically above the paragraph. The real FloatingToolbar uses createPortal to document.body and fixed positioning bound to the reader viewport. */}
+              <div className="relative rounded-lg border border-line bg-paper p-8 pt-20">
+                <div
+                  className="absolute left-1/2 top-4 z-10 flex w-[220px] -translate-x-1/2 flex-col rounded-xl border border-border bg-popover p-1.5 shadow-[0_8px_30px_-6px_rgba(43,28,17,0.25)]"
+                  role="toolbar"
+                  aria-label="Text selection actions (demo mirror)"
+                >
+                  <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-accent">
+                    <Lightbulb className="h-4 w-4 text-lav" />
+                    Ask about this
+                  </button>
+                  <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-accent">
+                    <Copy className="h-4 w-4" />
+                    Copy
+                  </button>
+                  <div className="my-1 h-px bg-border" />
+                  <div className="flex items-center gap-2 px-3 pb-1.5 pt-0.5">
+                    <Highlighter className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Create a note:</span>
+                  </div>
+                  <div className="mx-auto mb-1 flex items-center gap-4 rounded-full border border-border/60 bg-background/40 px-4 py-2">
+                    {["#19E1CA", "#FEC405", "#F168F5"].map((c) => (
+                      <span key={c} className="size-6 rounded-full ring-1 ring-black/5" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                </div>
+                <p className="font-serif text-base leading-relaxed text-ink">
+                  It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
+                  foolishness, it was the epoch of belief, it was the epoch of incredulity…
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
         <footer className="mt-14 border-t border-line pt-5 text-xs text-muted-foreground">
-          <b className="text-ink">Notes.</b> Tokens live as CSS custom properties on{" "}
+          <b className="text-ink">Notes.</b> Sections 01–05 cover primitives; 06–09 showcase composite app components.
+          Tokens live as CSS custom properties on{" "}
           <code className="rounded border border-line bg-paper-deep px-1.5 py-0.5 font-mono text-[0.85em] text-espresso">
             :root
           </code>{" "}
-          and map into the Tailwind theme. Hex values are estimates from the reference; swap in
-          exact brand tokens when wired.
+          and map into the Tailwind theme. Components are imported from{" "}
+          <code className="rounded border border-line bg-paper-deep px-1.5 py-0.5 font-mono text-[0.85em] text-espresso">
+            @/components
+          </code>{" "}
+          so this page tracks the real implementations.
         </footer>
       </main>
     </div>
