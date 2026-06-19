@@ -12,13 +12,13 @@ export default async function LibraryLayout({
 
   return (
     <div className="min-h-screen">
-      <header className="flex h-16 items-center justify-between bg-lav px-8">
-        <Link
-          href="/my-library"
-          className="text-[20px] font-semibold tracking-tight text-white"
-        >
-          <span className="text-b-teal">(</span>
-          nutshell<span className="text-white/80">)</span>
+      <header className="flex h-16 items-center justify-between px-8">
+        <Link href="/my-library">
+          <img
+            src="/images/nutshell_logo_chocolate.svg"
+            alt="Nutshell"
+            className="h-8 w-auto"
+          />
         </Link>
         <div className="flex items-center gap-3">
           <UploadBookDialog />
