@@ -118,7 +118,15 @@ export default function DesignSystemPage() {
   };
 
   return (
-    <div className="min-h-screen text-ink">
+    <div className="ds-gallery min-h-screen text-ink">
+      <style>{`
+.ds-gallery .ds-book-card { transition: transform 200ms ease-out; }
+.ds-gallery .ds-book-card:hover { transform: translateY(calc(-1 * var(--book-hover-lift, 1%))); }
+.ds-gallery .ds-book-shadow { transition: box-shadow 200ms ease-out;
+  box-shadow: 0 2px 2px rgba(0,0,0,.25), 0 8px 8px rgba(0,0,0,.22); }
+.ds-gallery .ds-book-card:hover .ds-book-shadow {
+  box-shadow: 0 3px 3px rgba(0,0,0,.25), 0 12px 12px rgba(0,0,0,.28); }
+`}</style>
       <main className="mx-auto max-w-5xl px-7 py-14">
         <header className="mb-14">
           <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
@@ -167,12 +175,12 @@ export default function DesignSystemPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {[
-                    { name: "Teal", hex: "#19E1CA" },
-                    { name: "Yellow", hex: "#FEC405" },
-                    { name: "Pink", hex: "#F168F5" },
+                    { name: "Teal", hex: "#19E1CA", varName: "--hl-teal" },
+                    { name: "Yellow", hex: "#FEC405", varName: "--hl-yellow" },
+                    { name: "Pink", hex: "#F168F5", varName: "--hl-pink" },
                   ].map((h) => (
                     <div key={h.name} className="flex flex-col items-center gap-1">
-                      <span className="size-7 rounded-full ring-1 ring-black/5" style={{ backgroundColor: h.hex }} />
+                      <span className="size-7 rounded-full ring-1 ring-black/5" style={{ backgroundColor: `var(${h.varName})` }} />
                       <small className="font-mono text-[10px] text-muted-foreground">{h.hex}</small>
                     </div>
                   ))}
@@ -183,12 +191,12 @@ export default function DesignSystemPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {[
-                    { label: "g1", hex: "#FF7A4D" },
-                    { label: "g2", hex: "#FF4E8C" },
-                    { label: "g3", hex: "#C932A6" },
+                    { label: "g1", hex: "#FF7A4D", varName: "--g1" },
+                    { label: "g2", hex: "#FF4E8C", varName: "--g2" },
+                    { label: "g3", hex: "#C932A6", varName: "--g3" },
                   ].map((g) => (
                     <div key={g.label} className="flex items-center gap-2">
-                      <span className="size-7 rounded-full" style={{ backgroundColor: g.hex }} />
+                      <span className="size-7 rounded-full" style={{ backgroundColor: `var(${g.varName})` }} />
                       <div className="flex flex-col">
                         <b className="text-[11px] text-ink">{g.label}</b>
                         <small className="font-mono text-[10px] text-muted-foreground">{g.hex}</small>
@@ -202,8 +210,8 @@ export default function DesignSystemPage() {
                   Status gradients
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, #FF6A5E, #FF2E7E)" }}>Warn</span>
-                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, #4FD18B, #2FA86A)" }}>Success</span>
+                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, var(--warn-from), var(--warn-to))" }}>Warn</span>
+                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, var(--success-from), var(--success-to))" }}>Success</span>
                 </div>
 
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
@@ -449,18 +457,18 @@ export default function DesignSystemPage() {
                   {/* ponytail: placeholder variant exercises the built-in fallback when there is no cover image. */}
                   <BookCard id="demo-0" title="The Rustic Drawer" author="Nutra Vell" coverPath={null} />
                   {/* ponytail: demo-cover variants inline — BookCard's coverPath routes through /api/files/, which a public asset can't satisfy. Mirrors BookCard's classes verbatim so the shadow reads identically. */}
-                  <a href="/book/demo-1/reader" className="group block rounded-md">
-                    <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
-                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
+                  <a href="/book/demo-1/reader" className="ds-book-card block rounded-md">
+                    <div className="">
+                      <div className="overflow-hidden rounded-md bg-paper-deep ds-book-shadow">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
                     </div>
                     <div className="mt-2 h-1.5 w-full" />
                   </a>
 
-                  <a href="/book/demo-2/reader" className="group block rounded-md">
-                    <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
-                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
+                  <a href="/book/demo-2/reader" className="ds-book-card block rounded-md">
+                    <div className="">
+                      <div className="overflow-hidden rounded-md bg-paper-deep ds-book-shadow">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
                     </div>
@@ -540,9 +548,10 @@ export default function DesignSystemPage() {
 
                 {/* ponytail: demo mirror — original TtsPlayer uses `fixed bottom-0` bound to reader viewport; mirrored here with relative so the showcase frame contains it. */}
                 <div
-                  className="absolute bottom-0 left-0 right-0 z-60 flex h-16 items-center gap-3 border-t border-border bg-background/95 px-4 backdrop-blur-sm"
+                  className="absolute bottom-0 left-0 right-0 z-60 flex items-center gap-3 border-t border-border bg-background/95 px-4"
                   role="region"
                   aria-label="Audio player (demo mirror)"
+                  style={{ height: "var(--tts-bar-h, 64px)", backdropFilter: "blur(var(--tts-bar-blur, 6px))" }}
                 >
                   <button
                     type="button"
@@ -623,9 +632,10 @@ export default function DesignSystemPage() {
               {/* ponytail: relative frame positions the toolbar statically above the paragraph. The real FloatingToolbar uses createPortal to document.body and fixed positioning bound to the reader viewport. */}
               <div className="relative rounded-lg border border-line bg-paper p-8 pt-20">
                 <div
-                  className="absolute left-1/2 top-4 z-10 flex w-[220px] -translate-x-1/2 flex-col rounded-xl border border-border bg-popover p-1.5 shadow-[0_8px_30px_-6px_rgba(43,28,17,0.25)]"
+                  className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 flex-col rounded-xl border border-border bg-popover p-1.5"
                   role="toolbar"
                   aria-label="Text selection actions (demo mirror)"
+                  style={{ width: "var(--toolbar-w, 220px)", boxShadow: "0 var(--toolbar-shadow-y, 8px) 30px -6px rgba(43,28,17,0.25)" }}
                 >
                   <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-accent">
                     <Lightbulb className="h-4 w-4 text-lav" />

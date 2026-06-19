@@ -47,6 +47,44 @@ describe("Design system page", () => {
       expect(html).toContain("400px");  // --reader-sidebar-w
       expect(html).toContain("250ms");  // --reader-dur
     });
+
+    it("consumes highlighter tokens via var() so Tweakpane can dial them", () => {
+      const html = render();
+      expect(html).toContain("var(--hl-teal)");
+      expect(html).toContain("var(--hl-yellow)");
+      expect(html).toContain("var(--hl-pink)");
+    });
+
+    it("consumes gradient-stop tokens via var()", () => {
+      const html = render();
+      expect(html).toContain("var(--g1)");
+      expect(html).toContain("var(--g2)");
+      expect(html).toContain("var(--g3)");
+    });
+
+    it("consumes status-gradient stop vars in the pills", () => {
+      const html = render();
+      expect(html).toContain("var(--warn-from)");
+      expect(html).toContain("var(--success-from)");
+    });
+  });
+
+  describe("Gallery scoped wrapper and layout vars", () => {
+    it("mounts the .ds-gallery wrapper as the setter target", () => {
+      expect(render()).toContain("ds-gallery");
+    });
+
+    it("emits the book-hover-lift scoped var in the inline style block", () => {
+      expect(render()).toContain("var(--book-hover-lift");
+    });
+
+    it("consumes var(--tts-bar-h) on the TTS bar mirror", () => {
+      expect(render()).toContain("var(--tts-bar-h");
+    });
+
+    it("consumes var(--toolbar-w) on the FloatingToolbar mirror", () => {
+      expect(render()).toContain("var(--toolbar-w");
+    });
   });
 
   describe("Section 06 — Library", () => {
@@ -148,6 +186,14 @@ describe("Design system page", () => {
       const html = render();
       expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
       expect(html).toContain("It was the best of times");
+    });
+
+    it("leaves §09 FloatingToolbar highlight swatches as literal hex", () => {
+      const html = render();
+      expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
+      expect(html).toContain("#19E1CA");
+      expect(html).toContain("#FEC405");
+      expect(html).toContain("#F168F5");
     });
   });
 });
