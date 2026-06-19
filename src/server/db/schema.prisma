@@ -198,7 +198,7 @@ model Highlight {
   charOffsetStart Int
   charOffsetEnd   Int
   selectedText   String
-  color          String   @default("#fbbf24")
+  color          String
   sectionHref    String?
   note           String?
   createdAt      DateTime @default(now())

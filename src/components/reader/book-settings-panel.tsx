@@ -40,7 +40,7 @@ export const BOOK_SETTINGS_MIN_FONT = 14;
 export const BOOK_SETTINGS_MAX_FONT = 24;
 
 const THEME_SWATCHES: { id: ReaderThemeName; bg: string }[] = [
-  { id: "light", bg: "#FBF7EC" },
+  { id: "light", bg: "#FEFBF5" },
   { id: "sepia", bg: "#f4ecd8" },
   { id: "dark", bg: "#1A130C" },
 ];

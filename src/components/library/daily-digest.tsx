@@ -9,7 +9,7 @@ export function DailyDigest({ imageSrc }: DailyDigestProps) {
   return (
     <aside
       className={`relative flex min-h-[320px] overflow-hidden rounded-2xl text-paper ${
-        imageSrc ? "" : "bg-espresso"
+        imageSrc ? "" : "bg-chocolate-dark"
       }`}
     >
       {imageSrc && (
@@ -20,7 +20,7 @@ export function DailyDigest({ imageSrc }: DailyDigestProps) {
             aria-hidden
           />
           <div
-            className="absolute inset-0 bg-gradient-to-t from-espresso/85 via-espresso/55 to-espresso/30"
+            className="absolute inset-0 bg-gradient-to-t from-chocolate-dark/85 via-chocolate-dark/55 to-chocolate-dark/30"
             aria-hidden
           />
         </>

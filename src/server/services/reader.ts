@@ -167,7 +167,7 @@ export async function createHighlight(
     charOffsetStart: number;
     charOffsetEnd: number;
     selectedText: string;
-    color?: string;
+    color: string;
     sectionHref?: string;
     note?: string;
   }
@@ -181,7 +181,7 @@ export async function createHighlight(
       charOffsetStart: data.charOffsetStart,
       charOffsetEnd: data.charOffsetEnd,
       selectedText: data.selectedText,
-      color: data.color ?? "#fbbf24",
+      color: data.color,
       sectionHref: data.sectionHref,
       note: data.note,
     },

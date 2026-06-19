@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   HIGHLIGHT_COLORS,
   highlightColorLabel,
+  highlightSwatchStyle,
 } from "./highlight-colors";
 
 interface HighlightItem {
@@ -79,7 +80,7 @@ function HighlightRow({
     <div className="group flex gap-2 py-2 pl-4 pr-2">
       <div
         className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
-        style={{ backgroundColor: highlight.color }}
+        style={highlightSwatchStyle(highlight.color)}
         aria-hidden
       />
       <div className="min-w-0 flex-1">
@@ -185,7 +186,7 @@ function GroupBlock({
           {swatch && (
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: swatch }}
+              style={highlightSwatchStyle(swatch)}
               aria-hidden
             />
           )}

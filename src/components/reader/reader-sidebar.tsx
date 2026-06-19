@@ -60,7 +60,7 @@ export function ReaderSidebar({
       <aside
         aria-label={label ?? undefined}
         aria-hidden={!isOpen}
-        className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(43,28,17,0.3)]"
+        className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(34,24,5,0.3)]"
         style={{
           transform: `translateX(${isOpen ? "0px" : "var(--reader-rail-w)"})`,
           opacity: isOpen ? 1 : 0,
@@ -104,7 +104,7 @@ export function ReaderSidebar({
               className={cn(
                 "flex h-[46px] w-[46px] items-center justify-center rounded-full border transition-colors",
                 isActive
-                  ? "border-lav-ring bg-lav-soft text-lav shadow-[0_0_0_4px_rgba(126,112,234,0.12)]"
+                  ? "border-lav-ring bg-lav-soft text-lav shadow-[0_0_0_4px_rgba(161,127,240,0.18)]"
                   : "border-line bg-card text-muted-foreground hover:border-lav-ring hover:text-lav",
               )}
             >

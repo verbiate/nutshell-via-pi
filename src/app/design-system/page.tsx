@@ -36,12 +36,10 @@ const TWEAK_FOLDERS: TweakFolder[] = [
     title: "Surfaces",
     expanded: true,
     bindings: [
-      { key: "paper", config: { label: "Paper" } },
-      { key: "paper-deep", config: { label: "Paper Deep" } },
-      { key: "espresso", config: { label: "Espresso" } },
-      { key: "ink", config: { label: "Ink" } },
-      { key: "line", config: { label: "Line" } },
-      { key: "line-soft", config: { label: "Line Soft" } },
+      { key: "tan", config: { label: "Tan" } },
+      { key: "tan-dark", config: { label: "Tan dark" } },
+      { key: "chocolate", config: { label: "Chocolate" } },
+      { key: "chocolate-dark", config: { label: "Chocolate dark" } },
     ],
   },
   {
@@ -53,21 +51,15 @@ const TWEAK_FOLDERS: TweakFolder[] = [
     ],
   },
   {
-    title: "Gradient",
-    bindings: [
-      { key: "g1", config: { label: "G1" } },
-      { key: "g2", config: { label: "G2" } },
-      { key: "g3", config: { label: "G3" } },
-    ],
-  },
-  {
     title: "Brand",
+    expanded: true,
     bindings: [
-      { key: "b-orange", config: { label: "B Orange" } },
-      { key: "b-magenta", config: { label: "B Magenta" } },
-      { key: "b-purple", config: { label: "B Purple" } },
-      { key: "b-blue", config: { label: "B Blue" } },
-      { key: "b-teal", config: { label: "B Teal" } },
+      { key: "peach", config: { label: "Peach" } },
+      { key: "pink", config: { label: "Pink" } },
+      { key: "purple", config: { label: "Purple" } },
+      { key: "blue", config: { label: "Blue" } },
+      { key: "teal", config: { label: "Teal" } },
+      { key: "lavender", config: { label: "Lavender" } },
     ],
   },
   {
@@ -117,19 +109,31 @@ const TWEAK_FOLDERS: TweakFolder[] = [
 ];
 
 const SURFACES = [
-  { name: "Paper", token: "bg-paper", hex: "#FBF7EC" },
-  { name: "Paper deep", token: "bg-paper-deep", hex: "#F4EEDC" },
-  { name: "Espresso", token: "bg-espresso", hex: "#2B1C11" },
-  { name: "Lavender soft", token: "bg-lav-soft", hex: "#ECE8FB" },
-  { name: "Lavender", token: "bg-lav", hex: "#7E70EA" },
+  { name: "Tan", token: "bg-tan", hex: "#FEFBF5" },
+  { name: "Tan dark", token: "bg-tan-dark", hex: "#DDD8CD" },
+  { name: "Chocolate", token: "bg-chocolate", hex: "#402A08" },
+  { name: "Chocolate dark", token: "bg-chocolate-dark", hex: "#221805" },
+  { name: "White", token: "bg-white", hex: "#FFFFFF" },
+  { name: "Black", token: "bg-black", hex: "#000000" },
 ];
 
-const ACCENTS = [
-  { name: "orange", cls: "bg-b-orange" },
-  { name: "magenta", cls: "bg-b-magenta" },
-  { name: "purple", cls: "bg-b-purple" },
-  { name: "blue", cls: "bg-b-blue" },
-  { name: "teal", cls: "bg-b-teal" },
+const BRAND = [
+  { name: "Peach", token: "bg-peach", hex: "#FE8050" },
+  { name: "Pink", token: "bg-pink", hex: "#F168F5" },
+  { name: "Purple", token: "bg-purple", hex: "#A17FF0" },
+  { name: "Blue", token: "bg-blue", hex: "#18BDFD" },
+  { name: "Teal", token: "bg-teal", hex: "#34E1CD" },
+  { name: "Lavender", token: "bg-lavender", hex: "#D9D6FF" },
+  { name: "Red (warn)", token: "bg-red-warn", hex: "#F9241E" },
+  { name: "Green (success)", token: "bg-green-success", hex: "#4FDB27" },
+];
+
+const GRADIENTS = [
+  { name: "Peach → Pink", cls: "bg-grad-peach-pink", stops: "#FE8050 → #F168F5" },
+  { name: "Purple → Tan", cls: "bg-grad-purple-tan", stops: "#A17FF0 → #FEFBF5" },
+  { name: "Teal → Blue", cls: "bg-grad-teal-blue", stops: "#34E1CD → #18BDFD" },
+  { name: "Warn · Red → Pink", cls: "bg-grad-warn", stops: "#F9241E → #F168F5" },
+  { name: "Success · Blue → Green", cls: "bg-grad-success", stops: "#18BDFD → #4FDB27" },
 ];
 
 function SectionLabel({ num, title }: { num: string; title: string }) {
@@ -502,14 +506,14 @@ export default function DesignSystemPage() {
     pen: (
       <div className="px-5 py-4 space-y-2">
         <div className="flex gap-2">
-          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#19E1CA" }} />
+          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#34E1CD", opacity: 0.5, mixBlendMode: "multiply" }} />
           <div>
             <p className="line-clamp-3 text-sm text-foreground">A highlighted passage from chapter one that runs to three lines max.</p>
             <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">Paragraph 4</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#FEC405" }} />
+          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#FEC405", opacity: 0.5, mixBlendMode: "multiply" }} />
           <div>
             <p className="line-clamp-3 text-sm text-foreground">Another highlight, this time in yellow.</p>
             <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">Paragraph 12</p>
@@ -562,9 +566,10 @@ export default function DesignSystemPage() {
             A reading surface with a quiet voice
           </h1>
           <p className="mt-3 max-w-[60ch] text-[15.5px] text-ink/80">
-            Warm paper, espresso ink, a coral-to-magenta accent reserved for primary action and
-            progress, and a lavender ring for the active tool. UI text is <b>DM Sans</b>; headlines
-            and book copy are <b>IBM Plex Serif</b>.
+            Tan surfaces, chocolate ink, a peach-to-pink accent reserved for primary action and
+            progress, and a lavender ring for the active tool. All gradients run in OKLCH for
+            perceptual smoothness. UI text is <b>DM Sans</b>; headlines and book copy are{" "}
+            <b>IBM Plex Serif</b>.
           </p>
         </header>
 
@@ -586,58 +591,61 @@ export default function DesignSystemPage() {
                     </div>
                   ))}
                 </div>
+
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  Brand accents
+                  Brand colors
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  {ACCENTS.map((a) => (
-                    <span key={a.name} className={`size-8 rounded-full ${a.cls}`} title={a.name} />
+                <div className="mt-3 flex flex-wrap gap-4">
+                  {BRAND.map((b) => (
+                    <div key={b.name} className="flex flex-col items-start gap-2">
+                      <div className={`h-12 w-[60px] rounded-lg border border-black/5 ${b.token}`} />
+                      <b className="text-xs font-semibold text-ink">{b.name}</b>
+                      <small className="font-mono text-[11px] text-muted-foreground">{b.hex}</small>
+                    </div>
                   ))}
-                  <span className="h-8 w-24 rounded-full bg-grad" />
                 </div>
 
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  Highlighters
+                  Highlighters · 50% alpha · multiply
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {[
-                    { name: "Teal", hex: "#19E1CA", varName: "--hl-teal" },
+                    { name: "Teal", hex: "#34E1CD", varName: "--hl-teal" },
                     { name: "Yellow", hex: "#FEC405", varName: "--hl-yellow" },
                     { name: "Pink", hex: "#F168F5", varName: "--hl-pink" },
                   ].map((h) => (
                     <div key={h.name} className="flex flex-col items-center gap-1">
-                      <span className="size-7 rounded-full ring-1 ring-black/5" style={{ backgroundColor: `var(${h.varName})` }} />
+                      {/* ponytail: swatch shows the real rendering — var() color at 50% alpha + mix-blend multiply over the card surface. */}
+                      <span
+                        className="size-7 rounded-full ring-1 ring-black/5"
+                        style={{ backgroundColor: `var(${h.varName})`, opacity: 0.5, mixBlendMode: "multiply" }}
+                      />
                       <small className="font-mono text-[10px] text-muted-foreground">{h.hex}</small>
                     </div>
                   ))}
                 </div>
 
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  Gradient stops
+                  Gradients · OKLCH
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  {[
-                    { label: "g1", hex: "#FF7A4D", varName: "--g1" },
-                    { label: "g2", hex: "#FF4E8C", varName: "--g2" },
-                    { label: "g3", hex: "#C932A6", varName: "--g3" },
-                  ].map((g) => (
-                    <div key={g.label} className="flex items-center gap-2">
-                      <span className="size-7 rounded-full" style={{ backgroundColor: `var(${g.varName})` }} />
+                <div className="mt-3 flex flex-col gap-2">
+                  {GRADIENTS.map((g) => (
+                    <div key={g.name} className="flex items-center gap-3">
+                      <span className={`h-8 w-28 rounded-full ${g.cls}`} />
                       <div className="flex flex-col">
-                        <b className="text-[11px] text-ink">{g.label}</b>
-                        <small className="font-mono text-[10px] text-muted-foreground">{g.hex}</small>
+                        <b className="text-[11px] text-ink">{g.name}</b>
+                        <small className="font-mono text-[10px] text-muted-foreground">{g.stops}</small>
                       </div>
                     </div>
                   ))}
-                  <span className="h-7 w-20 rounded-full bg-grad" />
                 </div>
 
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
                   Status gradients
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, var(--warn-from), var(--warn-to))" }}>Warn</span>
-                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, var(--success-from), var(--success-to))" }}>Success</span>
+                  <span className="rounded-full bg-grad-warn px-3 py-1.5 text-xs font-semibold text-white">Warn</span>
+                  <span className="rounded-full bg-grad-success px-3 py-1.5 text-xs font-semibold text-white">Success</span>
                 </div>
 
                 <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
@@ -816,7 +824,7 @@ export default function DesignSystemPage() {
                   {[
                     { id: "cream", label: "Cream", cls: "bg-paper" },
                     { id: "white", label: "White", cls: "bg-white" },
-                    { id: "dark", label: "Dark", cls: "bg-espresso" },
+                    { id: "dark", label: "Dark", cls: "bg-chocolate-dark" },
                   ].map((opt) => (
                     <div key={opt.id} className="flex items-center gap-2">
                       <RadioGroupItem value={opt.id} id={`pc-${opt.id}`} />
@@ -919,10 +927,10 @@ export default function DesignSystemPage() {
             <div className="grid gap-5 md:grid-cols-2">
               <Card className="shadow-card">
                 <CardHeader>
-                  <CardDescription>DailyDigest · espresso card with badge + orange CTA</CardDescription>
+                  <CardDescription>DailyDigest · chocolate-dark card with badge + peach CTA</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* ponytail: imageSrc=null uses the espresso fallback — real component. */}
+                  {/* ponytail: imageSrc=null uses the chocolate-dark fallback — real component. */}
                   <DailyDigest imageSrc={null} />
                 </CardContent>
               </Card>
@@ -1023,7 +1031,7 @@ export default function DesignSystemPage() {
               </div>
               <p className="mt-4 text-[11px] text-muted-foreground">
                 Click any rail button. The active button gets <code className="font-mono">border-lav bg-lav-soft</code> with
-                a <code className="font-mono">0_0_0_4px_rgba(126,112,234,0.12)</code> ring.
+                a <code className="font-mono">0_0_0_4px_rgba(161,127,240,0.18)</code> ring.
               </p>
 
               {/*
@@ -1063,7 +1071,7 @@ export default function DesignSystemPage() {
                   className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 flex-col rounded-xl border border-border bg-popover p-1.5"
                   role="toolbar"
                   aria-label="Text selection actions (demo mirror)"
-                  style={{ width: "var(--toolbar-w, 220px)", boxShadow: "0 var(--toolbar-shadow-y, 8px) 30px -6px rgba(43,28,17,0.25)" }}
+                  style={{ width: "var(--toolbar-w, 220px)", boxShadow: "0 var(--toolbar-shadow-y, 8px) 30px -6px rgba(34,24,5,0.25)" }}
                 >
                   <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-accent">
                     <Lightbulb className="h-4 w-4 text-lav" />
@@ -1079,8 +1087,8 @@ export default function DesignSystemPage() {
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Create a note:</span>
                   </div>
                   <div className="mx-auto mb-1 flex items-center gap-4 rounded-full border border-border/60 bg-background/40 px-4 py-2">
-                    {["#19E1CA", "#FEC405", "#F168F5"].map((c) => (
-                      <span key={c} className="size-6 rounded-full ring-1 ring-black/5" style={{ backgroundColor: c }} />
+                    {["#34E1CD", "#FEC405", "#F168F5"].map((c) => (
+                      <span key={c} className="size-6 rounded-full ring-1 ring-black/5" style={{ backgroundColor: c, opacity: 0.5, mixBlendMode: "multiply" }} />
                     ))}
                   </div>
                 </div>

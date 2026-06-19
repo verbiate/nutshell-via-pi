@@ -92,18 +92,18 @@ describe("READ-07: Highlight service", () => {
 
   it("getHighlights returns ordered highlights", async () => {
     vi.mocked(db.highlight.findMany).mockResolvedValue([
-      { id: "h1", cfi: "epubcfi(/6/2!/4/2)", color: "#fbbf24", selectedText: "hello world" },
+      { id: "h1", cfi: "epubcfi(/6/2!/4/2)", color: "#FEC405", selectedText: "hello world" },
     ] as any);
     const result = await getHighlights("u1", "book1");
     expect(result).toHaveLength(1);
-    expect(result[0].color).toBe("#fbbf24");
+    expect(result[0].color).toBe("#FEC405");
     expect(db.highlight.findMany).toHaveBeenCalledWith({
       where: { userId: "u1", bookId: "book1" },
       orderBy: { createdAt: "desc" },
     });
   });
 
-  it("createHighlight inserts with default color", async () => {
+  it("createHighlight inserts with the caller-provided color", async () => {
     vi.mocked(db.highlight.create).mockResolvedValue({ id: "h1" } as any);
     await createHighlight("u1", "book1", {
       cfi: "epubcfi(/6/2!/4/2)",
@@ -111,6 +111,7 @@ describe("READ-07: Highlight service", () => {
       charOffsetStart: 10,
       charOffsetEnd: 21,
       selectedText: "hello world",
+      color: "#FEC405",
     });
     expect(db.highlight.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -121,7 +122,7 @@ describe("READ-07: Highlight service", () => {
         charOffsetStart: 10,
         charOffsetEnd: 21,
         selectedText: "hello world",
-        color: "#fbbf24",
+        color: "#FEC405",
       }),
     });
   });

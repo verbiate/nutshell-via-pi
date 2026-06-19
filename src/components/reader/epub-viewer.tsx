@@ -9,6 +9,7 @@ import type { ParagraphMap } from "@/lib/reader/position-tracking";
 import { computeProgressPercent } from "@/lib/reader/progress";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
 import { buildRenditionOptions } from "./rendition-options";
+import { highlightFill } from "./highlight-colors";
 
 export interface EpubViewerProps {
   url: string;
@@ -40,7 +41,7 @@ export interface EpubViewerHandle {
   prev: () => Promise<void>;
   getCurrentCfi: () => string | null;
   clearSelection: () => void;
-  addHighlight: (cfi: string, color?: string) => void;
+  addHighlight: (cfi: string, color: string) => void;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
 }
@@ -139,14 +140,18 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           iframe.contentWindow.getSelection()?.removeAllRanges();
         }
       },
-      addHighlight: (cfi: string, color?: string) => {
+      addHighlight: (cfi: string, color: string) => {
         if (!renditionRef.current) return;
         renditionRef.current.annotations.highlight(
           cfi,
           {},
           () => {},
           "br-highlight",
-          { fill: color || "#fbbf24" }
+          // ponytail: 50% alpha fill carries the highlight look; epub.js's
+          // SVG annotation layer ignores mix-blend-mode, so the alpha fill is
+          // the reliable baseline (multiply is applied in the UI swatches).
+          // color is required — callers always pass a user-chosen swatch.
+          { fill: highlightFill(color) }
         );
       },
       navigateToParagraph: async (paragraphIndex: number) => {

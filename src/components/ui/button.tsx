@@ -20,7 +20,7 @@ const buttonVariants = cva(
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
         gradient:
-          "bg-grad text-white shadow-[0_12px_28px_-12px_rgba(201,50,166,.6)] hover:saturate-110",
+          "bg-grad text-white shadow-[0_12px_28px_-12px_rgba(241,104,245,.6)] hover:saturate-110",
       },
       size: {
         default:

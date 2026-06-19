@@ -468,7 +468,7 @@ export function ReaderClient({
 
       if (highlightsData?.highlights) {
         highlightsData.highlights.forEach(
-          (h: { cfi: string; color?: string }) => {
+          (h: { cfi: string; color: string }) => {
             viewerRef.current?.addHighlight(h.cfi, h.color);
           }
         );
@@ -619,7 +619,7 @@ export function ReaderClient({
             width: activeTool
               ? "calc(100% - var(--reader-sidebar-w) - var(--reader-rail-w))"
               : "100%",
-            boxShadow: "12px 0 18px -12px rgba(43,28,17,0.35)",
+            boxShadow: "12px 0 18px -12px rgba(34,24,5,0.35)",
             transitionProperty: "width",
             transitionDuration: "var(--reader-dur)",
             transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",

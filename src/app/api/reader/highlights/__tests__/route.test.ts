@@ -43,18 +43,18 @@ describe("GET /api/reader/highlights", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns highlights on success", async () => {
+    it("returns highlights on success", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
     vi.mocked(getHighlights).mockResolvedValue([
-      { id: "h1", cfi: "epubcfi(/6/2)", paragraphIndex: 1, charOffsetStart: 0, charOffsetEnd: 5, selectedText: "hello", color: "#fbbf24" },
+      { id: "h1", cfi: "epubcfi(/6/2)", paragraphIndex: 1, charOffsetStart: 0, charOffsetEnd: 5, selectedText: "hello", color: "#FEC405" },
     ] as any);
     const req = new Request("http://localhost/api/reader/highlights?bookId=b1");
     const res = await GET(req);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.highlights).toHaveLength(1);
-    expect(body.highlights[0].color).toBe("#fbbf24");
+    expect(body.highlights[0].color).toBe("#FEC405");
   });
 });
 
@@ -73,6 +73,49 @@ describe("POST /api/reader/highlights", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 when color is missing", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    const req = new Request("http://localhost/api/reader/highlights", {
+      method: "POST",
+      body: JSON.stringify({
+        bookId: "b1",
+        cfi: "epubcfi(/6/2)",
+        paragraphIndex: 1,
+        charOffsetStart: 0,
+        charOffsetEnd: 5,
+        selectedText: "hello",
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("color is required");
+    expect(createHighlight).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when color is not one of the allowed swatches", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    const req = new Request("http://localhost/api/reader/highlights", {
+      method: "POST",
+      body: JSON.stringify({
+        bookId: "b1",
+        cfi: "epubcfi(/6/2)",
+        paragraphIndex: 1,
+        charOffsetStart: 0,
+        charOffsetEnd: 5,
+        selectedText: "hello",
+        color: "#00ff00",
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("allowed highlight colors");
+    expect(createHighlight).not.toHaveBeenCalled();
+  });
+
   it("creates highlight when valid", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
@@ -86,6 +129,7 @@ describe("POST /api/reader/highlights", () => {
         charOffsetStart: 0,
         charOffsetEnd: 5,
         selectedText: "hello",
+        color: "#FEC405",
       }),
     });
     const res = await POST(req);
@@ -95,7 +139,7 @@ describe("POST /api/reader/highlights", () => {
     expect(createHighlight).toHaveBeenCalledWith(
       "u1",
       "b1",
-      expect.objectContaining({ selectedText: "hello", color: undefined })
+      expect.objectContaining({ selectedText: "hello", color: "#FEC405" })
     );
   });
 });

@@ -29,7 +29,7 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
               className="block h-auto w-full scale-[1.02]"
             />
           ) : (
-            <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(160deg,#3FD9B0,#1f8f70)] p-3 text-center">
+            <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(160deg,#34E1CD,#1a8f80)] p-3 text-center">
               <BookOpen className="h-7 w-7 text-white/45" />
               <span className="line-clamp-4 font-serif text-sm font-medium leading-tight text-white">
                 {title}

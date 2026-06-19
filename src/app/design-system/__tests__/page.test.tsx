@@ -22,22 +22,44 @@ describe("Design system page", () => {
   describe("Foundations — extended tokens", () => {
     it("shows the three highlight color hexes used by the highlighter", () => {
       const html = render();
-      expect(html).toContain("#19E1CA"); // teal
+      expect(html).toContain("#34E1CD"); // teal
       expect(html).toContain("#FEC405"); // yellow
       expect(html).toContain("#F168F5"); // pink
     });
 
-    it("shows the three gradient stops as labelled swatches", () => {
+    it("shows the new brand color swatches with their hexes", () => {
       const html = render();
-      expect(html).toContain("#FF7A4D"); // g1
-      expect(html).toContain("#FF4E8C"); // g2
-      expect(html).toContain("#C932A6"); // g3
+      expect(html).toContain("#FE8050"); // peach
+      expect(html).toContain("#F168F5"); // pink
+      expect(html).toContain("#A17FF0"); // purple
+      expect(html).toContain("#18BDFD"); // blue
+      expect(html).toContain("#34E1CD"); // teal
+      expect(html).toContain("#D9D6FF"); // lavender
+      expect(html).toContain("#F9241E"); // red-warn
+      expect(html).toContain("#4FDB27"); // green-success
+    });
+
+    it("shows the Tan/Chocolate surface swatches", () => {
+      const html = render();
+      expect(html).toContain("#FEFBF5"); // tan
+      expect(html).toContain("#DDD8CD"); // tan-dark
+      expect(html).toContain("#402A08"); // chocolate
+      expect(html).toContain("#221805"); // chocolate-dark
     });
 
     it("shows the warn and success status gradient pills", () => {
       const html = render();
       expect(html).toContain("Warn");
       expect(html).toContain("Success");
+    });
+
+    it("shows the five OKLCH gradient utilities", () => {
+      const html = render();
+      expect(html).toContain("bg-grad-peach-pink");
+      expect(html).toContain("bg-grad-purple-tan");
+      expect(html).toContain("bg-grad-teal-blue");
+      expect(html).toContain("bg-grad-warn");
+      expect(html).toContain("bg-grad-success");
     });
 
     it("shows the four radii tokens with their px values", () => {
@@ -62,17 +84,11 @@ describe("Design system page", () => {
       expect(html).toContain("var(--hl-pink)");
     });
 
-    it("consumes gradient-stop tokens via var()", () => {
+    it("renders highlighter swatches at 50% alpha with multiply blend", () => {
       const html = render();
-      expect(html).toContain("var(--g1)");
-      expect(html).toContain("var(--g2)");
-      expect(html).toContain("var(--g3)");
-    });
-
-    it("consumes status-gradient stop vars in the pills", () => {
-      const html = render();
-      expect(html).toContain("var(--warn-from)");
-      expect(html).toContain("var(--success-from)");
+      // React SSR serializes inline styles as prop:value (no spaces).
+      expect(html).toContain("mix-blend-mode:multiply");
+      expect(html).toContain("opacity:0.5");
     });
   });
 
@@ -189,7 +205,7 @@ describe("Design system page", () => {
     it("renders the three highlight swatches in the floating toolbar", () => {
       const html = render();
       expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
-      expect(html).toContain("#19E1CA");
+      expect(html).toContain("#34E1CD");
       expect(html).toContain("#FEC405");
       expect(html).toContain("#F168F5");
     });
@@ -203,7 +219,7 @@ describe("Design system page", () => {
     it("leaves §09 FloatingToolbar highlight swatches as literal hex", () => {
       const html = render();
       expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
-      expect(html).toContain("#19E1CA");
+      expect(html).toContain("#34E1CD");
       expect(html).toContain("#FEC405");
       expect(html).toContain("#F168F5");
     });

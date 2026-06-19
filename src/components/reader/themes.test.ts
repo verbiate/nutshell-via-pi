@@ -21,9 +21,9 @@ describe("READER_THEMES", () => {
     },
   );
 
-  it("light theme keeps the warm paper background", () => {
-    expect(bodyRules("light").background).toBe("#FBF7EC");
-    expect(bodyRules("light").color).toBe("#33271B");
+  it("light theme keeps the tan paper background", () => {
+    expect(bodyRules("light").background).toBe("#FEFBF5");
+    expect(bodyRules("light").color).toBe("#402A08");
   });
 
   it.each(["light", "dark", "sepia"] as const)(

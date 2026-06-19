@@ -13,8 +13,8 @@ export const READER_THEMES = {
   light: {
     rules: {
       body: {
-        background: "#FBF7EC",
-        color: "#33271B",
+        background: "#FEFBF5",
+        color: "#402A08",
       },
     },
   },

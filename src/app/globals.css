@@ -62,6 +62,20 @@
     --color-b-purple: var(--b-purple);
     --color-b-blue: var(--b-blue);
     --color-b-teal: var(--b-teal);
+    --color-peach: var(--peach);
+    --color-pink: var(--pink);
+    --color-purple: var(--purple);
+    --color-blue: var(--blue);
+    --color-teal: var(--teal);
+    --color-lavender: var(--lavender);
+    --color-tan: var(--tan);
+    --color-tan-dark: var(--tan-dark);
+    --color-chocolate: var(--chocolate);
+    --color-chocolate-dark: var(--chocolate-dark);
+    --color-red-warn: var(--red-warn);
+    --color-green-success: var(--green-success);
+    --color-white: var(--white);
+    --color-black: var(--black);
     --color-hl-yellow: var(--hl-yellow);
     --color-hl-teal: var(--hl-teal);
     --color-hl-pink: var(--hl-pink);
@@ -69,98 +83,115 @@
     --color-hl-blue: var(--hl-blue);
     --color-hl-purple: var(--hl-purple);
 
-    --shadow-card: 0 1px 0 rgba(43,28,17,.04), 0 18px 40px -28px rgba(43,28,17,.35);
-    --shadow-float: 0 24px 60px -30px rgba(43,28,17,.45);
+    --shadow-card: 0 1px 0 rgba(34,24,5,.04), 0 18px 40px -28px rgba(34,24,5,.35);
+    --shadow-float: 0 24px 60px -30px rgba(34,24,5,.45);
 
     /* Reader sidebar animation — matches .wip-reference/sidebar-example-b.html */
     --ease-reader: cubic-bezier(.5, 0, .2, 1);
 }
 
 :root {
-    /* Nutshell surfaces + ink (source: .wip-reference/pseudo-components-reference.html) */
-    --paper: #FBF7EC;
-    --paper-deep: #F4EEDC;
-    --card-plain: #FFFFFF;
-    --espresso: #2B1C11;
-    --ink: #33271B;
-    --line: #E7DFCC;
-    --line-soft: #EFE9D8;
+    /* Nutshell palette — Tan/Chocolate surfaces + brand colors */
+    --white: #FFFFFF;
+    --black: #000000;
+    --tan: #FEFBF5;
+    --tan-dark: #DDD8CD;
+    --chocolate: #402A08;
+    --chocolate-dark: #221805;
 
-    /* Lavender active state */
-    --lav: #7E70EA;
-    --lav-soft: #ECE8FB;
-    --lav-ring: #C8C1F4;
+    --peach: #FE8050;
+    --pink: #F168F5;
+    --purple: #A17FF0;
+    --blue: #18BDFD;
+    --teal: #34E1CD;
+    --lavender: #D9D6FF;
+    --red-warn: #F9241E;
+    --green-success: #4FDB27;
 
-    /* Signature gradient (coral → magenta) */
-    --g1: #FF7A4D;
-    --g2: #FF4E8C;
-    --g3: #C932A6;
-    --grad: linear-gradient(90deg, var(--g1), var(--g2) 55%, var(--g3));
+    /* Semantic surfaces → palette */
+    --paper: var(--tan);
+    --paper-deep: var(--tan-dark);
+    --card-plain: var(--white);
+    --espresso: var(--chocolate);
+    --ink: var(--chocolate);
+    --line: var(--tan-dark);
+    --line-soft: var(--tan);
 
-    /* Brand accents */
-    --b-orange: #FF7A4D;
-    --b-magenta: #E541C9;
-    --b-purple: #8A6FE8;
-    --b-blue: #2EA6F0;
-    --b-teal: #3FD9B0;
+    /* Lavender/Purple active state */
+    --lav: var(--purple);
+    --lav-soft: var(--lavender);
+    --lav-ring: #B8A8F5;
 
-    /* Highlighter set */
+    /* Gradients (OKLCH for perceptual smoothness) */
+    --grad-peach-pink: linear-gradient(in oklch, var(--peach), var(--pink));
+    --grad-purple-tan: linear-gradient(in oklch, var(--purple), var(--tan));
+    --grad-teal-blue: linear-gradient(in oklch, var(--teal), var(--blue));
+    --grad: var(--grad-peach-pink);
+
+    /* Brand accents (legacy token names → new brand colors) */
+    --b-orange: var(--peach);
+    --b-magenta: var(--pink);
+    --b-purple: var(--purple);
+    --b-blue: var(--blue);
+    --b-teal: var(--teal);
+
+    /* Highlighter set (rendered at 50% alpha + mix-blend-mode: multiply) */
+    --hl-teal: var(--teal);
     --hl-yellow: #FEC405;
-    --hl-teal: #19E1CA;
-    --hl-pink: #F168F5;
+    --hl-pink: var(--pink);
     --hl-green: #7FC98C;
     --hl-blue: #6FA8E0;
     --hl-purple: #B49BE8;
 
-    /* Status */
-    --warn-from: #FF6A5E;
-    --warn-to: #FF2E7E;
-    --success-from: #4FD18B;
-    --success-to: #2FA86A;
-    --warn: linear-gradient(90deg, var(--warn-from), var(--warn-to));
-    --success: linear-gradient(90deg, var(--success-from), var(--success-to));
+    /* Status gradients (OKLCH) */
+    --warn-from: var(--red-warn);
+    --warn-to: var(--pink);
+    --success-from: var(--blue);
+    --success-to: var(--green-success);
+    --warn: linear-gradient(in oklch, var(--warn-from), var(--warn-to));
+    --success: linear-gradient(in oklch, var(--success-from), var(--success-to));
 
     /* Radii + warm shadows */
     --r-sm: 10px;
     --r-md: 16px;
     --r-lg: 22px;
     --r-pill: 999px;
-    --shadow-card: 0 1px 0 rgba(43,28,17,.04), 0 18px 40px -28px rgba(43,28,17,.35);
-    --shadow-float: 0 24px 60px -30px rgba(43,28,17,.45);
+    --shadow-card: 0 1px 0 rgba(34,24,5,.04), 0 18px 40px -28px rgba(34,24,5,.35);
+    --shadow-float: 0 24px 60px -30px rgba(34,24,5,.45);
 
     /* shadcn semantic vars → Nutshell mapping */
-    --background: #FBF7EC;
-    --foreground: #33271B;
-    --card: #FFFDF8;
-    --card-foreground: #33271B;
-    --popover: #FFFDF8;
-    --popover-foreground: #33271B;
-    --primary: #2B1C11;
-    --primary-foreground: #FBF7EC;
-    --secondary: #F4EEDC;
-    --secondary-foreground: #2B1C11;
-    --muted: #F4EEDC;
-    --muted-foreground: #9B8A76;
-    --accent: #ECE8FB;
-    --accent-foreground: #2B1C11;
-    --destructive: #E541C9;
-    --border: #E7DFCC;
-    --input: #E7DFCC;
-    --ring: #7E70EA;
+    --background: var(--tan);
+    --foreground: var(--chocolate);
+    --card: var(--white);
+    --card-foreground: var(--chocolate);
+    --popover: var(--white);
+    --popover-foreground: var(--chocolate);
+    --primary: var(--chocolate-dark);
+    --primary-foreground: var(--tan);
+    --secondary: var(--tan-dark);
+    --secondary-foreground: var(--chocolate-dark);
+    --muted: var(--tan-dark);
+    --muted-foreground: #6B5A48;
+    --accent: var(--lavender);
+    --accent-foreground: var(--chocolate-dark);
+    --destructive: var(--red-warn);
+    --border: var(--tan-dark);
+    --input: var(--tan-dark);
+    --ring: var(--purple);
     --radius: 0.625rem;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: #FBF7EC;
-    --sidebar-foreground: #33271B;
-    --sidebar-primary: #2B1C11;
-    --sidebar-primary-foreground: #FBF7EC;
-    --sidebar-accent: #ECE8FB;
-    --sidebar-accent-foreground: #2B1C11;
-    --sidebar-border: #E7DFCC;
-    --sidebar-ring: #7E70EA;
+    --sidebar: var(--tan);
+    --sidebar-foreground: var(--chocolate);
+    --sidebar-primary: var(--chocolate-dark);
+    --sidebar-primary-foreground: var(--tan);
+    --sidebar-accent: var(--lavender);
+    --sidebar-accent-foreground: var(--chocolate-dark);
+    --sidebar-border: var(--tan-dark);
+    --sidebar-ring: var(--purple);
 
     /* Reader sidebar geometry + motion tokens */
     --reader-sidebar-w: 400px;
@@ -169,7 +200,7 @@
 }
 
 .dark {
-    /* Warm espresso-family dark — stays in the Nutshell family, keeps lavender ring */
+    /* Warm chocolate-family dark reading theme — keeps the purple ring */
     --background: #1A130C;
     --foreground: #F2E9D4;
     --card: #241A10;
@@ -183,8 +214,8 @@
     --muted: #2E2214;
     --muted-foreground: #A8957A;
     --accent: #2A2348;
-    --accent-foreground: #ECE8FB;
-    --destructive: #E541C9;
+    --accent-foreground: #D9D6FF;
+    --destructive: #F9241E;
     --border: #3A2E1E;
     --input: #3A2E1E;
     --ring: #9B8FEF;
@@ -198,7 +229,7 @@
     --sidebar-primary: #F2E9D4;
     --sidebar-primary-foreground: #1A130C;
     --sidebar-accent: #2A2348;
-    --sidebar-accent-foreground: #ECE8FB;
+    --sidebar-accent-foreground: #D9D6FF;
     --sidebar-border: #3A2E1E;
     --sidebar-ring: #9B8FEF;
 }
@@ -221,7 +252,7 @@
     --destructive: #b04a3e;
     --border: #d4c5a9;
     --input: #d4c5a9;
-    --ring: #7E70EA;
+    --ring: #A17FF0;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -234,7 +265,7 @@
     --sidebar-accent: #e9dfc6;
     --sidebar-accent-foreground: #5b4636;
     --sidebar-border: #d4c5a9;
-    --sidebar-ring: #7E70EA;
+    --sidebar-ring: #A17FF0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -261,6 +292,21 @@
 @utility bg-grad {
     background-image: var(--grad);
 }
+@utility bg-grad-purple-tan {
+    background-image: var(--grad-purple-tan);
+}
+@utility bg-grad-peach-pink {
+    background-image: var(--grad-peach-pink);
+}
+@utility bg-grad-teal-blue {
+    background-image: var(--grad-teal-blue);
+}
+@utility bg-grad-warn {
+    background-image: var(--warn);
+}
+@utility bg-grad-success {
+    background-image: var(--success);
+}
 
 /* ponytail: bookshelf book shadows. box-shadow (not filter:drop-shadow) — drop-shadow followed the children's rectangular bbox and was clipped by the cover's own overflow:hidden, so it only filled the rounded corners. box-shadow follows border-radius and paints outside the box. offset_y ≥ blur_radius keeps the shadow from bleeding above the book's top edge. */
 @utility shadow-book {
@@ -281,9 +327,9 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(120% 60% at 18% -8%, rgba(126,112,234,.16), transparent 60%),
-      radial-gradient(90% 55% at 78% -10%, rgba(255,78,140,.14), transparent 58%),
-      radial-gradient(70% 50% at 50% -12%, rgba(46,166,240,.12), transparent 60%);
+      radial-gradient(120% 60% at 18% -8%, rgba(161,127,240,.16), transparent 60%),
+      radial-gradient(90% 55% at 78% -10%, rgba(241,104,245,.14), transparent 58%),
+      radial-gradient(70% 50% at 50% -12%, rgba(24,189,253,.12), transparent 60%);
     background-repeat: no-repeat;
     background-attachment: fixed;
     }

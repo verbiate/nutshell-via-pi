@@ -32,7 +32,7 @@ export function ReadingProgress({ percentage, sidebarOpen = false }: ReadingProg
           style={{ width: `${clamped}%` }}
         />
         <div
-          className="transition-[left] duration-300 absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-card px-2.5 py-0.5 text-xs font-bold text-espresso shadow-[0_4px_10px_-4px_rgba(43,28,17,0.4)] tabular-nums"
+          className="transition-[left] duration-300 absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-card px-2.5 py-0.5 text-xs font-bold text-espresso shadow-[0_4px_10px_-4px_rgba(34,24,5,0.4)] tabular-nums"
           style={{ left: `${clamped}%` }}
         >
           {label}

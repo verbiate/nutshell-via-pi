@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
 import { getHighlights, createHighlight, verifyBookAccess } from "@/server/services/reader";
+import { isValidHighlightColor } from "@/components/reader/highlight-colors";
 
 /**
  * GET /api/reader/highlights?bookId=xxx
@@ -33,7 +34,9 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/reader/highlights
- * Body: { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color?, note? }
+ * Body: { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref?, note? }
+ * `color` is required and must be one of the three highlighter hexes — there is
+ * no default; the user picks a swatch in the floating toolbar.
  */
 export async function POST(request: Request) {
   try {
@@ -58,6 +61,12 @@ export async function POST(request: Request) {
     const { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref, note } = body;
     if (!bookId || !cfi || paragraphIndex === undefined || charOffsetStart === undefined || charOffsetEnd === undefined || !selectedText) {
       return NextResponse.json({ error: "bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, and selectedText are required" }, { status: 400 });
+    }
+    if (!color) {
+      return NextResponse.json({ error: "color is required" }, { status: 400 });
+    }
+    if (!isValidHighlightColor(color)) {
+      return NextResponse.json({ error: "color must be one of the allowed highlight colors" }, { status: 400 });
     }
 
     const hasAccess = await verifyBookAccess(user.id, bookId);

@@ -15,7 +15,7 @@ export default function HomePage() {
         <div className="mt-6">
           <Link
             href="/login"
-            className="inline-flex items-center justify-center rounded-full bg-grad px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-12px_rgba(201,50,166,.6)] transition-transform hover:saturate-110 active:translate-y-px"
+            className="inline-flex items-center justify-center rounded-full bg-grad px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-12px_rgba(241,104,245,.6)] transition-transform hover:saturate-110 active:translate-y-px"
           >
             Sign in
           </Link>

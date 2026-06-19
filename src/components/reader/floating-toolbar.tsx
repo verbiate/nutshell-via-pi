@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Lightbulb, Copy, Highlighter } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { HIGHLIGHT_COLORS } from "./highlight-colors";
+import { HIGHLIGHT_COLORS, highlightSwatchStyle } from "./highlight-colors";
 
 export interface FloatingToolbarProps {
   visible: boolean;
@@ -56,7 +56,7 @@ export function FloatingToolbar({
       data-floating-toolbar
       className={cn(
         "fixed z-[70] flex w-[220px] flex-col rounded-xl border border-border bg-popover p-1.5",
-        "shadow-[0_8px_30px_-6px_rgba(43,28,17,0.25)]",
+        "shadow-[0_8px_30px_-6px_rgba(34,24,5,0.25)]",
         "animate-in fade-in zoom-in-95 duration-150"
       )}
       style={{
@@ -100,7 +100,7 @@ export function FloatingToolbar({
             type="button"
             onClick={() => onHighlight(c.hex)}
             className="h-6 w-6 rounded-full ring-1 ring-black/5 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lav"
-            style={{ backgroundColor: c.hex }}
+            style={highlightSwatchStyle(c.hex)}
             aria-label={`Highlight in ${c.label}`}
           />
         ))}
