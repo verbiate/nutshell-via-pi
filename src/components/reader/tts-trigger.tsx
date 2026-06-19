@@ -28,12 +28,10 @@ export function TtsTrigger({ state, onClick }: TtsTriggerProps) {
       <TooltipTrigger asChild>
         <span>
           <Button
-            variant="ghost"
-            size="icon-sm"
             onClick={onClick}
             disabled={isDisabled}
             aria-label={isGenerating ? "Cancel audio generation" : "Read aloud"}
-            className="shrink-0"
+            className="h-[46px] w-[46px] shrink-0 bg-transparent text-foreground"
           >
             {isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />

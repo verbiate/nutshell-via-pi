@@ -84,7 +84,7 @@ export function SearchPanel({ bookId, onResultClick }: SearchPanelProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Search in book">
+        <Button aria-label="Search in book" className="h-[46px] w-[46px] bg-transparent text-foreground">
           <Search className="h-4 w-4" />
         </Button>
       </SheetTrigger>
