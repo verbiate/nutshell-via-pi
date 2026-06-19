@@ -45,6 +45,44 @@ export interface EpubViewerHandle {
   resize: () => void;
 }
 
+// ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
+// nav doc's own location), but spine.get() looks up paths relative to the OPF
+// package root. When the nav doc sits in a subdirectory (e.g. OEBPS/text/ for
+// this book), the hrefs miss the prefix the spine stores and navigation misses
+// with "No Section Found". Resolve by basename-matching against spine items so
+// the same fix covers ToC navigation, the active-section highlight, and
+// section-level Explainers (which all consume the normalized href).
+function resolveSpineHref(book: Book, href: string): string {
+  if (!href) return href;
+  if (book.spine.get(href)) return href;
+
+  const hashIdx = href.indexOf("#");
+  const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
+  const fragment = hashIdx >= 0 ? href.slice(hashIdx) : "";
+  const basename = pathPart.split("/").pop();
+  if (!basename) return href;
+
+  let matched: string | null = null;
+  book.spine.each((section) => {
+    if (matched) return;
+    const sh = section.href;
+    if (sh && (sh === basename || sh.endsWith("/" + basename))) {
+      matched = sh;
+    }
+  });
+  return matched ? matched + fragment : href;
+}
+
+function normalizeTocHrefs(book: Book, items: NavItem[]): NavItem[] {
+  return items.map((item) => ({
+    ...item,
+    href: resolveSpineHref(book, item.href),
+    subitems: item.subitems?.length
+      ? normalizeTocHrefs(book, item.subitems)
+      : item.subitems,
+  }));
+}
+
 export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
   (
     {
@@ -77,7 +115,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
       navigateTo: (href: string) => {
-        renditionRef.current?.display(href);
+        // Hrefs are normalized at ToC-load time (see resolveSpineHref), so this
+        // is just display() + a catch for "No Section Found" rejections so they
+        // don't surface as unhandled rejections in Next.js's error overlay.
+        renditionRef.current?.display(href).catch((err: Error) =>
+          console.warn("[EpubViewer] navigateTo failed:", err)
+        );
       },
       next: () => {
         if (!renditionRef.current) return Promise.resolve();
@@ -168,9 +211,9 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           return book.ready.then(() => {
             if (!mounted || !containerRef.current) return;
 
-            // Extract and expose ToC
+            // Extract and expose ToC (normalize hrefs so they resolve on the spine)
             if (book.navigation?.toc) {
-              onTocLoaded?.(book.navigation.toc);
+              onTocLoaded?.(normalizeTocHrefs(book, book.navigation.toc));
             }
 
             // Render to container iframe
