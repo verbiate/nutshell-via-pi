@@ -75,7 +75,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
         <DailyDigest imageSrc={digestImage} />
         <div className="lg:relative lg:min-h-0 lg:self-stretch lg:overflow-hidden">
           <TabsContent value="bookshelf" className="lg:absolute lg:inset-0 lg:overflow-y-auto">
-            <div className="pb-[138px]">
+            <div className="pb-3">
               <Bookshelf books={books} />
             </div>
             {/* ponytail: sticky to the bookshelf scroll box at lg; ceiling — on a near-empty shelf the bar sits at end of flow rather than pinned. Upgrade: lift as sibling overlay + controlled Tabs. */}

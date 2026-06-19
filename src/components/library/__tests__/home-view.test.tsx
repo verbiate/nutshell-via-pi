@@ -39,11 +39,11 @@ describe("HomeView", () => {
     expect(html).toContain("bottom-0");
   });
 
-  it("keeps the last book row clear of the overlay with 138px bottom padding", () => {
+  it("keeps the last book row clear of the overlay with 12px bottom padding", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
-    expect(html).toContain("pb-[138px]");
+    expect(html).toContain("pb-3");
   });
 
   it("centers the search bar within the bookshelf scroll column at lg", () => {
