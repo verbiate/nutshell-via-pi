@@ -8,7 +8,7 @@ interface BookshelfProps {
 
 export function Bookshelf({ books }: BookshelfProps) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-x-5 gap-y-6">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-x-5 gap-y-6 px-5">
       {books.map((book) => (
         <BookCard
           key={book.id}
@@ -25,7 +25,7 @@ export function Bookshelf({ books }: BookshelfProps) {
 
 export function BookshelfSkeleton() {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-x-5 gap-y-6">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-x-5 gap-y-6 px-5">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i}>
           <Skeleton className="aspect-[3/4] w-full rounded-md" />

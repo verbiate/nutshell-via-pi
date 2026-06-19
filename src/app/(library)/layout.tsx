@@ -25,7 +25,7 @@ export default async function LibraryLayout({
           <UserNav />
         </div>
       </header>
-      <main className="mx-auto flex min-h-0 w-full max-w-[1280px] flex-1 flex-col px-8 py-8">{children}</main>
+      <main className="mx-auto flex min-h-0 w-full max-w-[1280px] flex-1 flex-col px-8 py-8 lg:pb-0">{children}</main>
     </div>
   );
 }
