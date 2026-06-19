@@ -55,7 +55,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
               <Bookshelf books={books} />
             </div>
             <div className="fixed inset-x-0 bottom-0 h-[138px] backdrop-blur-[14px] bg-paper/60">
-              <div className="mx-auto flex h-full max-w-[1280px] items-center px-8">
+              <div className="mx-auto flex h-full max-w-[1280px] items-center gap-6 px-8">
                 {/* ponytail: mirror the 2fr/3fr page grid so the bar centers over the book column */}
                 <div className="hidden lg:block lg:flex-[2]" aria-hidden />
                 <div className="flex flex-[3] justify-center">

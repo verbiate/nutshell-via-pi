@@ -44,4 +44,13 @@ describe("HomeView", () => {
     );
     expect(html).toContain("pb-[138px]");
   });
+
+  it("mirrors the page grid gap so the bar centers exactly over the book column", () => {
+    const html = render(
+      <HomeView userName="Mary" books={books} digestImage={null} />,
+    );
+    const row = html.match(/class="([^"]*max-w-\[1280px\][^"]*)"/)?.[1] ?? null;
+    expect(row).not.toBeNull();
+    expect(row!).toContain("gap-6");
+  });
 });
