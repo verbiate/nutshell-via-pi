@@ -74,7 +74,7 @@ export function ReaderSidebar({
             <header className="border-b border-line px-5 py-3">
               <h2 className="text-sm font-semibold text-foreground">{label}</h2>
             </header>
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               {panels[displayedTool]}
             </ScrollArea>
           </>

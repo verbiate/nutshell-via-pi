@@ -343,6 +343,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           <div
             ref={containerRef}
             className="h-full w-full"
+            style={{ minWidth: 680 }}
             aria-label="Book content"
           />
         </div>
