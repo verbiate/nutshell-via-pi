@@ -70,11 +70,10 @@ export function ReaderChrome({
           <div className="overflow-hidden">
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="sm"
               onClick={onHideControls}
               tabIndex={sidebarOpen ? 0 : -1}
               aria-label="Hide controls"
-              className="gap-1 px-2"
             >
               <PanelRightClose className="h-4 w-4" />
               <span className="text-sm font-medium">Hide controls</span>

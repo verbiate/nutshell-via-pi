@@ -48,4 +48,13 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     const match = /<button[^>]*>[\s\S]*Hide controls[\s\S]*<\/button>/.test(html);
     expect(match).toBe(true);
   });
+
+  it("Hide controls button uses content-fit size (not icon-only) when sidebarOpen=true", () => {
+    const html = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
+    const hideBtnMatch = html.match(/<button[^>]*aria-label="Hide controls"[^>]*>/);
+    expect(hideBtnMatch, "Hide-controls button opening tag should be present").not.toBeNull();
+    const hideBtn = hideBtnMatch![0];
+    expect(hideBtn).toContain('data-size="sm"');
+    expect(hideBtn).not.toContain('data-size="icon-sm"');
+  });
 });
