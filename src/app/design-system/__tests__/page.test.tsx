@@ -77,15 +77,21 @@ describe("Design system page", () => {
 
   describe("Section 07 — Reader chrome", () => {
     it("renders the ReaderChrome Bookshelf back button inside the frame", () => {
-      expect(render()).toContain("Bookshelf");
+      const html = render();
+      expect(html).toContain("Reader chrome"); // section-07-specific
+      expect(html).toContain("Bookshelf");
     });
 
     it("renders the ReadingProgress region with role=progressbar", () => {
-      expect(render()).toContain('role="progressbar"');
+      const html = render();
+      expect(html).toContain("Reader chrome"); // section-07-specific
+      expect(html).toContain('role="progressbar"');
     });
 
     it("renders the initial 38% progress label", () => {
-      expect(render()).toContain("38%");
+      const html = render();
+      expect(html).toContain("Reader chrome"); // section-07-specific
+      expect(html).toContain("38%");
     });
 
     it("renders the TTS player mirror with the Play icon and a section label", () => {

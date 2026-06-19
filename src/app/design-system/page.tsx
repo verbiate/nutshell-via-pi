@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Pause, Play, Plus, Search, Search as SearchIcon, Volume2 } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Pause, Play, Plus, Search as SearchIcon, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -354,7 +354,7 @@ export default function DesignSystemPage() {
                   Ask bar
                 </p>
                 <div className="flex items-center gap-3 rounded-full border border-line bg-white px-5 py-3.5 text-muted-foreground shadow-float">
-                  <Search className="size-4" />
+                  <SearchIcon className="size-4" />
                   <input
                     className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground/70"
                     placeholder="Search or ask your books…"
