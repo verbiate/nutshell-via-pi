@@ -133,4 +133,12 @@ describe("HomeView scroll containment (lg+)", () => {
     expect(html).not.toContain("lg:items-stretch");
     expect(html).toContain("lg:self-stretch");
   });
+
+  it("fixes the DailyDigest column at 480px and lets the bookshelf flex", () => {
+    const html = render(
+      <HomeView userName="Mary" books={books} digestImage={null} />,
+    );
+    expect(html).toContain("lg:grid-cols-[480px_1fr]");
+    expect(html).not.toContain("lg:grid-cols-[2fr_3fr]");
+  });
 });

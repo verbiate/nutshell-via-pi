@@ -66,13 +66,21 @@ describe("Library layout top bar", () => {
       const header = html.match(/<header[^>]*class="([^"]*)"/)?.[1] ?? null;
       expect(header).not.toBeNull();
       expect(header!).toContain("w-full");
-      expect(header!).toContain("max-w-[1280px]");
+      expect(header!).toContain("max-w-[1536px]");
       expect(header!).toContain("justify-between");
 
       const main = html.match(/<main[^>]*class="([^"]*)"/)?.[1] ?? null;
       expect(main).not.toBeNull();
       expect(main!).toContain("w-full");
-      expect(main!).toContain("max-w-[1280px]");
+      expect(main!).toContain("max-w-[1536px]");
+    });
+
+    it("caps the page max-width at 1536px on both header and main", async () => {
+      const tree = await LibraryLayout({ children: <main>kids</main> });
+      const html = renderToStaticMarkup(tree);
+      const matches = html.match(/max-w-\[1536px\]/g) ?? [];
+      expect(matches.length).toBe(2);
+      expect(html).not.toContain("max-w-[1280px]");
     });
   });
 });

@@ -80,7 +80,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
         </TabsList>
       </div>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[2fr_3fr] lg:grid-rows-1 lg:min-h-0 lg:flex-1">
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[480px_1fr] lg:grid-rows-1 lg:min-h-0 lg:flex-1">
         <DailyDigest imageSrc={digestImage} />
         <div className="lg:relative lg:min-h-0 lg:self-stretch lg:overflow-hidden">
           <TabsContent value="bookshelf" className="lg:absolute lg:inset-0 lg:overflow-y-auto">

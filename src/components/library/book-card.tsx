@@ -14,13 +14,16 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
   const showProgress = !!hasProgress && progress != null;
 
   return (
-    <Link href={`/book/${id}/reader`} className="group block">
-      <div className="overflow-hidden rounded-md bg-paper-deep transition-shadow duration-200 hover:shadow-card">
+    <Link
+      href={`/book/${id}/reader`}
+      className="group block rounded-md transition-transform duration-200 ease-out hover:-translate-y-[1%]"
+    >
+      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
         {coverPath ? (
           <img
             src={`/api/files/${coverPath}`}
             alt={title}
-            className="block h-auto w-full transition-transform duration-300 group-hover:scale-105"
+            className="block h-auto w-full"
           />
         ) : (
           <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(160deg,#3FD9B0,#1f8f70)] p-3 text-center">

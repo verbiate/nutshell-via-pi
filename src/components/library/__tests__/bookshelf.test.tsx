@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Bookshelf } from "../bookshelf";
+import { Bookshelf, BookshelfSkeleton } from "../bookshelf";
 import { BookCard } from "../book-card";
 
 function render(el: React.ReactElement) {
@@ -36,5 +36,27 @@ describe("Bookshelf", () => {
     // a common bottom edge so varying cover heights meet the same line.
     const html = render(<Bookshelf books={[coverBook]} />);
     expect(html).toContain("items-end");
+  });
+
+  it("uses the wider bookshelf padding and cell minimum (150px, px-12)", () => {
+    const html = render(<Bookshelf books={[coverBook]} />);
+    const expected =
+      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-12";
+    const old =
+      "grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] items-end gap-x-5 gap-y-6 px-5";
+    expect(html).toContain(expected);
+    expect(html).not.toContain(old);
+  });
+});
+
+describe("BookshelfSkeleton", () => {
+  it("uses the wider bookshelf padding and cell minimum (150px, px-12)", () => {
+    const html = render(<BookshelfSkeleton />);
+    const expected =
+      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-12";
+    const old =
+      "grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] items-end gap-x-5 gap-y-6 px-5";
+    expect(html).toContain(expected);
+    expect(html).not.toContain(old);
   });
 });

@@ -258,6 +258,16 @@
     background-image: var(--grad);
 }
 
+/* ponytail: bookshelf book shadows. offset_y ≥ blur_radius keeps the shadow from bleeding above the book's top edge — was 0 3px 8.5px which spilled 5.5px up. */
+@utility shadow-book {
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25))
+            drop-shadow(0 8px 8px rgba(0, 0, 0, 0.22));
+}
+@utility shadow-book-lifted {
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25))
+            drop-shadow(0 12px 12px rgba(0, 0, 0, 0.28));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
