@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, PanelRightClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ export interface ReaderChromeProps {
   searchTrigger?: ReactNode;
   ttsTrigger?: ReactNode;
   sidebarOpen?: boolean;
+  onHideControls?: () => void;
 }
 
 export function ReaderChrome({
@@ -19,6 +20,7 @@ export function ReaderChrome({
   searchTrigger,
   ttsTrigger,
   sidebarOpen = false,
+  onHideControls,
 }: ReaderChromeProps) {
   return (
     <header
@@ -30,7 +32,6 @@ export function ReaderChrome({
       )}
       role="banner"
     >
-      {/* Left group: back to library */}
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
@@ -41,20 +42,45 @@ export function ReaderChrome({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
+        {sidebarOpen && (
+          <span className="text-sm font-medium text-foreground">Bookshelf</span>
+        )}
       </div>
 
-      {/* Center: book title */}
-      <span
-        className="text-sm font-medium truncate max-w-[140px] sm:max-w-[400px] text-foreground"
-        aria-label={`Book title: ${bookTitle}`}
-      >
-        {bookTitle}
-      </span>
+      {!sidebarOpen && (
+        <span
+          className="text-sm font-medium truncate max-w-[140px] sm:max-w-[400px] text-foreground"
+          aria-label={`Book title: ${bookTitle}`}
+        >
+          {bookTitle}
+        </span>
+      )}
 
-      {/* Right group: search + tts */}
+      {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
       <div className="flex items-center gap-1 shrink-0">
         {searchTrigger}
         {ttsTrigger}
+        <div
+          aria-hidden={!sidebarOpen}
+          className={cn(
+            "grid transition-all duration-[var(--reader-dur)] ease-reader",
+            sidebarOpen ? "grid-cols-[1fr] opacity-100" : "grid-cols-[0fr] opacity-0 pointer-events-none",
+          )}
+        >
+          <div className="overflow-hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onHideControls}
+              tabIndex={sidebarOpen ? 0 : -1}
+              aria-label="Hide controls"
+              className="gap-1 px-2"
+            >
+              <PanelRightClose className="h-4 w-4" />
+              <span className="text-sm font-medium">Hide controls</span>
+            </Button>
+          </div>
+        </div>
       </div>
     </header>
   );

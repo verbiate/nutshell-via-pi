@@ -689,6 +689,7 @@ export function ReaderClient({
             bookTitle={bookTitle ?? "Loading..."}
             onBack={handleBack}
             sidebarOpen={activeTool !== null}
+            onHideControls={() => setActiveTool(null)}
             searchTrigger={
               <SearchPanel
                 bookId={bookId}
