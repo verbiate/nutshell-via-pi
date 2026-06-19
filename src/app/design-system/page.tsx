@@ -451,7 +451,7 @@ export default function DesignSystemPage() {
                   {/* ponytail: demo-cover variants inline — BookCard's coverPath routes through /api/files/, which a public asset can't satisfy. Mirrors BookCard's classes verbatim so the shadow reads identically. */}
                   <a href="/book/demo-1/reader" className="group block rounded-md">
                     <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
-                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
+                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
                     </div>
@@ -460,7 +460,7 @@ export default function DesignSystemPage() {
 
                   <a href="/book/demo-2/reader" className="group block rounded-md">
                     <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
-                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
+                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
                         <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
                       </div>
                     </div>

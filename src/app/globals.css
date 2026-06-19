@@ -258,14 +258,16 @@
     background-image: var(--grad);
 }
 
-/* ponytail: bookshelf book shadows. offset_y ≥ blur_radius keeps the shadow from bleeding above the book's top edge — was 0 3px 8.5px which spilled 5.5px up. */
+/* ponytail: bookshelf book shadows. box-shadow (not filter:drop-shadow) — drop-shadow followed the children's rectangular bbox and was clipped by the cover's own overflow:hidden, so it only filled the rounded corners. box-shadow follows border-radius and paints outside the box. offset_y ≥ blur_radius keeps the shadow from bleeding above the book's top edge. */
 @utility shadow-book {
-    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25))
-            drop-shadow(0 8px 8px rgba(0, 0, 0, 0.22));
+    box-shadow:
+        0 2px 2px rgba(0, 0, 0, 0.25),
+        0 8px 8px rgba(0, 0, 0, 0.22);
 }
 @utility shadow-book-lifted {
-    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25))
-            drop-shadow(0 12px 12px rgba(0, 0, 0, 0.28));
+    box-shadow:
+        0 3px 3px rgba(0, 0, 0, 0.25),
+        0 12px 12px rgba(0, 0, 0, 0.28);
 }
 
 @layer base {

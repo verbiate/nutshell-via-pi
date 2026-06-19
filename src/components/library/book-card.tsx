@@ -20,7 +20,8 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
     >
       {/* ponytail: lift the cover only, not the progress slot. Transform and filter animate on separate elements — combining them on one element made the hover snap instead of ease. */}
       <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
-        <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
+        {/* ponytail: box-shadow, not filter:drop-shadow — drop-shadow rendered against the child's rectangular bbox and was clipped by this element's own overflow:hidden, leaving shadow only in the rounded corners. box-shadow follows border-radius and paints outside the box. */}
+        <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
           {coverPath ? (
             <img
               src={`/api/files/${coverPath}`}
