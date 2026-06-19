@@ -210,6 +210,30 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           const book = ePub(arrayBuffer);
           bookRef.current = book;
 
+          // ponytail: epub-ts Spine.get() checks spineByHref[target] ??
+          // spineByHref[encodeURI(target)] but never decodeURI(target). Calibre NCX
+          // hrefs percent-encode chars the OPF keeps literal (CR%21… vs CR!…), so
+          // encoded ToC/in-content hrefs miss and rendition.display() rejects with
+          // "No Section Found" — dead ToC links + the in-book hyperlink crash. The
+          // missing lookup is decodeURI. Wrap once at this single choke point: ToC
+          // clicks, in-content links, TTS, and Explainer nav all funnel through
+          // spine.get/display. Drop the wrap if epub-ts adds decodeURI to get().
+          const spine = book.spine;
+          const origGet = spine.get.bind(spine);
+          spine.get = (target?: string | number) => {
+            const found = origGet(target);
+            if (found) return found;
+            if (typeof target === "string") {
+              try {
+                const decoded = decodeURI(target);
+                if (decoded !== target) return origGet(decoded);
+              } catch {
+                // malformed %-sequence; leave unresolved
+              }
+            }
+            return null;
+          };
+
           return book.ready.then(() => {
             if (!mounted || !containerRef.current) return;
 
