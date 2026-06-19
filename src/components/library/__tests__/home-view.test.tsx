@@ -91,13 +91,16 @@ describe("HomeView scroll containment (lg+)", () => {
     expect(html).toContain("lg:overflow-hidden");
   });
 
-  it("makes each TabsContent the sole scroll region at lg", () => {
+  it("makes each of the three TabsContent the sole scroll region at lg", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
-    expect(html).toContain("lg:absolute");
-    expect(html).toContain("lg:inset-0");
-    expect(html).toContain("lg:overflow-y-auto");
+    // ponytail: count must be 3 — one per TabsContent (bookshelf/explainers/find).
+    // Unanchored toContain would pass with the class on only one of the three.
+    for (const cls of ["lg:absolute", "lg:inset-0", "lg:overflow-y-auto"]) {
+      const count = (html.match(new RegExp(cls, "g")) || []).length;
+      expect(count).toBe(3);
+    }
   });
 
   it("anchors the search bar to the scroll container at lg while staying fixed on mobile", () => {
