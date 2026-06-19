@@ -16,6 +16,7 @@ export async function getPosition(
   charOffset: number;
   cfi?: string;
   tocSectionId?: string;
+  percentage?: number;
 } | null> {
   const position = await db.userBookPosition.findUnique({
     where: { userId_bookId: { userId, bookId } },
@@ -24,6 +25,7 @@ export async function getPosition(
       charOffset: true,
       cfi: true,
       tocSectionId: true,
+      percentage: true,
     },
   });
   if (!position) return null;
@@ -33,6 +35,7 @@ export async function getPosition(
     // Convert Prisma null to undefined to match our return type
     cfi: position.cfi ?? undefined,
     tocSectionId: position.tocSectionId ?? undefined,
+    percentage: position.percentage ?? undefined,
   };
 }
 
@@ -50,6 +53,7 @@ export async function savePosition(
     charOffset: number;
     cfi?: string;
     tocSectionId?: string;
+    percentage?: number;
   }
 ): Promise<void> {
   await db.userBookPosition.upsert({
@@ -61,12 +65,14 @@ export async function savePosition(
       charOffset: data.charOffset,
       cfi: data.cfi,
       tocSectionId: data.tocSectionId,
+      percentage: data.percentage,
     },
     update: {
       paragraphIndex: data.paragraphIndex,
       charOffset: data.charOffset,
       cfi: data.cfi,
       tocSectionId: data.tocSectionId,
+      percentage: data.percentage,
     },
   });
 }

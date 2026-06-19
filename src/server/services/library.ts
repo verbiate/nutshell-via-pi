@@ -17,23 +17,35 @@ export async function getPersonalLibrary(userId: string) {
 
   const positionMap = new Map(positions.map((p) => [p.bookId, p]));
 
-  return accesses.map((access) => {
-    const position = positionMap.get(access.book.id);
-    const totalParagraphs = access.book.totalParagraphs;
-    const progress =
-      totalParagraphs && totalParagraphs > 0 && position
-        ? Math.min(100, Math.round((position.paragraphIndex / totalParagraphs) * 100))
-        : null;
+  // Sort by most recently opened (position.updatedAt), falling back to when the
+  // book was added to the user's library (access.createdAt). The DB's createdAt
+  // desc ordering is the deterministic tiebreaker for equal timestamps.
+  return accesses
+    .slice()
+    .sort((a, b) => {
+      const aMs = (positionMap.get(a.book.id)?.updatedAt ?? a.createdAt).getTime();
+      const bMs = (positionMap.get(b.book.id)?.updatedAt ?? b.createdAt).getTime();
+      return bMs - aMs;
+    })
+    .map((access) => {
+      const position = positionMap.get(access.book.id);
+      // Progress is sourced from the percentage persisted by the reader (computed
+      // from epub.js locations), not from paragraphIndex — that field is an
+      // unreliable placeholder and totalParagraphs doesn't account for reflow.
+      const progress = position?.percentage ?? null;
+      // Show the bar only for books opened past the very start (≥1%).
+      const hasProgress = position != null && (position.percentage ?? 0) >= 1;
 
-    return {
-      id: access.book.id,
-      title: access.book.title,
-      author: access.book.author,
-      language: access.book.language,
-      coverPath: access.book.coverPath,
-      progress,
-    };
-  });
+      return {
+        id: access.book.id,
+        title: access.book.title,
+        author: access.book.author,
+        language: access.book.language,
+        coverPath: access.book.coverPath,
+        progress,
+        hasProgress,
+      };
+    });
 }
 
 /**

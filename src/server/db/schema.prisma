@@ -158,6 +158,7 @@ model UserBookPosition {
   charOffset     Int
   cfi            String?
   tocSectionId   String?
+  percentage     Int?
   updatedAt      DateTime @updatedAt
 
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)

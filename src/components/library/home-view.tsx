@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sparkles, Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
@@ -50,6 +51,14 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
   useEffect(() => {
     setGreeting(timeGreeting());
   }, []);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    // Refresh on mount so returning from the reader (or any soft nav) shows the
+    // latest recency/progress instead of the client Router Cache's stale RSC.
+    router.refresh();
+  }, [router]);
 
   const first = userName?.split(" ")[0] || "reader";
 

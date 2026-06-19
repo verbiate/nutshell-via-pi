@@ -7,10 +7,11 @@ interface BookCardProps {
   author: string | null;
   coverPath: string | null;
   progress?: number | null;
+  hasProgress?: boolean;
 }
 
-export function BookCard({ id, title, author, coverPath, progress }: BookCardProps) {
-  const hasProgress = progress !== undefined && progress !== null && progress > 0;
+export function BookCard({ id, title, author, coverPath, progress, hasProgress }: BookCardProps) {
+  const showProgress = !!hasProgress && progress != null;
 
   return (
     <Link href={`/book/${id}/reader`} className="group block">
@@ -39,7 +40,7 @@ export function BookCard({ id, title, author, coverPath, progress }: BookCardPro
       </div>
       {/* ponytail: fixed-height progress slot keeps a common cover baseline whether or not there is progress */}
       <div className="mt-2 h-1.5 w-full">
-        {hasProgress && (
+        {showProgress && (
           <div
             className="h-full w-full overflow-hidden rounded-full bg-black/10"
             role="progressbar"

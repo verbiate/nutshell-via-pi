@@ -37,6 +37,7 @@ interface SavedPosition {
   paragraphIndex: number;
   charOffset: number;
   cfi?: string;
+  percentage?: number;
 }
 
 // ponytail: temporary stand-in for sidebar sections not yet built.
@@ -128,6 +129,9 @@ export function ReaderClient({
 
   // Ref to hold the debounce timeout ID — cleared on unmount and before re-setting
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Most recent position; read by flush helpers on unmount / tab hide so the
+  // latest page is not lost when the 3s debounce hasn't fired yet.
+  const lastPositionRef = useRef<SavedPosition | null>(null);
 
   // ─── Highlights data (via React Query) ────────────────────────────────────────
   const queryClient = useQueryClient();
@@ -182,6 +186,7 @@ export function ReaderClient({
   // ─── Debounced save ──────────────────────────────────────────────────────────
   const savePosition = useCallback(
     async (position: SavedPosition) => {
+      console.log("[ReaderClient] savePosition called with:", position);
       try {
         const res = await fetch("/api/reader/position", {
           method: "POST",
@@ -191,8 +196,10 @@ export function ReaderClient({
             paragraphIndex: position.paragraphIndex,
             charOffset: position.charOffset,
             cfi: position.cfi,
+            percentage: position.percentage,
           }),
         });
+        console.log("[ReaderClient] savePosition response:", res.status, await res.text());
         if (!res.ok) {
           console.warn("[ReaderClient] Position save failed:", res.status);
         }
@@ -229,52 +236,41 @@ export function ReaderClient({
     setPercentage(pct);
   }, []);
 
-  /**
-   * Significant change = different paragraph index, or char offset differs by > 50.
-   * Prevents spamming saves for tiny intra-paragraph adjustments.
-   */
-  const isSignificantChange = (
-    prev: SavedPosition | null,
-    next: SavedPosition
-  ): boolean => {
-    if (!prev) return true;
-    if (prev.paragraphIndex !== next.paragraphIndex) return true;
-    if (Math.abs(prev.charOffset - next.charOffset) > 50) return true;
-    return false;
-  };
-
+  // ponytail: debounce save per CFI change (3s). No significance gate — the
+  // paragraph/offset payload from the viewer is a placeholder; percentage is the
+  // meaningful progress signal. Clearing + rescheduling coalesces rapid page
+  // moves into one write.
   const handlePositionChange = useCallback(
-    (position: { paragraphIndex: number; charOffset: number }, cfi: string) => {
+    (
+      position: { paragraphIndex: number; charOffset: number },
+      cfi: string,
+      percentage: number
+    ) => {
       const next: SavedPosition = {
         paragraphIndex: position.paragraphIndex,
         charOffset: position.charOffset,
         cfi,
+        percentage,
       };
-
-      // Track current CFI for bookmark creation
       setCurrentCfi(cfi);
-
-      // Update local state
+      lastPositionRef.current = next;
       setSavedPosition(next);
 
-      // Debounce: clear any pending save, schedule a new one in 3 seconds
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      // Only fire if the change is significant
-      setSavedPosition((prev) => {
-        if (!isSignificantChange(prev, next)) return prev;
-
-        saveTimeoutRef.current = setTimeout(() => {
-          savePosition(next);
-        }, 3000);
-
-        return next;
-      });
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => savePosition(next), 3000);
     },
     [savePosition]
   );
+
+  // Flush a pending (unsaved) position immediately — used on unmount and tab
+  // hide so the latest page isn't lost if the debounce timer hasn't fired yet.
+  const flushPendingSave = useCallback(() => {
+    if (saveTimeoutRef.current && lastPositionRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+      void savePosition(lastPositionRef.current);
+    }
+  }, [savePosition]);
 
   // ─── Text selection handling ──────────────────────────────────────────────────
   const handleTextSelected = useCallback(
@@ -500,15 +496,18 @@ export function ReaderClient({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [toolbarVisible]);
 
-  // ─── Cleanup: clear pending saves on unmount ──────────────────────────────────
+  // ─── Flush unsaved position on unmount and when the tab is hidden ──────────────
   useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
+    return () => flushPendingSave();
+  }, [flushPendingSave]);
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushPendingSave();
     };
-  }, []);
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [flushPendingSave]);
   // ─── TTS Playback ──────────────────────────────────────────────────────────
   const handleTtsNavigate = useCallback((href: string) => {
     setCurrentHref(href);
@@ -641,9 +640,6 @@ export function ReaderClient({
             theme={readerTheme}
             typography={typography}
             initialCfi={savedPosition?.cfi ?? null}
-            initialPosition={
-              savedPosition && !savedPosition.cfi ? savedPosition : null
-            }
             onTocLoaded={handleTocLoaded}
             onProgressChange={handleProgressChange}
             onPositionChange={handlePositionChange}

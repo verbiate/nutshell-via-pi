@@ -17,6 +17,7 @@ export function Bookshelf({ books }: BookshelfProps) {
           author={book.author}
           coverPath={book.coverPath}
           progress={book.progress}
+          hasProgress={book.hasProgress}
         />
       ))}
     </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAuth } from "@/lib/auth-guards";
 import { getPosition, savePosition, verifyBookAccess } from "@/server/services/reader";
 
@@ -57,7 +58,12 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    // DEBUG: log raw incoming request before any processing
+    const rawBody = await request.text();
+    console.log("[POSITION POST] raw body:", rawBody);
+
     const user = await requireAuth();
+    console.log("[POSITION POST] auth ok, user:", user.id);
 
     let body: {
       bookId?: string;
@@ -65,14 +71,15 @@ export async function POST(request: Request) {
       charOffset?: number;
       cfi?: string;
       tocSectionId?: string;
+      percentage?: number;
     };
     try {
-      body = await request.json();
+      body = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { bookId, paragraphIndex, charOffset, cfi, tocSectionId } = body;
+    const { bookId, paragraphIndex, charOffset, cfi, tocSectionId, percentage } = body;
 
     // Validate required fields
     if (!bookId || typeof bookId !== "string" || bookId.trim() === "") {
@@ -103,6 +110,18 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (
+      percentage !== undefined &&
+      (typeof percentage !== "number" ||
+        percentage < 0 ||
+        percentage > 100 ||
+        !Number.isInteger(percentage))
+    ) {
+      return NextResponse.json(
+        { error: "percentage must be an integer between 0 and 100" },
+        { status: 400 }
+      );
+    }
 
     // Validate book access before saving
     const hasAccess = await verifyBookAccess(user.id, bookId);
@@ -113,12 +132,21 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("[POSITION POST] validated, calling savePosition:", {
+      bookId, paragraphIndex, charOffset, percentage, cfi: cfi?.slice(0, 30) });
     await savePosition(user.id, bookId, {
       paragraphIndex,
       charOffset,
       cfi,
       tocSectionId,
+      percentage,
     });
+    console.log("[POSITION POST] savePosition returned ok");
+
+    // Bust the cached /my-library so the bookshelf reflects the new recency /
+    // progress on the next visit — covers browser-back and other return paths
+    // that don't go through the reader's in-app Back button (which router.refresh()s).
+    revalidatePath("/my-library");
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

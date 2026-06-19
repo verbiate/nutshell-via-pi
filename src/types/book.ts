@@ -25,6 +25,7 @@ export interface LibraryBook {
   language: string;
   coverPath: string | null;
   progress: number | null;
+  hasProgress: boolean;
 }
 
 export type UserRole = "regular" | "pro" | "admin";

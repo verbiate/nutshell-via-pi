@@ -14,14 +14,14 @@ export interface EpubViewerProps {
   url: string;
   theme: "light" | "dark" | "sepia";
   initialCfi?: string | null;
-  initialPosition?: { paragraphIndex: number; charOffset: number } | null;
   // ponytail: dynamic typography overrides (font-size, font-family, line-height,
   // text-align, hyphens). Applied via themes.override on every change. Empty /
   // publisher-font = fall back to READER_THEME_OVERRIDES defaults.
   typography?: Record<string, string>;
   onPositionChange?: (
     position: { paragraphIndex: number; charOffset: number },
-    cfi: string
+    cfi: string,
+    percentage: number
   ) => void;
   onTocLoaded?: (toc: NavItem[]) => void;
   onProgressChange?: (percentage: number) => void;
@@ -89,7 +89,6 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       url,
       theme,
       initialCfi,
-      initialPosition,
       typography,
       onPositionChange,
       onTocLoaded,
@@ -111,6 +110,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const [isLoaded, setIsLoaded] = useState(false);
     // Track last known CFI for getCurrentCfi()
     const lastCfiRef = useRef<string | null>(null);
+    // Guards one-time restore of the saved CFI once the rendition is ready.
+    const restoredRef = useRef(false);
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
@@ -192,6 +193,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       let mounted = true;
       setIsLoaded(false);
       onLoadChange?.(false);
+      restoredRef.current = false;
 
       fetch(url)
         .then((res) => {
@@ -240,13 +242,16 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (location: any) => {
                 if (!mounted) return;
-                lastCfiRef.current = location.start.cfi ?? null;
-                const percentage = (location.start.percentage ?? 0) * 100;
+                const cfi = location.start.cfi ?? null;
+                lastCfiRef.current = cfi;
+                // ponytail: percentage is the source of truth for bookshelf
+                // progress bars — it comes straight from epub.js locations, which
+                // are EPUB-structure-agnostic (unlike paragraphIndex). It reads 0
+                // until book.locations.generate() resolves (background, after first
+                // display), then reflects the real position on subsequent moves.
+                const percentage = Math.round((location.start.percentage ?? 0) * 100);
                 onProgressChange?.(percentage);
-                onPositionChange?.(
-                  { paragraphIndex: 0, charOffset: 0 },
-                  location.start.cfi
-                );
+                onPositionChange?.({ paragraphIndex: 0, charOffset: 0 }, cfi ?? "", percentage);
               }
             );
 
@@ -256,20 +261,10 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               onTextSelected?.(cfiRange, contents);
             });
 
-            // Display the book first
+            // Display the book first. Saved-CFI restore is handled by the
+            // [initialCfi, isLoaded] effect below (initialCfi is null on first
+            // mount; it arrives after the position fetch resolves).
             const displayPromise = rendition.display();
-
-            // If we have a saved CFI, restore to that position after initial display
-            if (initialCfi) {
-              displayPromise.then(() => {
-                if (!mounted) return;
-                rendition
-                  .display(initialCfi)
-                  .catch((err: Error) =>
-                    console.warn("[EpubViewer] CFI restore failed:", err)
-                  );
-              });
-            }
 
             // ponytail: epub.js needs locations generated before location.start.percentage
             // returns a value. Background-generate after first display so the progress bar
@@ -279,7 +274,16 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                 .generate(1600)
                 .then(() => {
                   if (!mounted) return;
-                  onProgressChange?.(computeProgressPercent(book, lastCfiRef.current));
+                  const pct = computeProgressPercent(book, lastCfiRef.current);
+                  onProgressChange?.(pct);
+                  // Re-emit position so the persisted percentage reflects the real
+                  // location once locations are ready — before any page turn. This
+                  // is what makes a resumed book keep its accurate progress bar.
+                  onPositionChange?.(
+                    { paragraphIndex: 0, charOffset: 0 },
+                    lastCfiRef.current ?? "",
+                    Math.round(pct)
+                  );
                 })
                 .catch((err: Error) =>
                   console.warn("[EpubViewer] locations.generate failed:", err),
@@ -314,6 +318,16 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url]);
+
+    // Restore saved reading position once the CFI arrives (after the position
+    // fetch resolves) and the rendition is ready. Runs at most once per book.
+    useEffect(() => {
+      if (!initialCfi || !isLoaded || restoredRef.current) return;
+      restoredRef.current = true;
+      renditionRef.current?.display(initialCfi).catch((err: Error) =>
+        console.warn("[EpubViewer] CFI restore failed:", err)
+      );
+    }, [initialCfi, isLoaded]);
 
     // Sync theme changes
     useEffect(() => {

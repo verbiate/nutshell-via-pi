@@ -298,16 +298,18 @@ function parseCfi(
       charOffset = parseInt(offsetStr) || 0;
     }
 
-    // Parse element path steps
+    // Parse element path steps. CFI element indices are even (2,4,6...);
+    // convert to 0-based element index with (cfiIndex / 2) - 1.
     const stepStrings = elementPath.split("/").filter(Boolean);
     const elementSteps: EpubCFIStep[] = stepStrings.map((s) => {
       const idMatch = s.match(/^(\d+)(?:\[([^\]]+)\])?$/);
       if (idMatch) {
+        const cfiIndex = parseInt(idMatch[1]);
         return {
-          index: (parseInt(idMatch[1]) - 1) / 2 - 1, // convert CFI index back to 0-based element index
+          index: cfiIndex / 2 - 1,
           id: idMatch[2] ?? null,
           tagName: "",
-          type: "element",
+          type: cfiIndex % 2 === 0 ? "element" : "text",
         };
       }
       return { index: 0, id: null, tagName: "", type: "element" };
@@ -329,13 +331,13 @@ interface EpubCFIStep {
 /**
  * Find a DOM node from parsed CFI element steps within a document.
  */
-function findNodeInDocument(
-  doc: Document,
-  steps: EpubCFIStep[]
-): Node | null {
+function findNodeInDocument(doc: Document, steps: EpubCFIStep[]): Node | null {
   let node: Node = doc.documentElement;
 
   for (const step of steps) {
+    // Text-node steps (odd CFI indices) have no element children to traverse.
+    if (step.type === "text") continue;
+
     const children = node.childNodes;
     let elementCount = -1;
     let child: Node | null = null;

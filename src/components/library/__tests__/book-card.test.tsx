@@ -37,10 +37,25 @@ describe("BookCard", () => {
         author={null}
         coverPath={null}
         progress={42}
+        hasProgress
       />,
     );
     expect(without).toContain("h-1.5");
     expect(withProgress).toContain("42");
     expect(withProgress).toContain("progressbar");
+  });
+
+  it("hides the progress bar when hasProgress is false even with a value", () => {
+    const html = render(
+      <BookCard
+        id="abc"
+        title="T"
+        author={null}
+        coverPath={null}
+        progress={42}
+        hasProgress={false}
+      />,
+    );
+    expect(html).not.toContain("progressbar");
   });
 });
