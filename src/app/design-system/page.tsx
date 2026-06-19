@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, Play, Plus, Search } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Play, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { BookCard } from "@/components/library/book-card";
+import { DailyDigest } from "@/components/library/daily-digest";
 
 const SURFACES = [
   { name: "Paper", token: "bg-paper", hex: "#FBF7EC" },
@@ -357,6 +359,82 @@ export default function DesignSystemPage() {
               </div>
             </CardContent>
           </Card>
+        </section>
+
+        {/* 06 Library */}
+        <section className="mb-14">
+          <SectionLabel num="06" title="Library" />
+          <div className="grid gap-5">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardDescription>BookCard · shadow-book + hover lift + progress slot</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6">
+                  {/* ponytail: placeholder variant exercises the built-in fallback when there is no cover image. */}
+                  <BookCard id="demo-0" title="The Rustic Drawer" author="Nutra Vell" coverPath={null} />
+                  {/* ponytail: demo-cover variants inline — BookCard's coverPath routes through /api/files/, which a public asset can't satisfy. Mirrors BookCard's classes verbatim so the shadow reads identically. */}
+                  <a href="/book/demo-1/reader" className="group block rounded-md">
+                    <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
+                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
+                        <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
+                      </div>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full" />
+                  </a>
+
+                  <a href="/book/demo-2/reader" className="group block rounded-md">
+                    <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
+                      <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-[filter] duration-200 ease-out group-hover:shadow-book-lifted">
+                        <img src="/demo-cover.svg" alt="The Sample Book" className="block h-auto w-full scale-[1.02]" />
+                      </div>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full">
+                      <div className="h-full w-full overflow-hidden rounded-full bg-black/10" role="progressbar" aria-valuenow={62} aria-valuemin={0} aria-valuemax={100} aria-label="Reading progress: 62%">
+                        <div className="h-full rounded-full bg-grad transition-all duration-300" style={{ width: "62%" }} />
+                      </div>
+                    </div>
+                  </a>
+                </div>
+                <p className="mt-4 text-[11px] text-muted-foreground">
+                  Hover any cover to lift it: <code className="font-mono">group-hover:-translate-y-[1%]</code> on the
+                  outer wrapper, <code className="font-mono">group-hover:shadow-book-lifted</code> on the inner.
+                  The progress slot is a fixed <code className="font-mono">h-1.5</code> whether filled or not, so
+                  covers share a common baseline.
+                </p>
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardDescription>DailyDigest · espresso card with badge + orange CTA</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* ponytail: imageSrc=null uses the espresso fallback — real component. */}
+                  <DailyDigest imageSrc={null} />
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardDescription>Empty-state pattern · icon + serif headline + subtext</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* ponytail: shared empty-state pattern reused by EmptyLibrary and the Explainers/Find tabs. */}
+                  <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
+                    <BookOpen className="h-16 w-16 text-muted-foreground" />
+                    <h3 className="mt-4 font-serif text-[28px] font-medium text-espresso">
+                      Your library is empty
+                    </h3>
+                    <p className="mt-2 max-w-[400px] text-base text-muted-foreground">
+                      Upload your first EPUB to start reading with AI-powered explanations.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </section>
 
         <footer className="mt-14 border-t border-line pt-5 text-xs text-muted-foreground">

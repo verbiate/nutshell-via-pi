@@ -48,4 +48,30 @@ describe("Design system page", () => {
       expect(html).toContain("250ms");  // --reader-dur
     });
   });
+
+  describe("Section 06 — Library", () => {
+    it("renders the Library section heading", () => {
+      expect(render()).toContain("Library");
+    });
+
+    it("renders three BookCards in the shelf, including the placeholder and the demo cover", () => {
+      const html = render();
+      // Placeholder card shows the title text on the gradient
+      expect(html).toContain("The Rustic Drawer");
+      // Demo cover card links to its book and renders the cover image
+      expect(html).toContain("/demo-cover.svg");
+      expect(html).toContain("/book/demo-1/reader");
+      expect(html).toContain("/book/demo-2/reader");
+    });
+
+    it("renders the daily digest headline from the real DailyDigest component", () => {
+      const html = render();
+      expect(html).toContain("Your daily digest, ready when you are.");
+    });
+
+    it("renders the empty-state pattern headline", () => {
+      const html = render();
+      expect(html).toContain("Your library is empty");
+    });
+  });
 });
