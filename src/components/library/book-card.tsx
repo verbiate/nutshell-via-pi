@@ -23,7 +23,7 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
           <img
             src={`/api/files/${coverPath}`}
             alt={title}
-            className="block h-auto w-full"
+            className="block h-auto w-full scale-[1.02]"
           />
         ) : (
           <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(160deg,#3FD9B0,#1f8f70)] p-3 text-center">
