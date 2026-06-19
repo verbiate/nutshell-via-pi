@@ -30,18 +30,26 @@ export function ReaderChrome({
       )}
       role="banner"
     >
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onBack}
-          aria-label="Back to library"
-          className="shrink-0"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        {sidebarOpen && (
-          <span className="text-sm font-medium text-foreground">Bookshelf</span>
+      <div className="flex items-center">
+        {sidebarOpen ? (
+          <Button
+            onClick={onBack}
+            aria-label="Back to bookshelf"
+            className="h-[46px] bg-transparent text-foreground"
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Bookshelf
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            aria-label="Back to library"
+            className="shrink-0"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
         )}
       </div>
 
@@ -58,14 +66,13 @@ export function ReaderChrome({
         >
           <div className="overflow-hidden">
             <Button
-              variant="ghost"
-              size="sm"
               onClick={onHideControls}
               tabIndex={sidebarOpen ? 0 : -1}
               aria-label="Hide controls"
+              className="h-[46px] bg-transparent text-foreground"
             >
-              <PanelRightClose className="h-4 w-4" />
-              <span className="text-sm font-medium">Hide controls</span>
+              <PanelRightClose className="mr-2 h-4 w-4" />
+              Hide controls
             </Button>
           </div>
         </div>

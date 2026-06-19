@@ -53,12 +53,18 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(match).toBe(true);
   });
 
-  it("Hide controls button uses content-fit size (not icon-only) when sidebarOpen=true", () => {
+  it("Bookshelf and Hide-controls buttons share the Add-a-book class with no fill or border", () => {
     const html = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
-    const hideBtnMatch = html.match(/<button[^>]*aria-label="Hide controls"[^>]*>/);
-    expect(hideBtnMatch, "Hide-controls button opening tag should be present").not.toBeNull();
-    const hideBtn = hideBtnMatch![0];
-    expect(hideBtn).toContain('data-size="sm"');
-    expect(hideBtn).not.toContain('data-size="icon-sm"');
+    const bookshelfBtn = html.match(/<button[^>]*aria-label="Back to bookshelf"[^>]*>/)?.[0];
+    const hideBtn = html.match(/<button[^>]*aria-label="Hide controls"[^>]*>/)?.[0];
+    expect(bookshelfBtn, "Bookshelf button should be present").toBeTruthy();
+    expect(hideBtn, "Hide-controls button should be present").toBeTruthy();
+    for (const btn of [bookshelfBtn!, hideBtn!]) {
+      // ponytail: same proportions as the "Add a book" button (h-46px), minus its fill.
+      // bg-transparent wins via tailwind-merge; only [a]:hover:bg-primary/80 (anchor-only) remains.
+      expect(btn).toContain("h-[46px]");
+      expect(btn).toContain("bg-transparent");
+      expect(btn).not.toContain("bg-white");
+    }
   });
 });
