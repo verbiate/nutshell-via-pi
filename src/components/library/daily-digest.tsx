@@ -27,10 +27,11 @@ export function DailyDigest({ imageSrc }: DailyDigestProps) {
       )}
       <div className="relative flex flex-col justify-between p-8">
         <div className="space-y-5">
-          <span className="text-[22px] font-semibold tracking-tight">
-            <span className="text-b-teal">(</span>
-            nutshell<span className="text-paper/80">)</span>
-          </span>
+          <img
+            src="/images/nutshell_badge_white.svg"
+            alt=""
+            className="h-6 w-auto"
+          />
           <p className="font-serif text-[24px] leading-snug">
             Your daily digest, ready when you are.
           </p>

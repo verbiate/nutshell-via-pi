@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Compass } from "lucide-react";
+import { Sparkles, Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import type { LibraryBook } from "@/types/book";
@@ -51,7 +51,26 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
         <DailyDigest imageSrc={digestImage} />
         <div>
           <TabsContent value="bookshelf">
-            <Bookshelf books={books} />
+            <div className="pb-[138px]">
+              <Bookshelf books={books} />
+            </div>
+            <div className="fixed inset-x-0 bottom-0 h-[138px] backdrop-blur-[14px] bg-paper/60">
+              <div className="mx-auto flex h-full max-w-[1280px] items-center px-8">
+                {/* ponytail: mirror the 2fr/3fr page grid so the bar centers over the book column */}
+                <div className="hidden lg:block lg:flex-[2]" aria-hidden />
+                <div className="flex flex-[3] justify-center">
+                  <div className="flex w-full max-w-[520px] items-center gap-3 rounded-full border border-line bg-white px-5 py-3.5 shadow-float">
+                    <Search className="size-4 shrink-0 text-muted-foreground" />
+                    <input
+                      type="search"
+                      aria-label="Search books"
+                      placeholder="Search or ask your books…"
+                      className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground/70"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </TabsContent>
           <TabsContent value="explainers">
             <div className="flex min-h-[50vh] flex-col items-center justify-center">
