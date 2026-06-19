@@ -1,6 +1,6 @@
 import { requireAuth } from "@/lib/auth-guards";
-import { RoleBadge } from "@/components/auth/role-badge";
 import { UserNav } from "@/components/auth/user-nav";
+import { UploadBookDialog } from "@/components/library/upload-book-dialog";
 import Link from "next/link";
 
 export default async function LibraryLayout({
@@ -8,33 +8,24 @@ export default async function LibraryLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireAuth();
+  await requireAuth();
 
   return (
-    <div className="min-h-screen">
-      <header className="flex h-16 items-center border-b border-line bg-card px-8">
-        <Link
-          href="/my-library"
-          className="text-[20px] font-semibold tracking-tight text-espresso"
-        >
-          <span className="text-b-teal">(</span>
-          nutshell
-          <span className="text-lav">)</span>
+    <div className="flex min-h-screen flex-col pt-12 lg:h-screen lg:overflow-hidden">
+      <header className="mx-auto flex h-16 w-full shrink-0 max-w-[1280px] items-center justify-between px-8">
+        <Link href="/my-library">
+          <img
+            src="/images/nutshell_logo_chocolate.svg"
+            alt="Nutshell"
+            className="h-8 w-auto"
+          />
         </Link>
-        <nav className="mx-auto flex items-center gap-6">
-          <Link
-            href="/my-library"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            My Library
-          </Link>
-        </nav>
         <div className="flex items-center gap-3">
-          <RoleBadge role={user.role} />
+          <UploadBookDialog />
           <UserNav />
         </div>
       </header>
-      <main className="mx-auto max-w-[1280px] px-8 py-6">{children}</main>
+      <main className="mx-auto flex min-h-0 w-full max-w-[1280px] flex-1 flex-col px-8 py-8 lg:pb-0">{children}</main>
     </div>
   );
 }
