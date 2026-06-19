@@ -34,11 +34,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/my-library", request.url));
   }
 
+  // Authenticated users on the root landing page go straight to their home
+  if (pathname === "/" && sessionCookie) {
+    return NextResponse.redirect(new URL("/my-library", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
+    "/",
     "/my-library/:path*",
     "/book/:path*",
     "/admin/:path*",

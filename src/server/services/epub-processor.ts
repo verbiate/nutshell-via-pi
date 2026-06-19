@@ -9,6 +9,7 @@ export interface ParsedEpub {
   text: string;
   toc: TocEntry[];
   coverBuffer: Buffer | null;
+  coverMediaType: string | null;
 }
 
 export interface TocEntry {
@@ -103,9 +104,16 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
   const text = await extractText(zip, opfContent, rootDir);
 
   // Extract cover image
-  const coverBuffer = await extractCover(zip, opfContent, rootDir);
+  const cover = await extractCover(zip, opfContent, rootDir);
 
-  return { title, author, text, toc, coverBuffer };
+  return {
+    title,
+    author,
+    text,
+    toc,
+    coverBuffer: cover.buffer,
+    coverMediaType: cover.mediaType,
+  };
 }
 
 async function extractToc(
@@ -116,11 +124,11 @@ async function extractToc(
   const toc: TocEntry[] = [];
 
   // Try EPUB 3 nav document first
-  const navMatch = opfContent.match(
-    /<item[^>]+properties="[^"]*nav[^"]*"[^>]+href="([^"]+)"[^>]*>/i
+  const navItem = parseManifest(opfContent).find((it) =>
+    /\bnav\b/.test(it.properties || "")
   );
-  if (navMatch) {
-    const navPath = rootDir + navMatch[1];
+  if (navItem) {
+    const navPath = rootDir + navItem.href;
     const navContent = await zip.file(navPath)?.async("text");
     if (navContent) {
       const tocMatch = navContent.match(
@@ -128,7 +136,7 @@ async function extractToc(
       ) || navContent.match(/<nav[^>]*>([\s\S]*?)<\/nav>/i);
       if (tocMatch) {
         const linkRegex =
-          /<a[^>]+href="([^"]+)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/a>/gi;
+          /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
         let match;
         while ((match = linkRegex.exec(tocMatch[1])) !== null) {
           toc.push({
@@ -144,11 +152,11 @@ async function extractToc(
 
   // Fallback to NCX (EPUB 2)
   if (toc.length === 0) {
-    const ncxMatch = opfContent.match(
-      /<item[^>]+media-type="application\/x-dtbncx\+xml"[^>]+href="([^"]+)"[^>]*>/i
+    const ncxItem = parseManifest(opfContent).find(
+      (it) => it.mediaType === "application/x-dtbncx+xml"
     );
-    if (ncxMatch) {
-      const ncxPath = rootDir + ncxMatch[1];
+    if (ncxItem) {
+      const ncxPath = rootDir + ncxItem.href;
       const ncxContent = await zip.file(ncxPath)?.async("text");
       if (ncxContent) {
         const pointRegex =
@@ -189,11 +197,8 @@ async function extractText(
 
   // Build manifest map: id -> href
   const manifest: Record<string, string> = {};
-  const itemRegex =
-    /<item[^>]+id="([^"]+)"[^>]+href="([^"]+)"[^>]*>/gi;
-  let itemMatch;
-  while ((itemMatch = itemRegex.exec(opfContent)) !== null) {
-    manifest[itemMatch[1]] = rootDir + itemMatch[2];
+  for (const item of parseManifest(opfContent)) {
+    manifest[item.id] = rootDir + item.href;
   }
 
   const textParts: string[] = [];
@@ -226,39 +231,79 @@ async function extractText(
   return textParts.join("\n\n");
 }
 
+function getAttr(tag: string, name: string): string | null {
+  const m = tag.match(new RegExp('(?:^|\\s)' + name + '\\s*=\\s*"([^"]*)"', "i"));
+  return m ? m[1] : null;
+}
+
+interface ManifestItem {
+  id: string;
+  href: string;
+  mediaType: string | null;
+  properties: string | null;
+}
+
+function parseManifest(opfContent: string): ManifestItem[] {
+  const tags = opfContent.match(/<item\b[^>]*>/gi) || [];
+  return tags
+    .map((t) => ({
+      id: getAttr(t, "id"),
+      href: getAttr(t, "href"),
+      mediaType: getAttr(t, "media-type"),
+      properties: getAttr(t, "properties"),
+    }))
+    .filter((it) => it.id && it.href) as ManifestItem[];
+}
+
 async function extractCover(
   zip: any,
   opfContent: string,
   rootDir: string
-): Promise<Buffer | null> {
-  // Try cover-image property first
-  const coverItemMatch = opfContent.match(
-    /<item[^>]+properties="[^"]*cover-image[^"]*"[^>]+href="([^"]+)"[^>]*>/i
-  );
+): Promise<{ buffer: Buffer | null; mediaType: string | null }> {
+  const itemTags = opfContent.match(/<item\b[^>]*>/gi) || [];
 
-  // Try meta cover
-  const coverMetaMatch = opfContent.match(
-    /<meta[^>]+name="cover"[^>]+content="([^"]+)"[^>]*>/i
-  );
+  let coverTag: string | null = null;
 
-  let coverHref: string | null = null;
-
-  if (coverItemMatch) {
-    coverHref = rootDir + coverItemMatch[1];
-  } else if (coverMetaMatch) {
-    const coverId = coverMetaMatch[1];
-    const itemMatch = opfContent.match(
-      new RegExp(`<item[^>]+id="${coverId}"[^>]+href="([^"]+)"`, "i")
-    );
-    if (itemMatch) {
-      coverHref = rootDir + itemMatch[1];
+  for (const tag of itemTags) {
+    if (/\bcover-image\b/.test(getAttr(tag, "properties") || "")) {
+      coverTag = tag;
+      break;
     }
   }
 
-  if (!coverHref) return null;
+  if (!coverTag) {
+    const coverMeta = (opfContent.match(/<meta\b[^>]*>/gi) || []).find(
+      (t) => getAttr(t, "name") === "cover"
+    );
+    const coverId = coverMeta ? getAttr(coverMeta, "content") : null;
+    if (coverId) {
+      coverTag = itemTags.find((t) => getAttr(t, "id") === coverId) || null;
+    }
+  }
 
-  const coverData = await zip.file(coverHref)?.async("nodebuffer");
-  return coverData || null;
+  const href = coverTag ? getAttr(coverTag, "href") : null;
+  if (!coverTag || !href) return { buffer: null, mediaType: null };
+
+  const mediaType = getAttr(coverTag, "media-type");
+  const coverData = await zip.file(rootDir + href)?.async("nodebuffer");
+  return { buffer: coverData || null, mediaType: mediaType || null };
+}
+
+function coverExtension(mediaType: string | null): string {
+  switch ((mediaType || "").toLowerCase()) {
+    case "image/png":
+      return ".png";
+    case "image/jpeg":
+      return ".jpg";
+    case "image/svg+xml":
+      return ".svg";
+    case "image/gif":
+      return ".gif";
+    case "image/webp":
+      return ".webp";
+    default:
+      return ".jpg";
+  }
 }
 
 /**
@@ -307,7 +352,7 @@ export async function processAndUploadBook(
   let coverPath: string | null = null;
   if (parsed.coverBuffer) {
     coverPath = await storage.write(
-      `covers/${md5}.jpg`,
+      `covers/${md5}${coverExtension(parsed.coverMediaType)}`,
       parsed.coverBuffer
     );
   }

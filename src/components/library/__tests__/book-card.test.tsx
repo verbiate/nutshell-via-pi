@@ -13,10 +13,34 @@ describe("BookCard", () => {
         id="abc"
         title="Some Book"
         author={null}
-        language="en"
         coverPath={null}
       />,
     );
     expect(html).toContain('href="/book/abc/reader"');
+  });
+
+  it("renders the title on the placeholder cover when there is no cover image", () => {
+    const html = render(
+      <BookCard id="abc" title="Some Book" author={null} coverPath={null} />,
+    );
+    expect(html).toContain("Some Book");
+  });
+
+  it("reserves a progress slot so covers share a common baseline", () => {
+    const without = render(
+      <BookCard id="abc" title="T" author={null} coverPath={null} />,
+    );
+    const withProgress = render(
+      <BookCard
+        id="abc"
+        title="T"
+        author={null}
+        coverPath={null}
+        progress={42}
+      />,
+    );
+    expect(without).toContain("h-1.5");
+    expect(withProgress).toContain("42");
+    expect(withProgress).toContain("progressbar");
   });
 });
