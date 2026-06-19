@@ -84,6 +84,82 @@ export default function DesignSystemPage() {
                   ))}
                   <span className="h-8 w-24 rounded-full bg-grad" />
                 </div>
+
+                <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Highlighters
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {[
+                    { name: "Teal", hex: "#19E1CA" },
+                    { name: "Yellow", hex: "#FEC405" },
+                    { name: "Pink", hex: "#F168F5" },
+                  ].map((h) => (
+                    <div key={h.name} className="flex flex-col items-center gap-1">
+                      <span className="size-7 rounded-full ring-1 ring-black/5" style={{ backgroundColor: h.hex }} />
+                      <small className="font-mono text-[10px] text-muted-foreground">{h.hex}</small>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Gradient stops
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {[
+                    { label: "g1", hex: "#FF7A4D" },
+                    { label: "g2", hex: "#FF4E8C" },
+                    { label: "g3", hex: "#C932A6" },
+                  ].map((g) => (
+                    <div key={g.label} className="flex items-center gap-2">
+                      <span className="size-7 rounded-full" style={{ backgroundColor: g.hex }} />
+                      <div className="flex flex-col">
+                        <b className="text-[11px] text-ink">{g.label}</b>
+                        <small className="font-mono text-[10px] text-muted-foreground">{g.hex}</small>
+                      </div>
+                    </div>
+                  ))}
+                  <span className="h-7 w-20 rounded-full bg-grad" />
+                </div>
+
+                <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Status gradients
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, #FF6A5E, #FF2E7E)" }}>Warn</span>
+                  <span className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundImage: "linear-gradient(90deg, #4FD18B, #2FA86A)" }}>Success</span>
+                </div>
+
+                <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Radii tokens
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-4">
+                  {[
+                    { name: "--r-sm", px: "10px", cls: "rounded-[10px]" },
+                    { name: "--r-md", px: "16px", cls: "rounded-[16px]" },
+                    { name: "--r-lg", px: "22px", cls: "rounded-[22px]" },
+                    { name: "--r-pill", px: "999px", cls: "rounded-full" },
+                  ].map((r) => (
+                    <div key={r.name} className="flex flex-col items-center gap-1">
+                      <div className={`h-10 w-16 bg-paper-deep border border-line ${r.cls}`} />
+                      <small className="font-mono text-[10px] text-muted-foreground">{r.px}</small>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-6 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Reader geometry
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[
+                    "--reader-rail-w: 94px",
+                    "--reader-sidebar-w: 400px",
+                    "--reader-dur: 250ms",
+                  ].map((t) => (
+                    <span key={t} className="rounded-md border border-line bg-paper-deep px-2.5 py-1 font-mono text-[11px] text-espresso">
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 

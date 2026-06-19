@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" role="img" aria-labelledby="t a">
+  <title id="t">The Sample Book</title>
+  <desc id="a">A decorative cover with a coral-to-magenta diagonal band on warm paper.</desc>
+
+  <defs>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF7A4D" />
+      <stop offset="0.5" stop-color="#FF4E8C" />
+      <stop offset="1" stop-color="#C932A6" />
+    </linearGradient>
+  </defs>
+
+  <!-- paper-deep ground -->
+  <rect x="0" y="0" width="300" height="400" fill="#F4EEDC" />
+
+  <!-- coral->magenta diagonal stripe across the top third -->
+  <polygon points="-20,-20 360,80 360,150 -20,50" fill="url(#band)" />
+
+  <!-- thin espresso hairline border -->
+  <rect x="3" y="3" width="294" height="394" fill="none" stroke="#2B1C11" stroke-width="2" />
+
+  <!-- title -->
+  <text x="150" y="232" text-anchor="middle" font-family="Georgia, serif" font-size="30" font-weight="600" fill="#2B1C11">The Sample Book</text>
+
+  <!-- short rule under title -->
+  <line x1="110" y1="250" x2="190" y2="250" stroke="#2B1C11" stroke-width="1" opacity="0.4" />
+
+  <!-- author -->
+  <text x="150" y="278" text-anchor="middle" font-family="Georgia, serif" font-size="15" font-style="italic" fill="#2B1C11" opacity="0.78">Nutshell Press</text>
+</svg>
