@@ -21,6 +21,100 @@ import {
   type BookSettings,
 } from "@/components/reader/book-settings-panel";
 import type { ReaderThemeName } from "@/components/reader/themes";
+import { defaultParams, applyParam, type ParamValue } from "./tweakpane-params";
+import type {
+  PaneInstance,
+  BindingApi,
+  FolderApi,
+} from "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js";
+
+type TweakBinding = { key: string; config: Record<string, unknown> };
+type TweakFolder = { title: string; expanded?: boolean; bindings: TweakBinding[] };
+
+const TWEAK_FOLDERS: TweakFolder[] = [
+  {
+    title: "Surfaces",
+    expanded: true,
+    bindings: [
+      { key: "paper", config: { label: "Paper" } },
+      { key: "paper-deep", config: { label: "Paper Deep" } },
+      { key: "espresso", config: { label: "Espresso" } },
+      { key: "ink", config: { label: "Ink" } },
+      { key: "line", config: { label: "Line" } },
+      { key: "line-soft", config: { label: "Line Soft" } },
+    ],
+  },
+  {
+    title: "Lavender",
+    bindings: [
+      { key: "lav", config: { label: "Lav" } },
+      { key: "lav-soft", config: { label: "Lav Soft" } },
+      { key: "lav-ring", config: { label: "Lav Ring" } },
+    ],
+  },
+  {
+    title: "Gradient",
+    bindings: [
+      { key: "g1", config: { label: "G1" } },
+      { key: "g2", config: { label: "G2" } },
+      { key: "g3", config: { label: "G3" } },
+    ],
+  },
+  {
+    title: "Brand",
+    bindings: [
+      { key: "b-orange", config: { label: "B Orange" } },
+      { key: "b-magenta", config: { label: "B Magenta" } },
+      { key: "b-purple", config: { label: "B Purple" } },
+      { key: "b-blue", config: { label: "B Blue" } },
+      { key: "b-teal", config: { label: "B Teal" } },
+    ],
+  },
+  {
+    title: "Highlighters",
+    bindings: [
+      { key: "hl-teal", config: { label: "Hl Teal" } },
+      { key: "hl-yellow", config: { label: "Hl Yellow" } },
+      { key: "hl-pink", config: { label: "Hl Pink" } },
+    ],
+  },
+  {
+    title: "Status",
+    bindings: [
+      { key: "warn-from", config: { label: "Warn From" } },
+      { key: "warn-to", config: { label: "Warn To" } },
+      { key: "success-from", config: { label: "Success From" } },
+      { key: "success-to", config: { label: "Success To" } },
+    ],
+  },
+  {
+    title: "Radii",
+    bindings: [
+      { key: "r-sm", config: { min: 0, max: 40, step: 1, label: "R Sm" } },
+      { key: "r-md", config: { min: 0, max: 40, step: 1, label: "R Md" } },
+      { key: "r-lg", config: { min: 0, max: 40, step: 1, label: "R Lg" } },
+      { key: "radius", config: { min: 0, max: 2, step: 0.05, label: "Radius" } },
+    ],
+  },
+  {
+    title: "Reader Geometry",
+    bindings: [
+      { key: "reader-rail-w", config: { min: 60, max: 200, step: 2, label: "Reader Rail W" } },
+      { key: "reader-sidebar-w", config: { min: 280, max: 600, step: 10, label: "Reader Sidebar W" } },
+      { key: "reader-dur", config: { min: 0, max: 600, step: 10, label: "Reader Dur" } },
+    ],
+  },
+  {
+    title: "Gallery Layout",
+    bindings: [
+      { key: "book-hover-lift", config: { min: 0, max: 10, step: 0.5, label: "Book Hover Lift" } },
+      { key: "tts-bar-h", config: { min: 32, max: 128, step: 2, label: "Tts Bar H" } },
+      { key: "tts-bar-blur", config: { min: 0, max: 24, step: 1, label: "Tts Bar Blur" } },
+      { key: "toolbar-w", config: { min: 120, max: 360, step: 4, label: "Toolbar W" } },
+      { key: "toolbar-shadow-y", config: { min: 0, max: 32, step: 1, label: "Toolbar Shadow Y" } },
+    ],
+  },
+];
 
 const SURFACES = [
   { name: "Paper", token: "bg-paper", hex: "#FBF7EC" },
@@ -55,6 +149,296 @@ export default function DesignSystemPage() {
   const [activeTool, setActiveTool] = React.useState<"reader" | "bookmark" | "pen" | "bulb" | "type" | null>("reader");
   const [bookSettings, setBookSettings] = React.useState<BookSettings>(DEFAULT_BOOK_SETTINGS);
   const [readerTheme, setReaderTheme] = React.useState<ReaderThemeName>("light");
+
+  const paramsRef = React.useRef<Record<string, ParamValue>>({ ...defaultParams });
+
+  React.useEffect(() => {
+    let disposed = false;
+    let pane: PaneInstance | null = null;
+
+    const DRAG_THRESHOLD = 5;
+    let isDragging = false;
+    let dragStartPos = { x: 0, y: 0 };
+    let pointerOffset = { x: 0, y: 0 };
+    let paneElement: HTMLElement | null = null;
+    let suppressNextClick = false;
+
+    function startDrag(e: MouseEvent) {
+      if (!paneElement) return;
+      const rect = paneElement.getBoundingClientRect();
+      dragStartPos = { x: e.clientX, y: e.clientY };
+      pointerOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      isDragging = false;
+      document.addEventListener("mousemove", handleDrag, { passive: false });
+      document.addEventListener("mouseup", stopDrag, { passive: false });
+    }
+
+    function handleDrag(e: MouseEvent) {
+      const dist = Math.hypot(e.clientX - dragStartPos.x, e.clientY - dragStartPos.y);
+      if (!isDragging && dist > DRAG_THRESHOLD) {
+        isDragging = true;
+        suppressNextClick = true;
+        paneElement!.style.position = "fixed";
+        paneElement!.style.right = "auto";
+        paneElement!.style.bottom = "auto";
+      }
+      if (isDragging) {
+        e.preventDefault();
+        paneElement!.style.left = `${e.clientX - pointerOffset.x}px`;
+        paneElement!.style.top = `${e.clientY - pointerOffset.y}px`;
+      }
+    }
+
+    function stopDrag(e: MouseEvent) {
+      document.removeEventListener("mousemove", handleDrag);
+      document.removeEventListener("mouseup", stopDrag);
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      isDragging = false;
+    }
+
+    (async () => {
+      const mod = await import(
+        /* @vite-ignore */
+        "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js"
+      );
+      if (disposed) return;
+      const { Pane } = mod;
+
+      const params = paramsRef.current;
+      const bindings: Record<string, BindingApi> = {};
+
+      Object.keys(applyParam).forEach((key) => applyParam[key](defaultParams[key]));
+
+      const root: PaneInstance = new Pane({ title: "Nutshell Design System" });
+      pane = root;
+
+      let target: FolderApi = root;
+
+      function addResetButton(binding: BindingApi, key: string) {
+        setTimeout(() => {
+          const resetBtn = document.createElement("button");
+          resetBtn.className = "tp-reset-button";
+          resetBtn.textContent = "\u27F2";
+          resetBtn.title = "Reset to default";
+          resetBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            params[key] = defaultParams[key];
+            binding.refresh();
+            applyParam[key](params[key]);
+          });
+          const textInput = binding.element.querySelector<HTMLElement>(".tp-txtv");
+          if (textInput) {
+            textInput.style.display = "flex";
+            textInput.style.alignItems = "center";
+            textInput.appendChild(resetBtn);
+          }
+        }, 50);
+      }
+
+      function enableUnclampedEntry(
+        binding: BindingApi,
+        key: string,
+        config: Record<string, unknown>,
+      ): boolean {
+        const hasRange =
+          config.min !== undefined || config.max !== undefined;
+        if (!hasRange) return false;
+
+        let lastTypedRaw: number | null = null;
+
+        setTimeout(() => {
+          const inputMaybe = binding.element.querySelector<HTMLInputElement>(".tp-txtv_i");
+          if (!inputMaybe) return;
+          const input: HTMLInputElement = inputMaybe;
+
+          input.addEventListener("input", () => {
+            const v = parseFloat(input.value);
+            if (!isNaN(v)) lastTypedRaw = v;
+          });
+
+          function deferredOverrideCheck() {
+            setTimeout(() => {
+              if (lastTypedRaw === null) return;
+              const raw = lastTypedRaw;
+              lastTypedRaw = null;
+
+              if (params[key] !== raw) {
+                params[key] = raw;
+                applyParam[key](raw);
+              }
+
+              const fix = () => {
+                if (input.value != String(raw)) input.value = String(raw);
+              };
+              fix();
+              requestAnimationFrame(fix);
+              setTimeout(fix, 16);
+            }, 0);
+          }
+
+          input.addEventListener(
+            "keydown",
+            (e) => {
+              if (e.key === "Enter") deferredOverrideCheck();
+            },
+            true,
+          );
+          input.addEventListener("blur", () => deferredOverrideCheck(), true);
+        }, 50);
+
+        binding.on("change", (ev) => {
+          params[key] = ev.value;
+          applyParam[key](ev.value);
+        });
+
+        const originalRefresh = binding.refresh.bind(binding);
+        binding.refresh = () => {
+          const saved = params[key];
+          originalRefresh();
+          if (typeof saved === "number" && params[key] !== saved) {
+            params[key] = saved;
+            setTimeout(() => {
+              const input = binding.element.querySelector<HTMLInputElement>(".tp-txtv_i");
+              if (input) input.value = String(saved);
+            }, 0);
+          }
+        };
+
+        return true;
+      }
+
+      function addBindingWithReset(key: string, config: Record<string, unknown>) {
+        const binding = target.addBinding(params, key, config);
+        const hasUnclampedHandler = enableUnclampedEntry(binding, key, config);
+
+        if (!hasUnclampedHandler) {
+          binding.on("change", (ev) => {
+            params[key] = ev.value;
+            applyParam[key](ev.value);
+          });
+        }
+
+        addResetButton(binding, key);
+        bindings[key] = binding;
+        return binding;
+      }
+
+      for (const folder of TWEAK_FOLDERS) {
+        target = root.addFolder({ title: folder.title, expanded: folder.expanded ?? false });
+        for (const b of folder.bindings) addBindingWithReset(b.key, b.config);
+      }
+
+      function fallbackCopy(text: string, callback: (success: boolean) => void) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          callback(document.execCommand("copy"));
+        } catch {
+          callback(false);
+        }
+        document.body.removeChild(ta);
+      }
+
+      const copyBtn = root.addButton({ title: "Copy Parameters" });
+      copyBtn.on("click", () => {
+        const json = JSON.stringify(params, null, 2);
+        const btnEl = copyBtn.element.querySelector<HTMLElement>(".tp-btnv_b");
+        const original = btnEl?.textContent ?? "Copy Parameters";
+
+        const showFeedback = (success: boolean) => {
+          if (btnEl) {
+            btnEl.textContent = success ? "\u2713 Copied!" : "\u2717 Failed";
+            setTimeout(() => (btnEl.textContent = original), 1500);
+          }
+        };
+
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard
+            .writeText(json)
+            .then(() => showFeedback(true))
+            .catch(() => fallbackCopy(json, showFeedback));
+        } else {
+          fallbackCopy(json, showFeedback);
+        }
+      });
+
+      const pasteBtn = root.addButton({ title: "Paste Parameters" });
+      pasteBtn.on("click", async () => {
+        const btnEl = pasteBtn.element.querySelector<HTMLElement>(".tp-btnv_b");
+        const original = btnEl?.textContent ?? "Paste Parameters";
+
+        const showFeedback = (msg: string, duration = 1500) => {
+          if (btnEl) {
+            btnEl.textContent = msg;
+            setTimeout(() => (btnEl.textContent = original), duration);
+          }
+        };
+
+        try {
+          const text = await navigator.clipboard.readText();
+          const incoming = JSON.parse(text) as Record<string, ParamValue>;
+          let applied = 0;
+
+          for (const key of Object.keys(incoming)) {
+            if (
+              key in defaultParams &&
+              typeof incoming[key] === typeof defaultParams[key]
+            ) {
+              params[key] = incoming[key];
+              applyParam[key](incoming[key]);
+              if (bindings[key]) bindings[key].refresh();
+              applied++;
+            }
+          }
+
+          showFeedback(
+            applied > 0
+              ? `\u2713 Applied ${applied} param${applied === 1 ? "" : "s"}`
+              : "\u26A0 No matching keys",
+          );
+        } catch (err) {
+          showFeedback(
+            err instanceof SyntaxError ? "\u2717 Invalid JSON" : "\u2717 Clipboard denied",
+          );
+        }
+      });
+
+      setTimeout(() => {
+        if (disposed) return;
+        paneElement = document.querySelector<HTMLElement>(".tp-rotv");
+        if (!paneElement) return;
+        const titleElement = paneElement.querySelector<HTMLElement>(".tp-rotv_t");
+        if (!titleElement) return;
+        titleElement.style.cursor = "grab";
+        titleElement.addEventListener("mousedown", startDrag);
+        titleElement.addEventListener(
+          "click",
+          (e) => {
+            if (suppressNextClick) {
+              e.preventDefault();
+              e.stopPropagation();
+              suppressNextClick = false;
+            }
+          },
+          true,
+        );
+      }, 100);
+    })();
+
+    return () => {
+      disposed = true;
+      if (pane) pane.dispose();
+      document.removeEventListener("mousemove", handleDrag);
+      document.removeEventListener("mouseup", stopDrag);
+    };
+  }, []);
 
   const panels = {
     reader: (
@@ -126,6 +510,8 @@ export default function DesignSystemPage() {
   box-shadow: 0 2px 2px rgba(0,0,0,.25), 0 8px 8px rgba(0,0,0,.22); }
 .ds-gallery .ds-book-card:hover .ds-book-shadow {
   box-shadow: 0 3px 3px rgba(0,0,0,.25), 0 12px 12px rgba(0,0,0,.28); }
+.tp-reset-button { border: 0; background: transparent; color: #555; cursor: pointer; padding: 0 4px; margin-left: 4px; border-radius: 3px; font-size: 12px; line-height: 1; transition: all 0.15s ease; flex-shrink: 0; }
+.tp-reset-button:hover { color: #aaa; background: rgba(255, 255, 255, 0.08); }
 `}</style>
       <main className="mx-auto max-w-5xl px-7 py-14">
         <header className="mb-14">
@@ -480,10 +866,12 @@ export default function DesignSystemPage() {
                   </a>
                 </div>
                 <p className="mt-4 text-[11px] text-muted-foreground">
-                  Hover any cover to lift it: <code className="font-mono">group-hover:-translate-y-[1%]</code> on the
-                  outer wrapper, <code className="font-mono">group-hover:shadow-book-lifted</code> on the inner.
-                  The progress slot is a fixed <code className="font-mono">h-1.5</code> whether filled or not, so
-                  covers share a common baseline.
+                  Hover any cover to lift it: <code className="font-mono">.ds-book-card</code> rises
+                  by <code className="font-mono">var(--book-hover-lift)</code> while{" "}
+                  <code className="font-mono">.ds-book-shadow</code> deepens — both driven by scoped
+                  CSS on <code className="font-mono">.ds-gallery</code>, so Tweakpane can dial the
+                  lift live. The progress slot is a fixed <code className="font-mono">h-1.5</code>{" "}
+                  whether filled or not, so covers share a common baseline.
                 </p>
               </CardContent>
             </Card>

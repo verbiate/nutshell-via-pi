@@ -1,10 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import DesignSystemPage from "../page";
 
 function render() {
   return renderToStaticMarkup(<DesignSystemPage />);
 }
+
+const PAGE_SRC = readFileSync(
+  fileURLToPath(new URL("../page.tsx", import.meta.url)),
+  "utf8",
+);
 
 describe("Design system page", () => {
   it("renders the page heading", () => {
@@ -194,6 +201,32 @@ describe("Design system page", () => {
       expect(html).toContain("#19E1CA");
       expect(html).toContain("#FEC405");
       expect(html).toContain("#F168F5");
+    });
+  });
+
+  describe("Task 4 — Tweakpane panel wiring", () => {
+    // The Tweakpane mount is imperative CDN-loaded DOM code and is not
+    // SSR-testable. We assert the wiring exists in the page source: the
+    // params import, the Pane constructor, the binding helper, and the
+    // Copy/Paste buttons. Behavioral verification is manual.
+    it("imports defaultParams and applyParam from ./tweakpane-params", () => {
+      expect(PAGE_SRC).toContain('from "./tweakpane-params"');
+    });
+
+    it("constructs a Tweakpane Pane", () => {
+      expect(PAGE_SRC).toContain("new Pane(");
+    });
+
+    it("uses the addBindingWithReset helper", () => {
+      expect(PAGE_SRC).toContain("addBindingWithReset");
+    });
+
+    it("wires a Copy Parameters button", () => {
+      expect(PAGE_SRC).toContain("Copy Parameters");
+    });
+
+    it("wires a Paste Parameters button", () => {
+      expect(PAGE_SRC).toContain("Paste Parameters");
     });
   });
 });
