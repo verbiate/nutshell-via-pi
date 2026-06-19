@@ -340,6 +340,18 @@
     }
 }
 
+/* ponytail: hide native scrollbar on smooth-scroll areas so it never steals
+   layout width from aligned siblings (e.g. TabsList above a scrolling
+   bookshelf). Visual affordance comes from the JS-rendered pseudo-thumb.
+   Ceiling: none — these rules are inert outside .smooth-scroll-area. */
+.smooth-scroll-area {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE10 / legacy Edge */
+}
+.smooth-scroll-area::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / Edge */
+}
+
 /* Search result highlighting */
 .search-match {
   background-color: #fef08a;

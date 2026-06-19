@@ -49,6 +49,19 @@ describe("Bookshelf", () => {
   });
 });
 
+describe("Bookshelf scroll-reveal hook", () => {
+  it("renders a data-book-card marker on each book for ScrollTrigger batching", () => {
+    const books = [
+      { ...coverBook, id: "b1" },
+      { ...coverBook, id: "b2", title: "Two" },
+      { ...coverBook, id: "b3", title: "Three" },
+    ];
+    const html = render(<Bookshelf books={books} />);
+    const count = (html.match(/data-book-card/g) || []).length;
+    expect(count).toBe(3);
+  });
+});
+
 describe("BookshelfSkeleton", () => {
   it("uses the wider bookshelf padding and cell minimum (150px, px-12)", () => {
     const html = render(<BookshelfSkeleton />);

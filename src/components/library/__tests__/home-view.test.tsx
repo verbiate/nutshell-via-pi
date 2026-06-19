@@ -108,8 +108,11 @@ describe("HomeView scroll containment (lg+)", () => {
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
     // ponytail: count must be 3 — one per TabsContent (bookshelf/explainers/find).
+    // lg:overflow-y-auto moved into SmoothScrollArea (client-only; invisible in
+    // SSR since the component renders a fragment below lg). These two classes
+    // still guard the flex-chain positioning that lives on TabsContent itself.
     // Unanchored toContain would pass with the class on only one of the three.
-    for (const cls of ["lg:absolute", "lg:inset-0", "lg:overflow-y-auto"]) {
+    for (const cls of ["lg:absolute", "lg:inset-0"]) {
       const count = (html.match(new RegExp(cls, "g")) || []).length;
       expect(count).toBe(3);
     }

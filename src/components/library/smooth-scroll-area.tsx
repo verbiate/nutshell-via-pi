@@ -1,0 +1,212 @@
+"use client";
+
+import * as React from "react";
+import Lenis from "lenis";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { cn } from "@/lib/utils";
+import {
+  computeThumbHeight,
+  computeThumbTranslateY,
+  scrollFromDrag,
+} from "./scrollbar-math";
+
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+interface SmoothScrollAreaProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function SmoothScrollArea({
+  children,
+  className,
+}: SmoothScrollAreaProps): React.JSX.Element {
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const reducedMotion = usePrefersReducedMotion();
+
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const thumbRef = React.useRef<HTMLDivElement>(null);
+  const lenisRef = React.useRef<Lenis | null>(null);
+  const fadeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef = React.useRef<{
+    startY: number;
+    startScroll: number;
+    startThumbTop: number;
+  } | null>(null);
+
+  // ponytail: thumb height/translateY are written straight to the DOM on every
+  // scroll frame (see updateThumbPosition). Putting them in React state would
+  // re-render the unmemoized Bookshelf child (50–500 books) 60×/sec (I3). Only
+  // thumbVisible (rare fade transitions) stays in state.
+  const thumbTranslateYRef = React.useRef(0);
+  const [thumbVisible, setThumbVisible] = React.useState(false);
+
+  const wire = isDesktop && !reducedMotion;
+
+  const updateThumbPosition = React.useCallback((scrollTop: number) => {
+    const viewport = viewportRef.current;
+    const thumb = thumbRef.current;
+    if (!viewport || !thumb) return;
+    const { scrollHeight, clientHeight } = viewport;
+    const height = computeThumbHeight({ clientHeight, scrollHeight });
+    const translateY = computeThumbTranslateY({
+      scrollTop,
+      scrollHeight,
+      clientHeight,
+      thumbHeight: height,
+    });
+    thumb.style.height = `${height}px`;
+    thumb.style.transform = `translateY(${translateY}px)`;
+    thumbTranslateYRef.current = translateY;
+  }, []);
+
+  const showThumbTemporarily = React.useCallback(() => {
+    setThumbVisible(true);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    fadeTimerRef.current = setTimeout(() => setThumbVisible(false), 1000);
+  }, []);
+
+  // ponytail: clear the pending fade timer on unmount so it can't fire
+  // setThumbVisible(false) on a gone component (leak + potential state warning).
+  React.useEffect(() => {
+    return () => {
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    };
+  }, []);
+
+  useGSAP(
+    () => {
+      if (!wire || !viewportRef.current) return;
+      const viewport = viewportRef.current;
+
+      const lenis = new Lenis({
+        wrapper: viewport,
+        content: contentRef.current!,
+        smoothWheel: true,
+        lerp: 0.1,
+      });
+      lenisRef.current = lenis;
+
+      lenis.on("scroll", (e: Lenis) => {
+        updateThumbPosition(e.scroll);
+        showThumbTemporarily();
+      });
+
+      // ponytail: no ScrollTrigger.scrollerProxy / normalizeScroll here — the
+      // bookshelf reveal uses IntersectionObserver + gsap.to (bookshelf.tsx:19),
+      // which reads viewport.scrollTop directly and never goes through ST's
+      // scroller abstraction. scrollerProxy + ScrollTrigger.update/refresh were
+      // dead wiring, and normalizeScroll(false) was a leaky global side effect.
+
+      const tickerFn = (time: number) => lenis.raf(time * 1000);
+      gsap.ticker.add(tickerFn);
+      gsap.ticker.lagSmoothing(0);
+
+      return () => {
+        gsap.ticker.remove(tickerFn);
+        lenis.destroy();
+        lenisRef.current = null;
+      };
+    },
+    { scope: viewportRef, dependencies: [wire], revertOnUpdate: true },
+  );
+
+  if (!isDesktop) {
+    return <>{children}</>;
+  }
+
+  if (reducedMotion) {
+    // ponytail: no .smooth-scroll-area here — that class hides the native
+    // scrollbar (globals.css:347-353) and reduced-motion users need it as their
+    // only affordance. Trade-off: on desktop + reduced motion the original
+    // layout-shift (the reason .smooth-scroll-area exists) returns. That's an
+    // explicit a11y trade — a usable scrollbar beats no scrollbar. If we later
+    // want both, scope the hide to a modifier (.smooth-scroll-area.is-custom-thumb)
+    // and apply that variant in the wired branch only.
+    return (
+      <div className={cn("overflow-y-auto h-full", className)}>
+        {children}
+      </div>
+    );
+  }
+
+  const onThumbPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!lenisRef.current) return;
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startY: e.clientY,
+      startScroll: lenisRef.current.scroll,
+      startThumbTop: thumbTranslateYRef.current,
+    };
+    setThumbVisible(true);
+  };
+
+  const onThumbPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    const viewport = viewportRef.current;
+    const lenis = lenisRef.current;
+    if (!drag || !track || !thumb || !viewport || !lenis) return;
+    const deltaY = e.clientY - drag.startY;
+    const trackHeight = track.clientHeight;
+    const tHeight = thumb.offsetHeight;
+    const travel = trackHeight - tHeight;
+    const newThumbTop = Math.min(travel, Math.max(0, drag.startThumbTop + deltaY));
+    const dragRatio = travel > 0 ? newThumbTop / travel : 0;
+    const target = scrollFromDrag({
+      dragRatio,
+      scrollHeight: viewport.scrollHeight,
+      clientHeight: viewport.clientHeight,
+    });
+    lenis.scrollTo(target, { immediate: true });
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    dragRef.current = null;
+    showThumbTemporarily();
+  };
+
+  return (
+    <div
+      ref={viewportRef}
+      className={cn(
+        "smooth-scroll-area relative h-full overflow-y-auto",
+        className,
+      )}
+    >
+      <div ref={contentRef} data-scroll-content className="lenis-content">
+        {children}
+      </div>
+      <div
+        ref={trackRef}
+        data-scrollbar-track
+        className="absolute right-1 top-2 bottom-2 w-1.5 z-10"
+        style={{
+          opacity: thumbVisible ? 1 : 0,
+          transition: "opacity 300ms ease-out",
+        }}
+        onPointerEnter={() => setThumbVisible(true)}
+        onPointerLeave={() => showThumbTemporarily()}
+      >
+        <div
+          ref={thumbRef}
+          data-scrollbar-thumb
+          className="absolute left-0 right-0 rounded-full bg-ink/30"
+          onPointerDown={onThumbPointerDown}
+          onPointerMove={onThumbPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        />
+      </div>
+    </div>
+  );
+}
