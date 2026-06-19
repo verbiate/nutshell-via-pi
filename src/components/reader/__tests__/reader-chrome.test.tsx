@@ -7,23 +7,27 @@ function render(el: React.ReactElement) {
 }
 
 const baseProps = {
-  bookTitle: "The Great Gatsby",
   onBack: () => {},
   searchTrigger: <button aria-label="search">S</button>,
   ttsTrigger: <button aria-label="read aloud">T</button>,
 };
 
 describe("ReaderChrome: sidebar-aware top bar", () => {
-  it("renders Bookshelf label and hides title when sidebarOpen=true", () => {
+  it("renders Bookshelf label when sidebarOpen=true", () => {
     const html = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
     expect(html).toContain("Bookshelf");
-    expect(html).not.toContain("The Great Gatsby");
   });
 
-  it("renders title and hides Bookshelf label when sidebarOpen=false", () => {
+  it("hides Bookshelf label when sidebarOpen=false", () => {
     const html = render(<ReaderChrome {...baseProps} />);
-    expect(html).toContain("The Great Gatsby");
     expect(html).not.toContain("Bookshelf");
+  });
+
+  it("never renders a book title in the top bar", () => {
+    const closed = render(<ReaderChrome {...baseProps} />);
+    const open = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
+    expect(closed).not.toContain('aria-label="Book title');
+    expect(open).not.toContain('aria-label="Book title');
   });
 
   it("renders Hide controls button when sidebarOpen=true", () => {

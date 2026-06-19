@@ -686,7 +686,6 @@ export function ReaderClient({
       {isLoaded && !error && (
         <>
           <ReaderChrome
-            bookTitle={bookTitle ?? "Loading..."}
             onBack={handleBack}
             sidebarOpen={activeTool !== null}
             onHideControls={() => setActiveTool(null)}

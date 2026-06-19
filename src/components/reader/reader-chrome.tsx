@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface ReaderChromeProps {
-  bookTitle: string;
   onBack: () => void;
   searchTrigger?: ReactNode;
   ttsTrigger?: ReactNode;
@@ -15,7 +14,6 @@ export interface ReaderChromeProps {
 }
 
 export function ReaderChrome({
-  bookTitle,
   onBack,
   searchTrigger,
   ttsTrigger,
@@ -46,15 +44,6 @@ export function ReaderChrome({
           <span className="text-sm font-medium text-foreground">Bookshelf</span>
         )}
       </div>
-
-      {!sidebarOpen && (
-        <span
-          className="text-sm font-medium truncate max-w-[140px] sm:max-w-[400px] text-foreground"
-          aria-label={`Book title: ${bookTitle}`}
-        >
-          {bookTitle}
-        </span>
-      )}
 
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
       <div className="flex items-center gap-1 shrink-0">
