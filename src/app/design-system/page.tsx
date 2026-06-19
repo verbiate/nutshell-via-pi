@@ -540,7 +540,7 @@ export default function DesignSystemPage() {
 
                 {/* ponytail: demo mirror — original TtsPlayer uses `fixed bottom-0` bound to reader viewport; mirrored here with relative so the showcase frame contains it. */}
                 <div
-                  className="absolute bottom-0 left-0 right-0 flex h-16 items-center gap-3 border-t border-border bg-background/95 px-4 backdrop-blur-sm"
+                  className="absolute bottom-0 left-0 right-0 z-60 flex h-16 items-center gap-3 border-t border-border bg-background/95 px-4 backdrop-blur-sm"
                   role="region"
                   aria-label="Audio player (demo mirror)"
                 >
