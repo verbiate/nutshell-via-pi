@@ -100,4 +100,30 @@ describe("Design system page", () => {
       expect(html).toContain('aria-label="Play"');
     });
   });
+
+  describe("Section 08 — Reader sidebar", () => {
+    it("renders all five rail tool buttons with their aria-labels", () => {
+      const html = render();
+      expect(html).toContain("Reader sidebar"); // section-08-specific
+      expect(html).toContain('aria-label="Contents"');
+      expect(html).toContain('aria-label="Bookmarks"');
+      expect(html).toContain('aria-label="Notes + Highlights"');
+      expect(html).toContain('aria-label="Explainers"');
+      expect(html).toContain('aria-label="Book Settings"');
+    });
+
+    it("defaults to showing the Contents panel header", () => {
+      const html = render();
+      expect(html).toContain("Reader sidebar"); // section-08-specific
+      expect(html).toContain("Sample TOC");
+    });
+
+    it("renders the BookSettingsPanel inside the settings tool panel", () => {
+      const html = render();
+      expect(html).toContain("Reader sidebar"); // section-08-specific — "Book Settings" alone overlaps with section 04
+      expect(html).toContain("Book Settings");
+      expect(html).toContain("Page Adjustments");
+      expect(html).toContain("Voice Adjustments");
+    });
+  });
 });

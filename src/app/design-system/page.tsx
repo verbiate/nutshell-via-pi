@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Pause, Play, Plus, Search as SearchIcon, Volume2 } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Lightbulb, Pause, Play, Plus, Search as SearchIcon, StickyNote, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -14,6 +14,13 @@ import { BookCard } from "@/components/library/book-card";
 import { DailyDigest } from "@/components/library/daily-digest";
 import { ReaderChrome } from "@/components/reader/reader-chrome";
 import { ReadingProgress } from "@/components/reader/reading-progress";
+import { ReaderSidebar } from "@/components/reader/reader-sidebar";
+import {
+  BookSettingsPanel,
+  DEFAULT_BOOK_SETTINGS,
+  type BookSettings,
+} from "@/components/reader/book-settings-panel";
+import type { ReaderThemeName } from "@/components/reader/themes";
 
 const SURFACES = [
   { name: "Paper", token: "bg-paper", hex: "#FBF7EC" },
@@ -45,6 +52,70 @@ export default function DesignSystemPage() {
   const [sliderVal, setSliderVal] = React.useState<number[]>([62]);
   const [progressVal, setProgressVal] = React.useState<number[]>([38]);
   const [ttsPlaying, setTtsPlaying] = React.useState(false);
+  const [activeTool, setActiveTool] = React.useState<"reader" | "bookmark" | "pen" | "bulb" | "type" | null>("reader");
+  const [bookSettings, setBookSettings] = React.useState<BookSettings>(DEFAULT_BOOK_SETTINGS);
+  const [readerTheme, setReaderTheme] = React.useState<ReaderThemeName>("light");
+
+  const panels = {
+    reader: (
+      <div className="px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Sample TOC</p>
+        <ul className="mt-2 space-y-1 text-sm">
+          <li className="rounded-md bg-lav-soft px-3 py-2 font-medium text-foreground">Chapter 1 · The Beginning</li>
+          <li className="px-3 py-2 text-foreground">Chapter 2 · The Middle</li>
+          <li className="px-3 py-2 text-foreground">Chapter 3 · The End</li>
+        </ul>
+      </div>
+    ),
+    bookmark: (
+      <div className="px-5 py-4 space-y-3">
+        <button className="w-full rounded-md border border-line bg-card px-3 py-2 text-sm font-medium text-foreground">+ Add bookmark</button>
+        <div className="rounded-md bg-paper-deep px-3 py-2">
+          <p className="truncate text-sm text-foreground">"It was the best of times…"</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">2m ago</p>
+        </div>
+      </div>
+    ),
+    pen: (
+      <div className="px-5 py-4 space-y-2">
+        <div className="flex gap-2">
+          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#19E1CA" }} />
+          <div>
+            <p className="line-clamp-3 text-sm text-foreground">A highlighted passage from chapter one that runs to three lines max.</p>
+            <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">Paragraph 4</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="w-1 shrink-0 self-stretch rounded-full" style={{ backgroundColor: "#FEC405" }} />
+          <div>
+            <p className="line-clamp-3 text-sm text-foreground">Another highlight, this time in yellow.</p>
+            <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">Paragraph 12</p>
+            <button className="mt-1.5 flex w-full items-start gap-1.5 rounded-md bg-paper-deep px-2 py-1.5 text-left text-xs text-foreground">
+              <StickyNote className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+              <span>A short note attached to the highlight.</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    ),
+    bulb: (
+      <div className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-center">
+        <Lightbulb className="h-10 w-10 text-muted-foreground/40" />
+        <div>
+          <p className="text-sm font-medium text-foreground">No explainers yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">Click "Explain this to me" while reading to generate one.</p>
+        </div>
+      </div>
+    ),
+    type: (
+      <BookSettingsPanel
+        theme={readerTheme}
+        onThemeChange={setReaderTheme}
+        settings={bookSettings}
+        onChange={(patch) => setBookSettings((s) => ({ ...s, ...patch }))}
+      />
+    ),
+  };
 
   return (
     <div className="min-h-screen text-ink">
@@ -492,6 +563,50 @@ export default function DesignSystemPage() {
                   Scrub the progress bar
                 </p>
                 <Slider value={progressVal} onValueChange={setProgressVal} max={100} aria-label="Progress" />
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* 08 Reader sidebar */}
+        <section className="mb-14">
+          <SectionLabel num="08" title="Reader sidebar" />
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardDescription>ReaderSidebar · rail toggle swaps the panel content</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* ponytail: relative frame sized to the sidebar geometry so the absolute rail+panel sit correctly. */}
+              <div className="relative h-[560px] overflow-hidden rounded-xl border border-line bg-paper">
+                <ReaderSidebar activeTool={activeTool} onToolClick={(id) => setActiveTool(id)} panels={panels} />
+                {/* ponytail: spacer text to show the "book" surface the sidebar slides over. */}
+                <div className="flex h-full items-center justify-center pr-[calc(var(--reader-rail-w)+var(--reader-sidebar-w))]">
+                  <p className="font-serif text-lg text-muted-foreground/50">Book content sits here</p>
+                </div>
+              </div>
+              <p className="mt-4 text-[11px] text-muted-foreground">
+                Click any rail button. The active button gets <code className="font-mono">border-lav bg-lav-soft</code> with
+                a <code className="font-mono">0_0_0_4px_rgba(126,112,234,0.12)</code> ring.
+              </p>
+
+              {/*
+                ponytail: ReaderSidebar only mounts panels[displayedTool], so at SSR with the
+                default "reader" tool the Book Settings panel would be invisible. Rendering it
+                standalone here makes the settings tool visible without a click — same pattern
+                Task 5 uses. The panels.type slot above stays live for the interactive rail.
+              */}
+              <div className="mt-6">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Book Settings panel · always visible
+                </p>
+                <div className="rounded-xl border border-line bg-paper">
+                  <BookSettingsPanel
+                    theme={readerTheme}
+                    onThemeChange={setReaderTheme}
+                    settings={bookSettings}
+                    onChange={(patch) => setBookSettings((s) => ({ ...s, ...patch }))}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
