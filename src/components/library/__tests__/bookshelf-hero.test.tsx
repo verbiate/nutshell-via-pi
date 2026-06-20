@@ -25,6 +25,7 @@ vi.mock("@/components/transitions/scene-transition", () => ({
     navigate,
     entering: false,
     forwardFlyActive: false,
+    suppressShelfReveal: false,
   }),
 }));
 

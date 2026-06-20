@@ -51,6 +51,9 @@ interface SceneTransitionApi {
   // [data-hero-cover] hidden (opacity 0) so the fly clone can land into it,
   // then this flips false at the handoff and the real cover is revealed.
   forwardFlyActive: boolean;
+  // Visit-level: suppress the Bookshelf's staggered reveal for this library
+  // visit (set on back-nav). Survives Bookshelf remounts within the visit.
+  suppressShelfReveal: boolean;
   // Set on back-nav so the freshly-mounted Bookshelf can suppress its ripple
   // reveal and (fly:true) hold the hero slot empty until the cover lands.
   returningHero: ReturningHero | null;
@@ -70,6 +73,7 @@ const NOT_PROVIDED: SceneTransitionApi = {
   },
   entering: false,
   forwardFlyActive: false,
+  suppressShelfReveal: false,
   returningHero: null,
   settleHero: () => {},
 };
@@ -230,6 +234,12 @@ export function SceneTransitionProvider({
   const [returningHero, setReturningHero] = useState<ReturningHero | null>(
     null,
   );
+  // ponytail: visit-level ripple suppression. Unlike returningHero (which clears
+  // at the fly handoff), this stays true for the entire library visit so a
+  // Bookshelf remount (e.g. home-view's router.refresh re-fetching the RSC
+  // after returningHero has cleared) still suppresses the staggered reveal.
+  // Set on back-nav, cleared on forward-nav or a non-back library arrival.
+  const [suppressShelfReveal, setSuppressShelfReveal] = useState(false);
 
   // ponytail: imperative nav state in refs (not state) so animations don't
   // trigger React re-renders mid-transition. Read by the pathname effect.
@@ -306,6 +316,8 @@ export function SceneTransitionProvider({
       // Forward nav: any stale returningHero (e.g. user backed then immediately
       // opened another book) is now irrelevant.
       if (direction === "forward" && returningHero) setReturningHero(null);
+      // Leaving the library → this library visit's suppression ends.
+      if (direction === "forward") setSuppressShelfReveal(false);
 
       if (reducedMotion) {
         // No fly, no slide. Back still suppresses the shelf ripple this visit.
@@ -341,6 +353,16 @@ export function SceneTransitionProvider({
         // hair flips the bookshelf column count (e.g. 4→3) mid-transition.
         const stageWidth = `${library.getBoundingClientRect().width}px`;
         clone.style.width = stageWidth;
+        // ponytail: vacate the departing book's slot in the receding clone so the
+        // book "leaves" the shelf (visibility:hidden retains the grid cell). The
+        // real shelf unmounts; this clone is what's seen receding during the
+        // slide-in, and it should show an empty slot where the book was.
+        if (opts?.bookId) {
+          const departing = clone.querySelector(
+            `[data-book-card][data-book-id="${CSS.escape(opts.bookId)}"]`,
+          ) as HTMLElement | null;
+          if (departing) departing.style.visibility = "hidden";
+        }
         layer.replaceChildren(clone);
         gsap.set(layer, { display: "block", width: stageWidth });
         // will-change pre-promotes so the clone's first paint isn't mid-frame.
@@ -377,6 +399,8 @@ export function SceneTransitionProvider({
       // child-depth layout effect beats this provider's pathname effect — sees
       // it on its very first render and can suppress the ripple reveal.
       if (opts?.bookId) setReturningHero({ bookId: opts.bookId, fly });
+      // Visit-level: suppress the shelf ripple for this whole library visit.
+      setSuppressShelfReveal(true);
       pendingFlyRef.current = opts?.bookId
         ? { bookId: opts.bookId, fly }
         : null;
@@ -641,11 +665,13 @@ export function SceneTransitionProvider({
 
     // No pending transition: drop any stale clone once we're off the reader
     // route (covers logo clicks, direct URL changes, etc.). Also drop a lingering
-    // forward fly clone (e.g. reader errored before the sidebar opened).
+    // forward fly clone (e.g. reader errored before the sidebar opened). A
+    // non-back arrival at the library is a fresh visit — clear visit suppression.
     if (!onReader) {
       const layer = cloneLayerRef.current;
       if (layer && layer.childElementCount > 0) clearLayer();
       if (forwardFlyRef.current || backFlyRef.current) clearFly();
+      setSuppressShelfReveal(false);
     }
   }, [pathname, clearLayer, clearFly]);
 
@@ -655,8 +681,15 @@ export function SceneTransitionProvider({
   }, [clearFly]);
 
   const value = useMemo(
-    () => ({ navigate, entering, forwardFlyActive, returningHero, settleHero }),
-    [navigate, entering, forwardFlyActive, returningHero, settleHero],
+    () => ({
+      navigate,
+      entering,
+      forwardFlyActive,
+      suppressShelfReveal,
+      returningHero,
+      settleHero,
+    }),
+    [navigate, entering, forwardFlyActive, suppressShelfReveal, returningHero, settleHero],
   );
 
   return (

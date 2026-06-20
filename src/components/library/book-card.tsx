@@ -26,7 +26,7 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
       node && node.getBoundingClientRect
         ? { node: node.cloneNode(true) as HTMLElement, rect: node.getBoundingClientRect() }
         : undefined;
-    navigate(`/book/${id}/reader`, "forward", hero ? { hero } : undefined);
+    navigate(`/book/${id}/reader`, "forward", hero ? { hero, bookId: id } : undefined);
   };
 
   return (

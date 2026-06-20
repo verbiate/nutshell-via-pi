@@ -16,7 +16,7 @@ interface BookshelfProps {
 export function Bookshelf({ books }: BookshelfProps) {
   const reducedMotion = usePrefersReducedMotion();
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const { returningHero, settleHero } = useSceneTransition();
+  const { returningHero, settleHero, suppressShelfReveal } = useSceneTransition();
 
   // ponytail: sticky ripple-suppression for the whole library visit. Captured
   // on the first mount of a back-return (when returningHero is set) and held in
@@ -70,7 +70,9 @@ export function Bookshelf({ books }: BookshelfProps) {
   useGSAP(
     () => {
       // Returning from the reader: suppress the ripple reveal this visit.
-      if (returningHero) suppressRevealRef.current = true;
+      // suppressShelfReveal is visit-level (provider) and survives a remount;
+      // returningHero covers the first mount. Either latches the sticky ref.
+      if (returningHero || suppressShelfReveal) suppressRevealRef.current = true;
       if (suppressRevealRef.current) return;
 
       // ponytail: read matchMedia directly here, not just the hook.
@@ -124,7 +126,7 @@ export function Bookshelf({ books }: BookshelfProps) {
     },
     {
       scope: containerRef,
-      dependencies: [books, reducedMotion, returningHero],
+      dependencies: [books, reducedMotion, returningHero, suppressShelfReveal],
       // ponytail: revertOnUpdate removed — context.revert() otherwise fired on
       // every books-ref change (home-view's router.refresh hands down a new
       // array each mount) and on every reduced-motion toggle, tearing down the
