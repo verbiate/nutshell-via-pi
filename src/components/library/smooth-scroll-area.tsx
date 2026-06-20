@@ -176,20 +176,27 @@ export function SmoothScrollArea({
   };
 
   return (
+    // ponytail: outer wrapper is the positioning context for the track; the
+    // viewport (overflow-y-auto) is a sibling, NOT the track's parent. An
+    // absolutely-positioned track inside a scroll container scrolls WITH
+    // the content (its containing block scrolls), which was why the thumb
+    // appeared not to move with scroll. Sibling-structure fixes that.
     <div
-      ref={viewportRef}
-      className={cn(
-        "smooth-scroll-area relative h-full overflow-y-auto",
-        className,
-      )}
+      data-smooth-scroll-root
+      className={cn("relative h-full", className)}
     >
-      <div ref={contentRef} data-scroll-content className="lenis-content">
-        {children}
+      <div
+        ref={viewportRef}
+        className="smooth-scroll-area h-full overflow-y-auto"
+      >
+        <div ref={contentRef} data-scroll-content className="lenis-content">
+          {children}
+        </div>
       </div>
       <div
         ref={trackRef}
         data-scrollbar-track
-        className="absolute right-1 top-2 bottom-2 w-1.5 z-10"
+        className="pointer-events-none absolute right-1 top-2 bottom-2 w-1.5 z-10"
         style={{
           opacity: thumbVisible ? 1 : 0,
           transition: "opacity 300ms ease-out",
@@ -200,7 +207,7 @@ export function SmoothScrollArea({
         <div
           ref={thumbRef}
           data-scrollbar-thumb
-          className="absolute left-0 right-0 rounded-full bg-ink/30"
+          className="pointer-events-auto absolute left-0 right-0 rounded-full bg-ink/30"
           onPointerDown={onThumbPointerDown}
           onPointerMove={onThumbPointerMove}
           onPointerUp={endDrag}

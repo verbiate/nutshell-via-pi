@@ -158,16 +158,34 @@ describe("SmoothScrollArea — desktop markup", () => {
     expect(container.querySelector("[data-scrollbar-thumb]")).not.toBeNull();
   });
 
-  it("passes className through to the viewport", () => {
+  it("passes className through to the outer wrapper", () => {
     const { container } = render(
       <SmoothScrollArea className="custom-prop-x">
         <div>kids</div>
       </SmoothScrollArea>,
     );
-    const viewport = container.querySelector(
-      ".smooth-scroll-area",
+    const root = container.querySelector(
+      "[data-smooth-scroll-root]",
     ) as HTMLElement;
-    expect(viewport.classList.contains("custom-prop-x")).toBe(true);
+    expect(root.classList.contains("custom-prop-x")).toBe(true);
+  });
+
+  // ponytail: regression for the "scrollbar didn't move with scroll" bug.
+  // An absolutely-positioned track inside a scroll container scrolls WITH
+  // the content (its containing block is the scroll viewport's padding box,
+  // which scrolls). The track must be a SIBLING of the viewport, not a child.
+  it("keeps the track outside the scroll viewport so it doesn't scroll with content", () => {
+    const { container } = render(
+      <SmoothScrollArea>
+        <div>kids</div>
+      </SmoothScrollArea>,
+    );
+    const viewport = container.querySelector(".smooth-scroll-area");
+    const track = container.querySelector("[data-scrollbar-track]");
+    expect(viewport).not.toBeNull();
+    expect(track).not.toBeNull();
+    expect(viewport!.contains(track!)).toBe(false);
+    expect(track!.parentElement).toBe(viewport!.parentElement);
   });
 });
 
