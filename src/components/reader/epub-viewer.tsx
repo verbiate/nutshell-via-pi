@@ -172,7 +172,14 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       resize: () => {
         // ponytail: no args — epub.js re-measures the container, so it picks up
         // the post-transition width automatically. Called on sidebar transitionend.
-        renditionRef.current?.resize();
+        // Guard: rendition.manager isn't assigned until the book has rendered;
+        // calling resize() before that throws (`this.manager.resize` undefined).
+        // The sidebar width transition now starts during entry (before the
+        // EpubViewer mount), so its transitionend can beat the first render.
+        const r = renditionRef.current as (Rendition & {
+          manager?: unknown;
+        }) | null;
+        if (r && r.manager) r.resize();
       },
     }));
 

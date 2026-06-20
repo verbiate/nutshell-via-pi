@@ -17,12 +17,46 @@ import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 type Direction = "forward" | "back";
 
+// ponytail: a detached clone of the cover frame + the screen rect at capture
+// time. Captured at nav (click / back) so the fly has a stable origin even
+// after the source DOM unmounts on route swap.
+export interface FlyHero {
+  node: HTMLElement;
+  rect: DOMRect;
+}
+
+export interface NavigateOpts {
+  // forward: the shelf cover to fly to the sidebar. back: the sidebar cover to
+  // fly back to the hero slot.
+  hero?: FlyHero;
+  // back only: which book is returning (the hero held on the shelf) and
+  // whether its sidebar cover was visible (open) at back-nav time.
+  bookId?: string;
+  sidebarOpen?: boolean;
+}
+
+interface ReturningHero {
+  bookId: string;
+  // true = sidebar was open → fly back to the held-empty hero slot.
+  // false = sidebar closed (or reduced motion) → no fly, book just appears.
+  fly: boolean;
+}
+
 interface SceneTransitionApi {
-  navigate: (url: string, direction: Direction) => void;
+  navigate: (url: string, direction: Direction, opts?: NavigateOpts) => void;
   // True while a forward slide-in is in progress. The reader uses this to
-  // defer its heavy <EpubViewer> (iframe) mount until after the animation, so
-  // the slide-in paints only the cheap skeleton instead of the whole reader.
+  // defer its heavy <EpubViewer> (iframe) mount until after the animation.
   entering: boolean;
+  // True while a forward cover fly is inbound. The reader holds the real
+  // [data-hero-cover] hidden (opacity 0) so the fly clone can land into it,
+  // then this flips false at the handoff and the real cover is revealed.
+  forwardFlyActive: boolean;
+  // Set on back-nav so the freshly-mounted Bookshelf can suppress its ripple
+  // reveal and (fly:true) hold the hero slot empty until the cover lands.
+  returningHero: ReturningHero | null;
+  // Bookshelf calls this once it has measured the hero cover rect (fly:true)
+  // or immediately (fly:false). Drives the back fly + clears returningHero.
+  settleHero: (rect: DOMRect | null) => void;
 }
 
 // ponytail: default context value throws lazily — only when navigate() is
@@ -35,6 +69,9 @@ const NOT_PROVIDED: SceneTransitionApi = {
     );
   },
   entering: false,
+  forwardFlyActive: false,
+  returningHero: null,
+  settleHero: () => {},
 };
 
 const SceneTransitionContext = createContext<SceneTransitionApi>(NOT_PROVIDED);
@@ -63,6 +100,11 @@ const RECEDE_TRANSFORM = { scale: 0.85, xPercent: -8 };
 const FULL_TRANSFORM = { scale: 1, xPercent: 0 };
 const DIM_OPACITY = 0.45;
 
+// Duration of the cover fly (both directions) + the fade used to hand off
+// between the traveling clone and the real cover element underneath.
+const FLY_DUR = 0.7;
+const HANDOFF_DUR = 0.2;
+
 // ponytail: SSR-safe layout effect so the reader slide-in applies its "from"
 // state before first paint (no flash at xPercent:0). Falls back to no-op on
 // the server where there is no paint to beat.
@@ -88,6 +130,83 @@ function cloneWithScroll(src: HTMLElement): HTMLElement {
   return clone;
 }
 
+// Approximate resting rect of the sidebar cover (top-RIGHT — the sidebar lives
+// at `right: var(--reader-rail-w)`). Computed from the reader geometry vars so
+// the forward fly lands where the real cover will mount. dismissFly() fades the
+// clone out over the real element, so a few px of error here are imperceptible.
+// ponytail: HEADER_H (sidebar header px-5 py-3 + text-sm) is a measured
+// constant; re-measure if the sidebar header layout changes.
+function computeReaderCoverRect(): DOMRect {
+  const cs = getComputedStyle(document.documentElement);
+  const num = (v: string, d: number) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : d;
+  };
+  const sidebarW = num(cs.getPropertyValue("--reader-sidebar-w"), 400);
+  const railW = num(cs.getPropertyValue("--reader-rail-w"), 94);
+  const vw = window.innerWidth;
+  const HEADER_H = 44;
+  const PAD_Y = 16;
+  const PAD_X = 20;
+  const coverH = 88;
+  const coverW = Math.round((coverH * 3) / 4);
+  const left = vw - railW - sidebarW + PAD_X;
+  const top = HEADER_H + PAD_Y;
+  return {
+    left,
+    top,
+    width: coverW,
+    height: coverH,
+    right: left + coverW,
+    bottom: top + coverH,
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+// Position a clone at `rect` (fixed, transform-origin top-left) ready to tween.
+function prepClone(clone: HTMLElement, rect: DOMRect) {
+  clone.removeAttribute("id");
+  clone.setAttribute("aria-hidden", "true");
+  clone.style.pointerEvents = "none";
+  clone.style.margin = "0";
+  gsap.set(clone, {
+    position: "fixed",
+    left: 0,
+    top: 0,
+    width: rect.width,
+    height: rect.height,
+    x: rect.left,
+    y: rect.top,
+    transformOrigin: "0px 0px",
+    willChange: "transform",
+    zIndex: 80,
+  });
+}
+
+// Fly a clone from `from` to `to`, resizing via uniform scale (cover aspect is
+// ~3/4 at both ends; minor aspect drift resolves under the handoff fade).
+function flyClone(
+  clone: HTMLElement,
+  from: DOMRect,
+  to: DOMRect,
+  duration: number,
+  ease: string,
+  onComplete?: () => void,
+) {
+  prepClone(clone, from);
+  const s = to.width / (from.width || to.width || 1);
+  gsap.to(clone, {
+    x: to.left,
+    y: to.top,
+    scale: s,
+    duration,
+    ease,
+    onComplete,
+  });
+}
+
 export function SceneTransitionProvider({
   children,
 }: {
@@ -98,14 +217,61 @@ export function SceneTransitionProvider({
   const reducedMotion = usePrefersReducedMotion();
   const cloneLayerRef = useRef<HTMLDivElement>(null);
   const dimRef = useRef<HTMLDivElement>(null);
+  const flyLayerRef = useRef<HTMLDivElement>(null);
 
   // True while the forward reader slide-in is animating. Flips true on arrival
   // and false on slide-in completion (or abort).
   const [entering, setEntering] = useState(false);
+  // True while a forward cover fly is inbound (set at forward nav when a hero
+  // was captured; cleared at the landing handoff). The reader holds the real
+  // sidebar cover hidden while this is true.
+  const [forwardFlyActive, setForwardFlyActive] = useState(false);
+  // Set on back-nav; consumed by the Bookshelf on its mount.
+  const [returningHero, setReturningHero] = useState<ReturningHero | null>(
+    null,
+  );
 
-  // ponytail: imperative nav state in a ref (not state) so animations don't
+  // ponytail: imperative nav state in refs (not state) so animations don't
   // trigger React re-renders mid-transition. Read by the pathname effect.
   const pendingRef = useRef<{ url: string; direction: Direction } | null>(null);
+  // Fly state for the in-flight transition (separate from pendingRef so the
+  // arrival effect can read it before clearing pendingRef).
+  const pendingFlyRef = useRef<{
+    hero?: FlyHero; // forward
+    bookId?: string; // back
+    fly?: boolean; // back
+  } | null>(null);
+  // ponytail: two separate clone refs so a lingering FORWARD clone (reader
+  // errored or user backed out before the sidebar opened) can be retired without
+  // touching an in-flight BACK clone. forwardFlyRef parks at the reader cover
+  // rect until dismissFly(); backFlyRef parks at the sidebar rect until
+  // settleHero().
+  const forwardFlyRef = useRef<HTMLElement | null>(null);
+  const backFlyRef = useRef<HTMLElement | null>(null);
+  // True once the back part-1 fly (sidebar → first slot, concurrent with the
+  // slide-out) has been added to the timeline. settleHero uses this to decide
+  // between a quick handoff (part-1 flew) and a full fly (fallback).
+  const backFlyPart1Ref = useRef(false);
+
+  // Fade a parked clone out + remove it, clearing the owning ref if it still
+  // points at the same node (a later fly may have reassigned it).
+  const retireClone = useCallback(
+    (ref: React.MutableRefObject<HTMLElement | null>) => {
+      const node = ref.current;
+      if (!node) return;
+      gsap.killTweensOf(node);
+      gsap.to(node, {
+        opacity: 0,
+        duration: HANDOFF_DUR,
+        ease: EASE,
+        onComplete: () => {
+          node.remove();
+          if (ref.current === node) ref.current = null;
+        },
+      });
+    },
+    [],
+  );
 
   const clearLayer = useCallback(() => {
     const layer = cloneLayerRef.current;
@@ -117,18 +283,42 @@ export function SceneTransitionProvider({
     if (dim) gsap.set(dim, { display: "none", opacity: 0 });
   }, []);
 
+  // Immediately drop both fly clones + pending state (abort, unmount).
+  const clearFly = useCallback(() => {
+    for (const ref of [forwardFlyRef, backFlyRef]) {
+      const node = ref.current;
+      if (node) {
+        gsap.killTweensOf(node);
+        node.remove();
+        ref.current = null;
+      }
+    }
+    pendingFlyRef.current = null;
+    backFlyPart1Ref.current = false;
+    setForwardFlyActive(false);
+  }, []);
+
   const navigate = useCallback(
-    (url: string, direction: Direction) => {
+    (url: string, direction: Direction, opts?: NavigateOpts) => {
       // Re-entrancy guard — ignore a second nav while one is mid-flight.
       if (pendingRef.current) return;
 
+      // Forward nav: any stale returningHero (e.g. user backed then immediately
+      // opened another book) is now irrelevant.
+      if (direction === "forward" && returningHero) setReturningHero(null);
+
       if (reducedMotion) {
+        // No fly, no slide. Back still suppresses the shelf ripple this visit.
+        if (direction === "back" && opts?.bookId) {
+          setReturningHero({ bookId: opts.bookId, fly: false });
+        }
         router.push(url);
         return;
       }
 
       const layer = cloneLayerRef.current;
       const dim = dimRef.current;
+      const flyLayer = flyLayerRef.current;
 
       if (direction === "forward") {
         const library = document.querySelector(
@@ -162,6 +352,10 @@ export function SceneTransitionProvider({
           willChange: "opacity",
         });
         pendingRef.current = { url, direction };
+        pendingFlyRef.current = opts?.hero ? { hero: opts.hero } : null;
+        // A forward cover fly is now inbound — the reader holds its real
+        // sidebar cover hidden (forwardFlyActive) until the fly lands.
+        if (opts?.hero) setForwardFlyActive(true);
         router.push(url);
         // Library recedes (transform only) + dim overlay fades in, both for
         // instant feedback. The reader slides in when its route commits.
@@ -170,8 +364,35 @@ export function SceneTransitionProvider({
         return;
       }
 
-      // Back: reader slides out to the right while the cloned library
-      // un-recedes and un-dims underneath, then we swap to the real route.
+      // ── Back ───────────────────────────────────────────────────────────
+      // Retire any lingering FORWARD fly clone (reader errored, or user backed
+      // out before the sidebar ever opened → the landing handoff never fired).
+      // A separate ref from the back clone we're about to park, so this can't
+      // kill the in-flight back fly. Also release the held-hidden real cover.
+      retireClone(forwardFlyRef);
+      setForwardFlyActive(false);
+
+      const fly = !!opts?.sidebarOpen && !!opts?.hero;
+      // returningHero is set NOW (not on arrival) so the Bookshelf — whose
+      // child-depth layout effect beats this provider's pathname effect — sees
+      // it on its very first render and can suppress the ripple reveal.
+      if (opts?.bookId) setReturningHero({ bookId: opts.bookId, fly });
+      pendingFlyRef.current = opts?.bookId
+        ? { bookId: opts.bookId, fly }
+        : null;
+
+      // Park the cover clone at its captured rect so it stays put while the
+      // reader slides out from under it (the book is "plucked" off the departing
+      // reader). Part-1 of the fly (below) sends it to the first shelf slot
+      // concurrently with the slide-out, so the book flies during the transition
+      // rather than hovering until the shelf mounts.
+      if (fly && opts?.hero && flyLayer) {
+        const node = opts.hero.node;
+        flyLayer.appendChild(node);
+        prepClone(node, opts.hero.rect);
+        backFlyRef.current = node;
+      }
+
       const reader = document.querySelector(
         READER_SELECTOR,
       ) as HTMLElement | null;
@@ -179,22 +400,141 @@ export function SceneTransitionProvider({
         router.push(url);
         return;
       }
-      gsap.set(layer, { display: "block", width: `${document.documentElement.clientWidth}px` });
+      gsap.set(layer, {
+        display: "block",
+        width: `${document.documentElement.clientWidth}px`,
+      });
       if (dim)
         gsap.set(dim, {
           display: "block",
           width: `${document.documentElement.clientWidth}px`,
         }); // opacity left at DIM from forward
       const clone = layer.firstElementChild as HTMLElement | null;
+
+      // ponytail: make slot 0 of the cloned shelf read as VACANT so the
+      // returning book has a clear spot to land during the slide-out. The clone
+      // is the pre-read snapshot (old order); the real shelf (mounted at swap)
+      // will have the just-read book at slot 0 by recency, held empty until the
+      // fly lands. Reorder the clone the same way — move the hero card to slot 0
+      // — then hide it (visibility:hidden retains the cell for layout). The
+      // clone's other books keep their relative order, so the real shelf matches
+      // at swap with no shuffle.
+      if (clone && opts?.bookId) {
+        const heroCard = clone.querySelector(
+          `[data-book-card][data-book-id="${CSS.escape(opts.bookId)}"]`,
+        ) as HTMLElement | null;
+        if (heroCard) {
+          const parent = heroCard.parentElement;
+          if (parent && parent.firstChild !== heroCard) {
+            parent.insertBefore(heroCard, parent.firstChild);
+          }
+          heroCard.style.visibility = "hidden";
+        }
+      }
+
+      // ponytail: snap-measure the first shelf slot's FINAL (un-receded)
+      // position from the library clone, so the part-1 fly can target slot 0
+      // during the slide-out (before the real shelf mounts). All synchronous and
+      // before paint: snap clone to identity, read the (now-hidden) hero cover
+      // rect, snap back to receded — the user never sees the identity state. The
+      // first SLOT's geometry is identical to the real shelf's (the clone is a
+      // faithful snapshot), so this is where the just-read book (#1 by recency)
+      // lives.
+      let firstSlotRect: DOMRect | null = null;
+      if (clone) {
+        gsap.set(clone, { ...FULL_TRANSFORM });
+        const slot = clone.querySelector(
+          "[data-book-card] [data-book-cover]",
+        ) as HTMLElement | null;
+        firstSlotRect = slot ? slot.getBoundingClientRect() : null;
+        gsap.set(clone, { ...RECEDE_TRANSFORM });
+      }
+
       pendingRef.current = { url, direction };
+      backFlyPart1Ref.current = false;
       const tl = gsap.timeline({ onComplete: () => router.push(url) });
       tl.to(reader, { xPercent: 100, duration: DURATION, ease: EASE }, 0);
       if (clone)
         tl.to(clone, { ...FULL_TRANSFORM, duration: DURATION, ease: EASE }, 0);
       if (dim) tl.to(dim, { opacity: 0, duration: DURATION, ease: EASE }, 0);
+      // Part-1 fly: sidebar rect → first slot, concurrent with the slide-out +
+      // un-recede. Lands at slot 0 as the shelf settles. (settleHero, called
+      // once the real Bookshelf mounts, does the final snap + crossfade handoff.)
+      if (fly && backFlyRef.current && firstSlotRect && opts?.hero) {
+        const node = backFlyRef.current;
+        const fromW = opts.hero.rect.width || firstSlotRect.width || 1;
+        tl.to(
+          node,
+          {
+            x: firstSlotRect.left,
+            y: firstSlotRect.top,
+            scale: firstSlotRect.width / fromW,
+            duration: DURATION,
+            ease: EASE,
+          },
+          0,
+        );
+        backFlyPart1Ref.current = true;
+      }
     },
-    [router, reducedMotion],
+    [router, reducedMotion, returningHero],
   );
+
+  // Bookshelf → provider: the hero slot is ready (real shelf mounted, hero held
+  // empty). If part-1 already flew the clone to slot 0 during the slide-out, do
+  // just the snap + crossfade handoff; otherwise (no library clone was available
+  // to measure, e.g. direct-URL reader) fly from the parked origin now. Either
+  // way returningHero clears (revealing the held hero).
+  const settleHero = useCallback((rect: DOMRect | null) => {
+    const parked = backFlyRef.current;
+    if (rect && parked && flyLayerRef.current) {
+      if (backFlyPart1Ref.current) {
+        // Handoff: clone is already at ~slot 0. Snap to the real hero rect
+        // (small correction), then crossfade out as the reader hero fades in.
+        const fromW = parked.getBoundingClientRect().width || rect.width || 1;
+        gsap.set(parked, {
+          x: rect.left,
+          y: rect.top,
+          scale: rect.width / fromW,
+        });
+        gsap.to(parked, {
+          opacity: 0,
+          duration: HANDOFF_DUR,
+          ease: EASE,
+          onComplete: () => {
+            parked.remove();
+            if (backFlyRef.current === parked) backFlyRef.current = null;
+            backFlyPart1Ref.current = false;
+          },
+        });
+        setReturningHero(null);
+        return;
+      }
+      // Fallback (no part-1): fly from the parked origin to the hero rect now.
+      const from = parked.getBoundingClientRect();
+      flyClone(parked, from, rect, FLY_DUR, EASE, () => {
+        gsap.to(parked, {
+          opacity: 0,
+          duration: HANDOFF_DUR,
+          ease: EASE,
+          onComplete: () => {
+            parked.remove();
+            if (backFlyRef.current === parked) backFlyRef.current = null;
+          },
+        });
+        setReturningHero(null);
+      });
+      return;
+    }
+    // fly:false (closed sidebar / reduced motion) or no parked clone: just
+    // release the hero.
+    if (parked) {
+      parked.remove();
+      backFlyRef.current = null;
+    }
+    backFlyPart1Ref.current = false;
+    setReturningHero(null);
+  }, []);
 
   // Arrive: when pathname reaches the pending target, drive the enter half.
   useIsomorphicLayoutEffect(() => {
@@ -207,10 +547,12 @@ export function SceneTransitionProvider({
           const reader = document.querySelector(
             READER_SELECTOR,
           ) as HTMLElement | null;
+          const hero = pendingFlyRef.current?.hero;
           pendingRef.current = null;
           if (!reader) {
             setEntering(false);
             clearLayer();
+            clearFly();
             return;
           }
           // Defer the heavy reader children until the slide-in is done so the
@@ -237,9 +579,47 @@ export function SceneTransitionProvider({
               },
             },
           );
+          // Forward cover fly — concurrent with the slide-in. Lands at the
+          // reader cover rect as the slide-in + sidebar-open complete, then
+          // hands off to the real [data-hero-cover] (held hidden via
+          // forwardFlyActive): snap to its actual rect, crossfade the clone out
+          // as the reader reveals the real cover.
+          if (hero && flyLayerRef.current) {
+            const node = hero.node;
+            flyLayerRef.current.appendChild(node);
+            const target = computeReaderCoverRect();
+            flyClone(node, hero.rect, target, DURATION, EASE, () => {
+              const real = document.querySelector(
+                "[data-hero-cover]",
+              ) as HTMLElement | null;
+              if (real) {
+                const r = real.getBoundingClientRect();
+                gsap.set(node, {
+                  x: r.left,
+                  y: r.top,
+                  scale: r.width / (hero.rect.width || r.width || 1),
+                });
+              }
+              gsap.to(node, {
+                opacity: 0,
+                duration: HANDOFF_DUR,
+                ease: EASE,
+                onComplete: () => {
+                  node.remove();
+                  if (forwardFlyRef.current === node) forwardFlyRef.current = null;
+                },
+              });
+              // Reveal the real sidebar cover (crossfade with the clone).
+              setForwardFlyActive(false);
+            });
+            forwardFlyRef.current = node;
+          }
+          pendingFlyRef.current = null;
         } else {
-          // Back arrival at the library — drop the clone; the real library has
-          // mounted at full state, matching the clone's animated end state.
+          // Back arrival at the library — drop the underlay; the real library
+          // has mounted at full state, matching the clone's animated end state.
+          // The fly clone (if any) stays parked in the fly layer for the
+          // Bookshelf to trigger via settleHero().
           pendingRef.current = null;
           setEntering(false);
           clearLayer();
@@ -253,21 +633,30 @@ export function SceneTransitionProvider({
         pendingRef.current = null;
         setEntering(false);
         clearLayer();
+        clearFly();
+        setReturningHero(null);
       }
       return;
     }
 
     // No pending transition: drop any stale clone once we're off the reader
-    // route (covers logo clicks, direct URL changes, etc.).
+    // route (covers logo clicks, direct URL changes, etc.). Also drop a lingering
+    // forward fly clone (e.g. reader errored before the sidebar opened).
     if (!onReader) {
       const layer = cloneLayerRef.current;
       if (layer && layer.childElementCount > 0) clearLayer();
+      if (forwardFlyRef.current || backFlyRef.current) clearFly();
     }
-  }, [pathname, clearLayer]);
+  }, [pathname, clearLayer, clearFly]);
+
+  // Clean up fly state on unmount.
+  useEffect(() => {
+    return () => clearFly();
+  }, [clearFly]);
 
   const value = useMemo(
-    () => ({ navigate, entering }),
-    [navigate, entering],
+    () => ({ navigate, entering, forwardFlyActive, returningHero, settleHero }),
+    [navigate, entering, forwardFlyActive, returningHero, settleHero],
   );
 
   return (
@@ -295,6 +684,15 @@ export function SceneTransitionProvider({
         className="pointer-events-none fixed inset-0 z-[1] bg-black"
         style={{ display: "none", opacity: 0 }}
       />
+      {/* Fly layer: hosts the traveling cover clone (forward + back). Above the
+          reader (z-10), dim (z-[1]), and the reader skeleton (z-60) so the
+          clone paints on top throughout. Empty + pointer-events-none = inert. */}
+      <div
+        ref={flyLayerRef}
+        data-scene-fly
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-[80]"
+      />
     </SceneTransitionContext.Provider>
   );
 }
@@ -318,5 +716,7 @@ export function _demoTransitionMath() {
   );
   assert(DURATION === 0.8, "duration must be 0.8s (matches reference)");
   assert(EASE === "power3.inOut", "ease must be power3.inOut (matches reference)");
+  assert(FLY_DUR === 0.7, "fly duration must be 0.7s");
+  assert(HANDOFF_DUR === 0.2, "handoff fade must be 0.2s");
   return true;
 }

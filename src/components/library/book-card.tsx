@@ -1,7 +1,8 @@
 "use client";
 
-import { BookOpen } from "lucide-react";
+import { useRef } from "react";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
+import { BookCover } from "./book-cover";
 
 interface BookCardProps {
   id: string;
@@ -15,8 +16,18 @@ interface BookCardProps {
 export function BookCard({ id, title, author, coverPath, progress, hasProgress }: BookCardProps) {
   const showProgress = !!hasProgress && progress != null;
   const { navigate } = useSceneTransition();
+  // ponytail: ref the rounded+shadowed cover frame so the fly clone looks like a
+  // traveling book (rounding + shadow live on this wrapper, not the inner img).
+  const coverRef = useRef<HTMLDivElement>(null);
 
-  const go = () => navigate(`/book/${id}/reader`, "forward");
+  const go = () => {
+    const node = coverRef.current;
+    const hero =
+      node && node.getBoundingClientRect
+        ? { node: node.cloneNode(true) as HTMLElement, rect: node.getBoundingClientRect() }
+        : undefined;
+    navigate(`/book/${id}/reader`, "forward", hero ? { hero } : undefined);
+  };
 
   return (
     <div
@@ -35,26 +46,12 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
       {/* ponytail: lift the cover only, not the progress slot. Transform and filter animate on separate elements — combining them on one element made the hover snap instead of ease. */}
       <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
         {/* ponytail: box-shadow, not filter:drop-shadow — drop-shadow rendered against the child's rectangular bbox and was clipped by this element's own overflow:hidden, leaving shadow only in the rounded corners. box-shadow follows border-radius and paints outside the box. */}
-        <div className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted">
-          {coverPath ? (
-            <img
-              src={`/api/files/${coverPath}`}
-              alt={title}
-              className="block h-auto w-full scale-[1.02]"
-            />
-          ) : (
-            <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(160deg,#34E1CD,#1a8f80)] p-3 text-center">
-              <BookOpen className="h-7 w-7 text-white/45" />
-              <span className="line-clamp-4 font-serif text-sm font-medium leading-tight text-white">
-                {title}
-              </span>
-              {author && (
-                <span className="line-clamp-1 text-[11px] text-white/70">
-                  {author}
-                </span>
-              )}
-            </div>
-          )}
+        <div
+          ref={coverRef}
+          data-book-cover=""
+          className="overflow-hidden rounded-md bg-paper-deep shadow-book transition-shadow duration-200 ease-out group-hover:shadow-book-lifted"
+        >
+          <BookCover coverPath={coverPath} title={title} className="scale-[1.02]" />
         </div>
       </div>
       {/* ponytail: fixed-height progress slot keeps a common cover baseline whether or not there is progress */}

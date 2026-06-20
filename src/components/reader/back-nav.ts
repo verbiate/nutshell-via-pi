@@ -5,8 +5,20 @@
 export type SceneNavigate = (
   url: string,
   direction: "forward" | "back",
+  opts?: {
+    hero?: { node: HTMLElement; rect: DOMRect };
+    bookId?: string;
+    sidebarOpen?: boolean;
+  },
 ) => void;
 
-export function backToLibrary(navigate: SceneNavigate) {
-  navigate("/my-library", "back");
+export function backToLibrary(
+  navigate: SceneNavigate,
+  opts?: {
+    hero?: { node: HTMLElement; rect: DOMRect };
+    bookId?: string;
+    sidebarOpen?: boolean;
+  },
+) {
+  navigate("/my-library", "back", opts);
 }

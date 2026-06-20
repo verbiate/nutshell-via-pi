@@ -39,13 +39,17 @@ function render(el: React.ReactElement) {
 }
 
 describe("BookCard", () => {
-  it("navigates forward to the reader route on click", () => {
+  it("navigates forward to the reader route on click with the captured cover as fly hero", () => {
     render(<BookCard id="abc" title="Some Book" author={null} coverPath={null} />);
     const card = container!.querySelector("[role=link]") as HTMLElement;
     act(() => {
       card.click();
     });
-    expect(navigate).toHaveBeenCalledWith("/book/abc/reader", "forward");
+    expect(navigate).toHaveBeenCalledWith(
+      "/book/abc/reader",
+      "forward",
+      expect.objectContaining({ hero: expect.any(Object) }),
+    );
   });
 
   it("activates on Enter and Space", () => {
@@ -67,9 +71,15 @@ describe("BookCard", () => {
     expect(navigate).toHaveBeenCalled();
   });
 
-  it("renders the title on the placeholder cover when there is no cover image", () => {
+  it("renders a placeholder cover (no overlaid title) when there is no cover image", () => {
     render(<BookCard id="abc" title="Some Book" author={null} coverPath={null} />);
-    expect(container!.textContent).toContain("Some Book");
+    // placeholder = gradient + icon, like a real cover; the title lives only in
+    // the card's aria-label, not as text on the cover.
+    expect(container!.querySelector("[data-book-cover]")).toBeTruthy();
+    expect(container!.textContent).not.toContain("Some Book");
+    expect(
+      container!.querySelector("[role=link]")?.getAttribute("aria-label"),
+    ).toBe("Open Some Book");
   });
 
   it("reserves a progress slot so covers share a common baseline", () => {

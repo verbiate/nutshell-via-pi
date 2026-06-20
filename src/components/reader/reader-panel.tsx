@@ -2,27 +2,11 @@
 
 import { useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { BookOpen, Headphones, Lightbulb } from "lucide-react";
+import { Headphones, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ExplainerPanel } from "@/components/explainer/explainer-panel";
-
-// ponytail: placeholder gradients mirrored from book-card.tsx so covers match the shelf.
-const PLACEHOLDER_COVERS = [
-  "bg-[linear-gradient(150deg,#3b6ea5,#21456e)]",
-  "bg-[linear-gradient(150deg,#1c1c22,#3a2740)]",
-  "bg-[linear-gradient(150deg,#2a7d6f,#1c4a42)]",
-  "bg-[linear-gradient(150deg,#6b4a8a,#3a2740)]",
-  "bg-[linear-gradient(150deg,#b5563a,#6e2f1f)]",
-];
-
-function getPlaceholderCover(title: string): string {
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) {
-    hash = (hash * 31 + title.charCodeAt(i)) | 0;
-  }
-  return PLACEHOLDER_COVERS[Math.abs(hash) % PLACEHOLDER_COVERS.length];
-}
+import { BookCover } from "@/components/library/book-cover";
 
 interface TocEntryProps {
   item: NavItem;
@@ -116,6 +100,9 @@ export interface ReaderPanelProps {
   onListenFromHere: () => void;
   isAdmin?: boolean;
   bookCreatedAt?: string;
+  /** When true, the cover is hidden (held empty) so a forward fly clone can land
+   * into it; revealed when the fly completes. */
+  coverHidden?: boolean;
 }
 
 export function ReaderPanel({
@@ -131,6 +118,7 @@ export function ReaderPanel({
   onListenFromHere,
   isAdmin,
   bookCreatedAt,
+  coverHidden,
 }: ReaderPanelProps) {
   const [bookExplainerOpen, setBookExplainerOpen] = useState(false);
   const showLang = !!language && language !== "und";
@@ -138,25 +126,17 @@ export function ReaderPanel({
   return (
     <div className="flex flex-col">
       {/* Book details card */}
-      <div className="flex gap-3 px-5 py-4">
-        <div className="relative aspect-[3/4] h-[88px] shrink-0 overflow-hidden rounded-md bg-paper-deep shadow-sm">
-          {coverPath ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`/api/files/${coverPath}`}
-              alt={bookTitle}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div
-              className={cn(
-                "flex h-full w-full items-center justify-center",
-                getPlaceholderCover(bookTitle)
-              )}
-            >
-              <BookOpen className="h-5 w-5 text-white/50" />
-            </div>
-          )}
+      <div className="flex items-start gap-3 px-5 py-4">
+        {/* data-hero-cover: the fly transition clones this frame. Fixed width +
+            natural aspect (matching the bookshelf card) so the fly clone lands
+            at the correct size/treatment. shadow-book unifies the frame with the
+            shelf. coverHidden holds it empty while a fly is inbound, then reveals. */}
+        <div
+          className="relative w-[66px] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book transition-opacity duration-200"
+          data-hero-cover=""
+          style={{ opacity: coverHidden ? 0 : 1 }}
+        >
+          <BookCover coverPath={coverPath} title={bookTitle} />
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-serif text-[15px] font-medium leading-tight text-foreground line-clamp-3">

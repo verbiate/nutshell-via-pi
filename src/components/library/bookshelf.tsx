@@ -4,6 +4,7 @@ import * as React from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 import { BookCard } from "./book-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryBook } from "@/types/book";
@@ -15,6 +16,49 @@ interface BookshelfProps {
 export function Bookshelf({ books }: BookshelfProps) {
   const reducedMotion = usePrefersReducedMotion();
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const { returningHero, settleHero } = useSceneTransition();
+
+  // ponytail: sticky ripple-suppression for the whole library visit. Captured
+  // on the first mount of a back-return (when returningHero is set) and held in
+  // a ref so later books-ref re-runs (home-view's router.refresh) also skip the
+  // reveal — clearing returningHero after the fly would otherwise re-arm it.
+  const suppressRevealRef = React.useRef(false);
+
+  // Hero slot visibility: hidden (opacity 0) while a fly-back is pending so the
+  // slot reads as "empty awaiting", revealed (CSS fade) when returningHero
+  // clears (the provider crossfades the landed clone out as this fades in).
+  // ponytail: lazy init from returningHero so the hero is hidden on the very
+  // first render (no flash). stickyHero keeps the bookId after returningHero
+  // clears so the card retains its transition-opacity class through the fade-in
+  // (isHero would otherwise flip false on reveal and snap instead of fade).
+  const [stickyHero, setStickyHero] = React.useState<string | null>(null);
+  const [heroRevealed, setHeroRevealed] = React.useState(
+    () => !returningHero?.fly,
+  );
+  const heroBookId = returningHero?.bookId ?? stickyHero;
+  React.useLayoutEffect(() => {
+    if (returningHero) {
+      setStickyHero(returningHero.bookId);
+      setHeroRevealed(!returningHero.fly);
+    } else {
+      setHeroRevealed(true);
+    }
+  }, [returningHero]);
+
+  // Measure the hero cover rect + hand it to the provider. fly:true triggers
+  // the back fly to this slot; fly:false just releases the hero. Runs before
+  // paint so the hero is already hidden when the fly origin is captured.
+  React.useLayoutEffect(() => {
+    if (!returningHero) return;
+    const cardSelector = `[data-book-card][data-book-id="${CSS.escape(returningHero.bookId)}"]`;
+    const card = containerRef.current?.querySelector(cardSelector);
+    const cover = (card?.querySelector("[data-book-cover]") as HTMLElement | null) ?? null;
+    if (returningHero.fly && cover) {
+      settleHero(cover.getBoundingClientRect());
+    } else {
+      settleHero(null);
+    }
+  }, [returningHero, settleHero]);
 
   // ponytail: IntersectionObserver + gsap.to, deliberately NOT ScrollTrigger.batch.
   // Bookshelf's effect runs child-first, before SmoothScrollArea registers its
@@ -25,6 +69,10 @@ export function Bookshelf({ books }: BookshelfProps) {
   // this is fully self-contained with no coordination with SmoothScrollArea.
   useGSAP(
     () => {
+      // Returning from the reader: suppress the ripple reveal this visit.
+      if (returningHero) suppressRevealRef.current = true;
+      if (suppressRevealRef.current) return;
+
       // ponytail: read matchMedia directly here, not just the hook.
       // usePrefersReducedMotion is lazy — it returns false until its passive
       // effect runs (after this layout effect), so the hook alone would hide
@@ -76,7 +124,7 @@ export function Bookshelf({ books }: BookshelfProps) {
     },
     {
       scope: containerRef,
-      dependencies: [books, reducedMotion],
+      dependencies: [books, reducedMotion, returningHero],
       // ponytail: revertOnUpdate removed — context.revert() otherwise fired on
       // every books-ref change (home-view's router.refresh hands down a new
       // array each mount) and on every reduced-motion toggle, tearing down the
@@ -91,18 +139,27 @@ export function Bookshelf({ books }: BookshelfProps) {
       ref={containerRef}
       className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-12"
     >
-      {books.map((book) => (
-        <div key={book.id} data-book-card>
-          <BookCard
-            id={book.id}
-            title={book.title}
-            author={book.author}
-            coverPath={book.coverPath}
-            progress={book.progress}
-            hasProgress={book.hasProgress}
-          />
-        </div>
-      ))}
+      {books.map((book) => {
+        const isHero = heroBookId === book.id;
+        return (
+          <div
+            key={book.id}
+            data-book-card
+            data-book-id={book.id}
+            style={isHero ? { opacity: heroRevealed ? 1 : 0 } : undefined}
+            className={isHero ? "transition-opacity duration-200" : undefined}
+          >
+            <BookCard
+              id={book.id}
+              title={book.title}
+              author={book.author}
+              coverPath={book.coverPath}
+              progress={book.progress}
+              hasProgress={book.hasProgress}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

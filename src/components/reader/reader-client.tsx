@@ -78,7 +78,7 @@ export function ReaderClient({
   isAdmin,
   bookCreatedAt,
 }: ReaderClientProps) {
-  const { navigate: sceneNavigate, entering } = useSceneTransition();
+  const { navigate: sceneNavigate, entering, forwardFlyActive } = useSceneTransition();
   const viewerRef = useRef<EpubViewerHandle>(null);
   // Wraps the EpubViewer; its width animates with the sidebar. We listen to
   // transitionend on this element to trigger epub.js re-pagination.
@@ -214,10 +214,47 @@ export function ReaderClient({
     [bookId]
   );
 
+  // Flush a pending (unsaved) position immediately — used on unmount and tab
+  // hide so the latest page isn't lost if the debounce timer hasn't fired yet.
+  // Returns the save promise (or undefined when nothing is pending) so callers
+  // that need the position persisted before navigating can await it.
+  const flushPendingSave = useCallback((): Promise<void> | undefined => {
+    if (saveTimeoutRef.current && lastPositionRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+      return savePosition(lastPositionRef.current);
+    }
+    return undefined;
+  }, [savePosition]);
+
   // ─── Callbacks ───────────────────────────────────────────────────────────────
-  const handleBack = useCallback(() => {
-    backToLibrary(sceneNavigate);
-  }, [sceneNavigate]);
+  const handleBack = useCallback(async () => {
+    // ponytail: persist the latest reading position BEFORE the back transition
+    // starts. The reader otherwise flushes on unmount (at router.push, ~0.8s in)
+    // which races the shelf's router.refresh() GET and can leave the just-read
+    // book outside slot 0 (recency). Awaiting here gives the save the whole
+    // slide-out to commit; it's a no-op when nothing is pending (the common
+    // case, since positions also debounce-save every 3s while reading).
+    await flushPendingSave();
+    // ponytail: capture the sidebar cover clone BEFORE the reader slides out so
+    // the back fly has a stable origin. If a forward fly is still inbound (user
+    // backed during the slide-in), the real cover is mid-transition — treat as
+    // sidebar-closed (no back fly) rather than capture a half-state cover.
+    const sidebarOpen = activeTool !== null && !forwardFlyActive;
+    let hero: { node: HTMLElement; rect: DOMRect } | undefined;
+    if (sidebarOpen) {
+      const el = document.querySelector(
+        "[data-hero-cover]",
+      ) as HTMLElement | null;
+      if (el && el.getBoundingClientRect) {
+        hero = {
+          node: el.cloneNode(true) as HTMLElement,
+          rect: el.getBoundingClientRect(),
+        };
+      }
+    }
+    backToLibrary(sceneNavigate, { hero, bookId, sidebarOpen });
+  }, [flushPendingSave, activeTool, bookId, forwardFlyActive, sceneNavigate]);
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -262,16 +299,6 @@ export function ReaderClient({
     },
     [savePosition]
   );
-
-  // Flush a pending (unsaved) position immediately — used on unmount and tab
-  // hide so the latest page isn't lost if the debounce timer hasn't fired yet.
-  const flushPendingSave = useCallback(() => {
-    if (saveTimeoutRef.current && lastPositionRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-      void savePosition(lastPositionRef.current);
-    }
-  }, [savePosition]);
 
   // ─── Text selection handling ──────────────────────────────────────────────────
   const handleTextSelected = useCallback(
@@ -499,7 +526,11 @@ export function ReaderClient({
 
   // ─── Flush unsaved position on unmount and when the tab is hidden ──────────────
   useEffect(() => {
-    return () => flushPendingSave();
+    // ponytail: void the promise — useEffect cleanup must return void/undefined,
+    // not a Promise. Fire-and-forget is correct here (nothing to await on unmount).
+    return () => {
+      void flushPendingSave();
+    };
   }, [flushPendingSave]);
 
   useEffect(() => {
@@ -560,14 +591,18 @@ export function ReaderClient({
   // During the transition, the book fades to low opacity so the epub.js reflow
   // snap at the end is hidden behind the dip. Once the width settles, we tell
   // epub.js to re-measure and re-paginate, then restore full opacity.
+  // ponytail: track sidebar open/close for the epub re-pagination dip — but
+  // only after the book is loaded, so the entry-time open (sidebar opens during
+  // the slide-in, before isLoaded) doesn't fire a spurious opacity dip on the
+  // not-yet-mounted EpubViewer.
   const prevOpenRef = useRef(false);
   useEffect(() => {
     const isOpen = activeTool !== null;
     if (prevOpenRef.current !== isOpen) {
       prevOpenRef.current = isOpen;
-      setSidebarAnimating(true);
+      if (isLoaded) setSidebarAnimating(true);
     }
-  }, [activeTool]);
+  }, [activeTool, isLoaded]);
 
   useEffect(() => {
     const el = epubWrapperRef.current;
@@ -581,24 +616,33 @@ export function ReaderClient({
     return () => el.removeEventListener("transitionend", onEnd);
   }, []);
 
-  // ─── Entry sequence: open Contents 200ms after the book first loads ──────────
-  // One-shot (guarded by autoOpenedRef). Uses a functional update so a user who
-  // opens another tool during the delay window isn't overridden.
+  // ─── Entry: open the book-details sidebar as the slide-in starts ────────────
+  // The sidebar mounts closed; opening it here (entering flips true on reader
+  // arrival) runs its open transition concurrently with the slide-in. The root
+  // --reader-dur override (see render) stretches that transition to match the
+  // slide-in, so the sidebar finishes opening just as the reader settles — one
+  // fluid motion (shelf → sidebar opening → cover lands). isLoaded is a fallback
+  // for when entering never fires (reduced motion skips the slide-in; direct
+  // URL nav has no scene transition). Functional update so a user who closed it
+  // during the slide-in isn't overridden.
   const autoOpenedRef = useRef(false);
   useEffect(() => {
-    if (!isLoaded || autoOpenedRef.current) return;
+    if (autoOpenedRef.current) return;
+    if (!entering && !isLoaded) return;
     autoOpenedRef.current = true;
-    const t = setTimeout(() => {
-      setActiveTool((prev) => prev ?? "reader");
-    }, 200);
-    return () => clearTimeout(t);
-  }, [isLoaded]);
+    setActiveTool((prev) => prev ?? "reader");
+  }, [entering, isLoaded]);
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
       className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}
+      // ponytail: stretch the sidebar/width open transition to match the 0.8s
+      // slide-in during entry, so the sidebar finishes opening as the reader
+      // settles. Reverts to the :root default (250ms, or 1ms under reduced
+      // motion) once entry is done — normal open/close stays snappy.
+      style={{ "--reader-dur": entering ? "800ms" : undefined } as React.CSSProperties}
     >
       {/* Hidden audio element for TTS playback */}
       <audio ref={tts.audioRef} className="hidden" />
@@ -685,7 +729,7 @@ export function ReaderClient({
       {/* Loading skeleton overlay */}
       {!isLoaded && !error && <ReaderSkeleton />}
 
-      {/* Reader chrome — only shown once loaded and no error */}
+      {/* Reader chrome + reading progress — only shown once loaded and no error */}
       {isLoaded && !error && (
         <>
           <ReaderChrome
@@ -712,56 +756,67 @@ export function ReaderClient({
             }
           />
           <ReadingProgress percentage={percentage} sidebarOpen={activeTool !== null} />
-          <ReaderSidebar
-            activeTool={activeTool}
-            onToolClick={(id) =>
-              setActiveTool((prev) => (prev === id ? null : id))
-            }
-            panels={{
-              reader: (
-                <ReaderPanel
-                  bookId={bookId}
-                  bookTitle={bookTitle ?? ""}
-                  author={bookAuthor}
-                  coverPath={bookCoverPath}
-                  language={bookLanguage}
-                  toc={toc}
-                  currentHref={currentHref}
-                  onNavigate={handleTocNavigate}
-                  initialLanguage={initialLanguage}
-                  onListenFromHere={handleListenFromHere}
-                  isAdmin={isAdmin}
-                  bookCreatedAt={bookCreatedAt}
-                />
-              ),
-              bookmark: (
-                <BookmarksPanel
-                  bookId={bookId}
-                  currentCfi={currentCfi}
-                  toc={toc}
-                  onBookmarkClick={handleNavigateToCfi}
-                  onSaveBookmark={handleSaveBookmark}
-                />
-              ),
-              pen: (
-                <HighlightsPanel
-                  bookId={bookId}
-                  toc={toc}
-                  onHighlightClick={handleNavigateToCfi}
-                />
-              ),
-              bulb: <SidebarPlaceholder label="Explainers" />,
-              type: (
-                <BookSettingsPanel
-                  theme={readerTheme}
-                  onThemeChange={handleThemeChange}
-                  settings={bookSettings}
-                  onChange={handleSettingsChange}
-                />
-              ),
-            }}
-          />
         </>
+      )}
+
+      {/*
+        Reader sidebar — rendered on mount (NOT gated by isLoaded) so it can
+        open during the slide-in. ReaderPanel already guards the TOC
+        (toc.length > 0), so the cover + action buttons show immediately and the
+        TOC fills when the book loads. coverHidden holds the cover empty while a
+        forward fly is inbound, then reveals it at the landing handoff.
+      */}
+      {!error && (
+        <ReaderSidebar
+          activeTool={activeTool}
+          onToolClick={(id) =>
+            setActiveTool((prev) => (prev === id ? null : id))
+          }
+          panels={{
+            reader: (
+              <ReaderPanel
+                bookId={bookId}
+                bookTitle={bookTitle ?? ""}
+                author={bookAuthor}
+                coverPath={bookCoverPath}
+                language={bookLanguage}
+                toc={toc}
+                currentHref={currentHref}
+                onNavigate={handleTocNavigate}
+                initialLanguage={initialLanguage}
+                onListenFromHere={handleListenFromHere}
+                isAdmin={isAdmin}
+                bookCreatedAt={bookCreatedAt}
+                coverHidden={forwardFlyActive}
+              />
+            ),
+            bookmark: (
+              <BookmarksPanel
+                bookId={bookId}
+                currentCfi={currentCfi}
+                toc={toc}
+                onBookmarkClick={handleNavigateToCfi}
+                onSaveBookmark={handleSaveBookmark}
+              />
+            ),
+            pen: (
+              <HighlightsPanel
+                bookId={bookId}
+                toc={toc}
+                onHighlightClick={handleNavigateToCfi}
+              />
+            ),
+            bulb: <SidebarPlaceholder label="Explainers" />,
+            type: (
+              <BookSettingsPanel
+                theme={readerTheme}
+                onThemeChange={handleThemeChange}
+                settings={bookSettings}
+                onChange={handleSettingsChange}
+              />
+            ),
+          }}
+        />
       )}
 
       {/* TTS audio player — outside the isLoaded check so it persists independently */}
