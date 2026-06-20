@@ -115,23 +115,60 @@ const HANDOFF_DUR = 0.2;
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-// ponytail: clone the library DOM and copy scroll offsets so the receded
-// snapshot is pixel-identical to the live page. O(n) over descendants; the
-// shelf DOM is small. Ceiling: a huge library (thousands of nodes) would make
-// this measurably slow — switch to copying only the scroll container then.
-function cloneWithScroll(src: HTMLElement): HTMLElement {
-  const clone = src.cloneNode(true) as HTMLElement;
-  const srcEls = src.querySelectorAll("*");
-  const dstEls = clone.querySelectorAll("*");
-  for (let i = 0; i < srcEls.length; i++) {
-    const a = srcEls[i] as HTMLElement;
+// ponytail: native scrollTop/scrollLeft capture/restore for the library clone.
+// Lenis drives the SmoothScrollArea viewport via REAL native scroll
+// (wrapper.scrollTo, lenis.mjs:524), so scrollTop is the live position — no
+// transform to copy. The split (capture → attach → apply) is required: writing
+// scrollTop to a DETACHED clone is dropped on attach in WebKit/Safari (Blink
+// happens to retain it), which is what made the receding snapshot flash at
+// scroll-top instead of the user's scroll position. Applying after the clone is
+// in the document sticks in every browser. O(n) over descendants; the shelf DOM
+// is small. Ceiling: a huge library (thousands of nodes) would make this
+// measurably slow — switch to copying only the scroll container then.
+//
+// The index-keyed map is aligned to querySelectorAll("*") order, which
+// cloneNode(true) preserves, so capture (on src) and apply (on clone) match by
+// position without needing element identity.
+function captureScrollOffsets(
+  src: HTMLElement,
+): Map<number, { top: number; left: number }> {
+  const offsets = new Map<number, { top: number; left: number }>();
+  const els = src.querySelectorAll("*");
+  for (let i = 0; i < els.length; i++) {
+    const a = els[i] as HTMLElement;
     if (a.scrollTop || a.scrollLeft) {
-      const b = dstEls[i] as HTMLElement;
-      b.scrollTop = a.scrollTop;
-      b.scrollLeft = a.scrollLeft;
+      offsets.set(i, { top: a.scrollTop, left: a.scrollLeft });
     }
   }
-  return clone;
+  return offsets;
+}
+
+// Apply captured offsets to the clone's matching descendants. Must run AFTER
+// the clone is in the document (see captureScrollOffsets).
+function applyScrollOffsets(
+  clone: HTMLElement,
+  offsets: Map<number, { top: number; left: number }>,
+) {
+  if (offsets.size === 0) return;
+  const els = clone.querySelectorAll("*");
+  offsets.forEach(({ top, left }, i) => {
+    const b = els[i] as HTMLElement | undefined;
+    if (!b) return;
+    if (top) b.scrollTop = top;
+    if (left) b.scrollLeft = left;
+  });
+}
+
+// Zero every scrolled descendant (back nav: the reused forward clone carries the
+// user's old scroll, but the real shelf re-mounts at top, so the clone must
+// match top during the slide-out + swap).
+function zeroScrollOffsets(clone: HTMLElement) {
+  const els = clone.querySelectorAll("*");
+  for (let i = 0; i < els.length; i++) {
+    const b = els[i] as HTMLElement;
+    if (b.scrollTop) b.scrollTop = 0;
+    if (b.scrollLeft) b.scrollLeft = 0;
+  }
 }
 
 // Approximate resting rect of the sidebar cover (top-RIGHT — the sidebar lives
@@ -340,7 +377,9 @@ export function SceneTransitionProvider({
           router.push(url);
           return;
         }
-        const clone = cloneWithScroll(library);
+        // Capture scroll BEFORE cloning (non-mutating read of live scrollTop).
+        const scrollOffsets = captureScrollOffsets(library);
+        const clone = library.cloneNode(true) as HTMLElement;
         // Make the clone opaque with the same field background as <body>
         // (tan + --field-bg tints) so the whole screen — background included —
         // recedes as one unit; the dark stage shows at the scaled edges.
@@ -364,7 +403,12 @@ export function SceneTransitionProvider({
           if (departing) departing.style.visibility = "hidden";
         }
         layer.replaceChildren(clone);
+        // Make the layer visible BEFORE applying scroll offsets: scrollTop set
+        // on a display:none subtree is ignored/reset by browsers, so the recede
+        // would still show scroll-top. All of this is one synchronous task, so
+        // there's no paint between display:block and the scrollTop write.
         gsap.set(layer, { display: "block", width: stageWidth });
+        applyScrollOffsets(clone, scrollOffsets);
         // will-change pre-promotes so the clone's first paint isn't mid-frame.
         gsap.set(clone, { ...FULL_TRANSFORM, willChange: "transform" });
         gsap.set(dim, {
@@ -445,6 +489,13 @@ export function SceneTransitionProvider({
       // a scrollbar-width gap could flip one column at an exact breakpoint.
       if (clone)
         clone.style.width = `${document.documentElement.clientWidth}px`;
+      // ponytail: the reused forward clone still carries the user's pre-read
+      // scroll, but the real shelf re-mounts at top on back (fresh Lenis), so
+      // zero the clone now — hidden under the reader (z-10) at this moment, so
+      // the reset is invisible; the slide-out then reveals a top-positioned
+      // clone that matches the real shelf at swap. Runs before the slot-0
+      // measure so the part-1 fly targets the top slot.
+      if (clone) zeroScrollOffsets(clone);
 
       // ponytail: make slot 0 of the cloned shelf read as VACANT so the
       // returning book has a clear spot to land during the slide-out. The clone
