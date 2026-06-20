@@ -130,9 +130,11 @@ export function ReaderPanel({
         {/* data-hero-cover: the fly transition clones this frame. Fixed width +
             natural aspect (matching the bookshelf card) so the fly clone lands
             at the correct size/treatment. shadow-book unifies the frame with the
-            shelf. coverHidden holds it empty while a fly is inbound, then reveals. */}
+            shelf. No opacity transition — the cover snaps opaque under the fly
+            clone at the handoff so its fade-out reveals it cleanly. coverHidden
+            holds it empty while a fly is inbound, then reveals. */}
         <div
-          className="relative w-[66px] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book transition-opacity duration-200"
+          className="relative w-[66px] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book"
           data-hero-cover=""
           style={{ opacity: coverHidden ? 0 : 1 }}
         >

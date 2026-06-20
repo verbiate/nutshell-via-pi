@@ -148,8 +148,10 @@ export function Bookshelf({ books }: BookshelfProps) {
             key={book.id}
             data-book-card
             data-book-id={book.id}
+            // ponytail: no transition — the hero snaps to fully opaque UNDER
+            // the fly clone the instant the handoff fires (invisible, covered),
+            // so the clone's fade-out cleanly reveals it instead of crossfading.
             style={isHero ? { opacity: heroRevealed ? 1 : 0 } : undefined}
-            className={isHero ? "transition-opacity duration-200" : undefined}
           >
             <BookCard
               id={book.id}

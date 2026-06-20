@@ -513,15 +513,15 @@ export function SceneTransitionProvider({
     const parked = backFlyRef.current;
     if (rect && parked && flyLayerRef.current) {
       if (backFlyPart1Ref.current) {
-        // Handoff: clone is already at ~slot 0. Snap to the real hero rect
-        // (small correction), then crossfade out as the reader hero fades in.
-        const fromW = parked.getBoundingClientRect().width || rect.width || 1;
-        gsap.set(parked, {
+        // Settle + dissolve: nudge the clone onto the real hero rect AS it
+        // fades out, revealing the (instantly opaque) real book beneath. The
+        // clone is already sized correctly (part-1 scaled it to the shelf slot),
+        // so we animate ONLY position + opacity — a scale tween here would
+        // shrink the clone to its natural sidebar size as it fades. A single
+        // tween (no instant snap) avoids the one-frame jump that read as a pop.
+        gsap.to(parked, {
           x: rect.left,
           y: rect.top,
-          scale: rect.width / fromW,
-        });
-        gsap.to(parked, {
           opacity: 0,
           duration: HANDOFF_DUR,
           ease: EASE,
@@ -616,15 +616,18 @@ export function SceneTransitionProvider({
               const real = document.querySelector(
                 "[data-hero-cover]",
               ) as HTMLElement | null;
-              if (real) {
-                const r = real.getBoundingClientRect();
-                gsap.set(node, {
-                  x: r.left,
-                  y: r.top,
-                  scale: r.width / (hero.rect.width || r.width || 1),
-                });
-              }
+              const r = real?.getBoundingClientRect();
+              // Settle + dissolve: glide onto the real cover rect AS it fades
+              // out, revealing the (instantly opaque) real cover beneath. One
+              // tween, no instant snap → no pop.
               gsap.to(node, {
+                ...(r
+                  ? {
+                      x: r.left,
+                      y: r.top,
+                      scale: r.width / (hero.rect.width || r.width || 1),
+                    }
+                  : {}),
                 opacity: 0,
                 duration: HANDOFF_DUR,
                 ease: EASE,
@@ -633,7 +636,7 @@ export function SceneTransitionProvider({
                   if (forwardFlyRef.current === node) forwardFlyRef.current = null;
                 },
               });
-              // Reveal the real sidebar cover (crossfade with the clone).
+              // Reveal the real sidebar cover underneath the fading clone.
               setForwardFlyActive(false);
             });
             forwardFlyRef.current = node;
