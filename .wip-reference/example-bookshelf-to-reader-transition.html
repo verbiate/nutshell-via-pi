@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screen Transition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+  .stage { position: relative; width: 100vw; height: 100vh; perspective: 1400px; background: #0a0a0a; }
+
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px; padding: 48px; color: #fff;
+    will-change: transform, filter;
+  }
+
+  #s1 { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); z-index: 1; }
+  #s2 { background: linear-gradient(135deg, #7c2d12 0%, #f97316 100%); z-index: 2; }
+
+  h1 { font-size: clamp(2rem, 6vw, 4rem); font-weight: 700; letter-spacing: -0.02em; }
+  p  { font-size: clamp(1rem, 2vw, 1.25rem); opacity: 0.85; max-width: 32ch; text-align: center; }
+
+  button {
+    margin-top: 16px;
+    padding: 14px 28px;
+    font-size: 1rem; font-weight: 600;
+    color: #fff; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: background 0.2s, transform 0.1s;
+  }
+  button:hover { background: rgba(255,255,255,0.22); }
+  button:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <section class="screen" id="s1">
+      <h1>First Screen</h1>
+      <p>The starting point. Click below to push this back and bring in the next.</p>
+      <button id="forward">Go forward →</button>
+    </section>
+
+    <section class="screen" id="s2">
+      <h1>Second Screen</h1>
+      <p>You made it. The first screen is sitting behind, scaled and dimmed.</p>
+      <button id="back">← Go back</button>
+    </section>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script>
+  gsap.set('#s1', { filter: 'brightness(1)' });
+  gsap.set('#s2', { xPercent: 100 });
+
+  const tl = gsap.timeline({ paused: true })
+    .to('#s1', { scale: 0.85, xPercent: -8, filter: 'brightness(0.55)', duration: 0.8, ease: 'power3.inOut' }, 0)
+    .to('#s2', { xPercent: 0,    duration: 0.8, ease: 'power3.inOut' }, 0);
+
+  forward.onclick = () => tl.play();
+  back.onclick    = () => tl.reverse();
+</script>
+</body>
+</html>
