@@ -66,6 +66,7 @@ export function ReaderSidebar({
           opacity: isOpen ? 1 : 0,
           transitionProperty: "transform, opacity",
           transitionDuration: "var(--reader-dur)",
+          transitionDelay: "var(--reader-delay, 0ms)",
           transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
         }}
       >

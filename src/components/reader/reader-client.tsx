@@ -638,11 +638,16 @@ export function ReaderClient({
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
       className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}
-      // ponytail: stretch the sidebar/width open transition to match the 0.8s
-      // slide-in during entry, so the sidebar finishes opening as the reader
-      // settles. Reverts to the :root default (250ms, or 1ms under reduced
-      // motion) once entry is done — normal open/close stays snappy.
-      style={{ "--reader-dur": entering ? "800ms" : undefined } as React.CSSProperties}
+      // ponytail: stage the sidebar open to finish with the 0.8s slide-in.
+      // --reader-delay (300ms) holds the sidebar closed while the reader gets a
+      // head start; --reader-dur (500ms) is the open itself. 300 + 500 = 800ms,
+      // so the sidebar lands exactly as the slide-in settles. Both revert to the
+      // :root defaults (250ms / 0ms; 1ms under reduced motion) once entry is done
+      // — normal open/close stays snappy and immediate.
+      style={{
+        "--reader-dur": entering ? "500ms" : undefined,
+        "--reader-delay": entering ? "300ms" : "0ms",
+      } as React.CSSProperties}
     >
       {/* Hidden audio element for TTS playback */}
       <audio ref={tts.audioRef} className="hidden" />
@@ -667,9 +672,17 @@ export function ReaderClient({
             boxShadow: "12px 0 18px -12px rgba(34,24,5,0.35)",
             transitionProperty: "width",
             transitionDuration: "var(--reader-dur)",
+            transitionDelay: "var(--reader-delay, 0ms)",
             transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
           }}
         >
+          {/* ponytail: book-contents placeholder — lives INSIDE the epub wrapper
+              (not a full-screen overlay) so it's clipped to the book area, narrows
+              with the wrapper as the sidebar opens, and leaves the sidebar + rail
+              visible during entry. That makes the sidebar's open animation (which
+              already runs concurrently with the slide-in via --reader-dur) visible
+              instead of hidden behind an opaque z-60 layer until isLoaded. */}
+          {!isLoaded && <ReaderSkeleton />}
           <div
             className="h-full w-full"
             style={{
@@ -725,9 +738,6 @@ export function ReaderClient({
         initialLanguage={initialLanguage}
         passageText={selectedText}
       />
-
-      {/* Loading skeleton overlay */}
-      {!isLoaded && !error && <ReaderSkeleton />}
 
       {/* Reader chrome + reading progress — only shown once loaded and no error */}
       {isLoaded && !error && (
