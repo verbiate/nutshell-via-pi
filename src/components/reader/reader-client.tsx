@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
@@ -10,6 +9,8 @@ import { ReaderChrome } from "./reader-chrome";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
+import { backToLibrary } from "./back-nav";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 import { FloatingToolbar } from "./floating-toolbar";
 import { ReaderSidebar } from "./reader-sidebar";
 import { ReaderPanel } from "./reader-panel";
@@ -77,7 +78,7 @@ export function ReaderClient({
   isAdmin,
   bookCreatedAt,
 }: ReaderClientProps) {
-  const router = useRouter();
+  const { navigate: sceneNavigate, entering } = useSceneTransition();
   const viewerRef = useRef<EpubViewerHandle>(null);
   // Wraps the EpubViewer; its width animates with the sidebar. We listen to
   // transitionend on this element to trigger epub.js re-pagination.
@@ -215,8 +216,8 @@ export function ReaderClient({
 
   // ─── Callbacks ───────────────────────────────────────────────────────────────
   const handleBack = useCallback(() => {
-    router.push("/my-library");
-  }, [router]);
+    backToLibrary(sceneNavigate);
+  }, [sceneNavigate]);
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -634,22 +635,28 @@ export function ReaderClient({
               transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
             }}
           >
-          <EpubViewer
-            ref={viewerRef}
-            url={epubUrl}
-            theme={readerTheme}
-            typography={typography}
-            initialCfi={savedPosition?.cfi ?? null}
-            onTocLoaded={handleTocLoaded}
-            onProgressChange={handleProgressChange}
-            onPositionChange={handlePositionChange}
-            onRenditionReady={handleRenditionReady}
-            onError={handleError}
-            onLoadChange={(loaded) => setIsLoaded(loaded)}
-            onTextSelected={handleTextSelected}
-            onSelectionCleared={handleSelectionCleared}
-            className="h-full w-full"
-          />
+          {/* ponytail: defer the iframe-bearing EpubViewer until the forward
+              slide-in settles (entering===false). During the slide-in only the
+              cheap ReaderSkeleton paints, so the animation isn't fighting the
+              EPUB fetch/parse/iframe-render on the main thread + compositor. */}
+          {!entering && (
+            <EpubViewer
+              ref={viewerRef}
+              url={epubUrl}
+              theme={readerTheme}
+              typography={typography}
+              initialCfi={savedPosition?.cfi ?? null}
+              onTocLoaded={handleTocLoaded}
+              onProgressChange={handleProgressChange}
+              onPositionChange={handlePositionChange}
+              onRenditionReady={handleRenditionReady}
+              onError={handleError}
+              onLoadChange={(loaded) => setIsLoaded(loaded)}
+              onTextSelected={handleTextSelected}
+              onSelectionCleared={handleSelectionCleared}
+              className="h-full w-full"
+            />
+          )}
           </div>
         </div>
       )}

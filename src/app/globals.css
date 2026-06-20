@@ -128,6 +128,14 @@
     --grad-teal-blue: linear-gradient(in oklch, var(--teal), var(--blue));
     --grad: var(--grad-peach-pink);
 
+    /* Library "field" background — soft brand-tinted radials. Shared by <body>
+       and the SceneTransition clone so the receding screen captures its own
+       background (and dims+scales with it). None in reading-comfort themes. */
+    --field-bg:
+        radial-gradient(120% 60% at 18% -8%, rgba(161,127,240,.16), transparent 60%),
+        radial-gradient(90% 55% at 78% -10%, rgba(241,104,245,.14), transparent 58%),
+        radial-gradient(70% 50% at 50% -12%, rgba(24,189,253,.12), transparent 60%);
+
     /* Brand accents (legacy token names → new brand colors) */
     --b-orange: var(--peach);
     --b-magenta: var(--pink);
@@ -202,6 +210,7 @@
 .dark {
     /* Warm chocolate-family dark reading theme — keeps the purple ring */
     --background: #1A130C;
+    --field-bg: none;
     --foreground: #F2E9D4;
     --card: #241A10;
     --card-foreground: #F2E9D4;
@@ -236,6 +245,7 @@
 
 .sepia {
     --background: #f4ecd8;
+    --field-bg: none;
     --foreground: #5b4636;
     --card: #f4ecd8;
     --card-foreground: #5b4636;
@@ -268,8 +278,14 @@
     --sidebar-ring: #A17FF0;
 }
 
+/* Bookshelf ↔ reader route transition is driven by GSAP in
+   SceneTransitionProvider (works in Safari, where the View Transitions API is
+   unavailable). No CSS view-transition rules needed. */
+
 @media (prefers-reduced-motion: reduce) {
-    :root { --reader-dur: 1ms; }
+    :root {
+        --reader-dur: 1ms;
+    }
 }
 
 @keyframes fadeInWord {
@@ -326,15 +342,10 @@
     }
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(120% 60% at 18% -8%, rgba(161,127,240,.16), transparent 60%),
-      radial-gradient(90% 55% at 78% -10%, rgba(241,104,245,.14), transparent 58%),
-      radial-gradient(70% 50% at 50% -12%, rgba(24,189,253,.12), transparent 60%);
+    background-image: var(--field-bg);
     background-repeat: no-repeat;
     background-attachment: fixed;
     }
-  /* Reading-comfort themes keep a clean field */
-  .dark body, .sepia body { background-image: none; }
   html {
     @apply font-sans;
     }

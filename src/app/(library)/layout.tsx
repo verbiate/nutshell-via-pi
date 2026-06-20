@@ -11,7 +11,7 @@ export default async function LibraryLayout({
   await requireAuth();
 
   return (
-    <div className="flex min-h-screen flex-col pt-12 lg:h-screen lg:overflow-hidden">
+    <div data-scene="library" className="flex min-h-screen flex-col pt-12 lg:h-screen lg:overflow-hidden">
       <header className="mx-auto flex h-16 w-full shrink-0 max-w-[1536px] items-center justify-between px-8">
         <Link href="/my-library">
           <img

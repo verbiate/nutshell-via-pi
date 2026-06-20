@@ -1,5 +1,7 @@
-import Link from "next/link";
+"use client";
+
 import { BookOpen } from "lucide-react";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 
 interface BookCardProps {
   id: string;
@@ -12,11 +14,23 @@ interface BookCardProps {
 
 export function BookCard({ id, title, author, coverPath, progress, hasProgress }: BookCardProps) {
   const showProgress = !!hasProgress && progress != null;
+  const { navigate } = useSceneTransition();
+
+  const go = () => navigate(`/book/${id}/reader`, "forward");
 
   return (
-    <Link
-      href={`/book/${id}/reader`}
-      className="group block rounded-md"
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={go}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      }}
+      aria-label={`Open ${title}`}
+      className="group block cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       {/* ponytail: lift the cover only, not the progress slot. Transform and filter animate on separate elements — combining them on one element made the hover snap instead of ease. */}
       <div className="transition-transform duration-200 ease-out group-hover:-translate-y-[1%]">
@@ -61,6 +75,6 @@ export function BookCard({ id, title, author, coverPath, progress, hasProgress }
           </div>
         )}
       </div>
-    </Link>
+    </div>
   );
 }
