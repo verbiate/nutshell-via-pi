@@ -452,7 +452,14 @@ export function SceneTransitionProvider({
           if (parent && parent.firstChild !== heroCard) {
             parent.insertBefore(heroCard, parent.firstChild);
           }
-          heroCard.style.visibility = "hidden";
+          // ponytail: only vacate slot 0 when a fly is inbound (fly:true). With
+          // fly:false (sidebar was closed / reduced motion) no clone travels to
+          // fill the slot, so the book must stay visible here — otherwise slot 0
+          // reads blank during the slide-out and pops in at swap. The reorder
+          // above still runs so the clone matches the real shelf's recency order.
+          // Also reset the forward-clone's `visibility:hidden` on the departing
+          // book (scene-transition.tsx:364) so fly:false doesn't inherit a blank.
+          heroCard.style.visibility = fly ? "hidden" : "";
         }
       }
 

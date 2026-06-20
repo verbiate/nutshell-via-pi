@@ -176,10 +176,23 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // calling resize() before that throws (`this.manager.resize` undefined).
         // The sidebar width transition now starts during entry (before the
         // EpubViewer mount), so its transitionend can beat the first render.
+        // ponytail: manager-existence isn't a full readiness signal either —
+        // epub.js's resize() also reads an internal `.size` (layout/stage) that
+        // can still be undefined when transitionend beats the first render, and
+        // pinning the exact property across versions is brittle. try/catch is
+        // the honest guard: resize is idempotent, and epub.js's own
+        // ResizeObserver re-measures on the next tick regardless. Silent catch —
+        // this race is expected during entry, not a user-visible failure.
         const r = renditionRef.current as (Rendition & {
           manager?: unknown;
         }) | null;
-        if (r && r.manager) r.resize();
+        if (r && r.manager) {
+          try {
+            r.resize();
+          } catch {
+            /* rendition internals not ready; epub.js re-measures via its observers */
+          }
+        }
       },
     }));
 
