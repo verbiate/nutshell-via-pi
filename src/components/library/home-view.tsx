@@ -7,6 +7,7 @@ import { Sparkles, Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import { SmoothScrollArea } from "./smooth-scroll-area";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { LibraryBook } from "@/types/book";
 
 // ponytail: progressive blur = stacked masked backdrop-filter layers (geometric
@@ -54,6 +55,26 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
   }, []);
 
   const router = useRouter();
+  const { suppressShelfReveal } = useSceneTransition();
+
+  // ponytail: keep the daily-digest image stable across a reader → library
+  // return. The image is re-picked at random server-side on every page load, so
+  // without this a back-return would flash a new photo. On a back-return visit
+  // (suppressShelfReveal) reuse the previously-shown image from sessionStorage;
+  // otherwise adopt the fresh server image and cache it for next time. Chosen
+  // once on mount — later router.refresh() digestImage changes are ignored.
+  const [digestSrc] = useState<string | null>(() => {
+    if (suppressShelfReveal && typeof window !== "undefined") {
+      const cached = window.sessionStorage.getItem("nutshell.digest");
+      if (cached) return cached;
+    }
+    return digestImage;
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined" && digestSrc) {
+      window.sessionStorage.setItem("nutshell.digest", digestSrc);
+    }
+  }, [digestSrc]);
 
   useEffect(() => {
     // Refresh on mount so returning from the reader (or any soft nav) shows the
@@ -87,7 +108,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
       </div>
 
       <div className="mt-8 grid items-start gap-6 lg:grid-cols-[480px_1fr] lg:grid-rows-1 lg:min-h-0 lg:flex-1">
-        <DailyDigest imageSrc={digestImage} />
+        <DailyDigest imageSrc={digestSrc} />
         <div className="lg:relative lg:min-h-0 lg:self-stretch lg:overflow-hidden">
           <TabsContent value="bookshelf" className="lg:absolute lg:inset-0">
             <SmoothScrollArea className="lg:absolute lg:inset-0">
