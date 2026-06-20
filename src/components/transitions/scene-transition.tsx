@@ -434,6 +434,17 @@ export function SceneTransitionProvider({
           width: `${document.documentElement.clientWidth}px`,
         }); // opacity left at DIM from forward
       const clone = layer.firstElementChild as HTMLElement | null;
+      // ponytail: a resize during the reader session stale the forward clone's
+      // pinned width (captured at forward nav to the old viewport — line 355).
+      // Reflow it to the current viewport so the grid (auto-fill,
+      // minmax(150px,1fr)) re-computes its column count and matches the real
+      // shelf that mounts at swap — otherwise stale columns show during the
+      // slide-out and jump at the route swap. The getBoundingClientRect() read
+      // below (slot-0 measure) forces the reflow before the first frame.
+      // Residual: uses clientWidth (live library element is unmounted on back);
+      // a scrollbar-width gap could flip one column at an exact breakpoint.
+      if (clone)
+        clone.style.width = `${document.documentElement.clientWidth}px`;
 
       // ponytail: make slot 0 of the cloned shelf read as VACANT so the
       // returning book has a clear spot to land during the slide-out. The clone
