@@ -39,6 +39,7 @@ function ConfigRow({
     queryKey: ["admin-config", category],
     queryFn: async () => {
       const res = await fetch(`/api/admin/config?category=${category}`);
+      if (!res.ok) throw new Error("Failed to load configuration");
       return res.json();
     },
   });
@@ -46,11 +47,19 @@ function ConfigRow({
   const configs = data?.configs || [];
   const existing = configs.find((c: any) => c.userType === tier) || {};
 
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => [f, (existing[f] as string) || ""]))
-  );
+  // ponytail: edits-overlay model. We read `existing` live on every render so the
+  // inputs populate as soon as the query resolves, and the badge is correct from
+  // the very first render. Avoids the useState-initializer-captures-empty-data
+  // trap (which left fields empty + badge stuck on "Unsaved" after a hard
+  // refresh) and avoids comparing typed-vs-masked-apiKey (the original bug).
+  const [edits, setEdits] = useState<Record<string, string>>({});
 
-  const hasChanges = fields.some((f) => values[f] !== ((existing[f] as string) || ""));
+  // apiKey is never auto-displayed — GET masks it, so showing the mask would
+  // either be useless ("***") or trip a permanent dirty mismatch.
+  const displayValue = (f: string) =>
+    f in edits ? edits[f] : f === "apiKey" ? "" : (existing[f] as string) || "";
+
+  const hasChanges = Object.keys(edits).length > 0;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -60,14 +69,32 @@ function ConfigRow({
         body: JSON.stringify({
           category,
           userType: tier,
-          ...Object.fromEntries(fields.map((f) => [f, values[f] || undefined])),
+          ...Object.fromEntries(
+            fields.map((f) => [
+              f,
+              // ponytail: untouched/empty apiKey = "skip" (don't wipe a stored key
+              // by accident — empty password field is the default, not a clear intent);
+              // empty model/voiceId = "clear" (send null, server sets to null).
+              f === "apiKey" ? edits[f] || undefined : displayValue(f) || null,
+            ])
+          ),
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Save failed");
+      }
       return res.json();
     },
     onSuccess: () => {
+      // Clear edits — server is source of truth again. Inputs will repopulate
+      // from the refetched (unmasked-for-non-apiKey) server data.
+      setEdits({});
       queryClient.invalidateQueries({ queryKey: ["admin-config", category] });
       toast.success("Configuration saved");
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "Save failed");
     },
   });
 
@@ -85,11 +112,16 @@ function ConfigRow({
             <Label className="text-xs text-muted-foreground capitalize">{field}</Label>
             <Input
               type={field === "apiKey" ? "password" : "text"}
-              value={values[field]}
-              onChange={(e) => setValues((prev) => ({ ...prev, [field]: e.target.value }))}
-              placeholder={field === "apiKey" ? "sk-..." : field === "model" ? "Model ID" : "Voice ID"}
+              value={displayValue(field)}
+              onChange={(e) =>
+                setEdits((prev) => ({ ...prev, [field]: e.target.value }))
+              }
+              placeholder={field === "apiKey" ? "Enter new key" : field === "model" ? "Model ID" : "Voice ID"}
               className="text-sm"
             />
+            {field === "apiKey" && existing[field] && (
+              <p className="text-xs text-muted-foreground">Current: {existing[field]}</p>
+            )}
           </div>
         ))}
       </div>
