@@ -266,3 +266,11 @@ model OpenRouterConfig {
   model     String?
   updatedAt DateTime @updatedAt
 }
+
+// ponytail: KV table for global admin-tunable settings (e.g. globalSystemPrompt).
+// Add new keys by calling setSetting("<key>", value) — no schema change needed.
+model AppSetting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
+}
