@@ -11,6 +11,7 @@ import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
 import { backToLibrary } from "./back-nav";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { FloatingToolbar } from "./floating-toolbar";
 import { ReaderSidebar } from "./reader-sidebar";
 import { ReaderPanel } from "./reader-panel";
@@ -112,6 +113,10 @@ export function ReaderClient({
   const [percentage, setPercentage] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  // ponytail: latches true once the page-content reveal fade completes, so the
+  // skeleton unmounts. Resets per mount (reader-client remounts per book).
+  const [contentRevealed, setContentRevealed] = useState(false);
 
   const initialLanguage = (user as any)?.preferredLanguage || "en";
 
@@ -679,10 +684,19 @@ export function ReaderClient({
           {/* ponytail: book-contents placeholder — lives INSIDE the epub wrapper
               (not a full-screen overlay) so it's clipped to the book area, narrows
               with the wrapper as the sidebar opens, and leaves the sidebar + rail
-              visible during entry. That makes the sidebar's open animation (which
-              already runs concurrently with the slide-in via --reader-dur) visible
-              instead of hidden behind an opaque z-60 layer until isLoaded. */}
-          {!isLoaded && <ReaderSkeleton />}
+              visible during entry. Reveal: the skeleton stays opaque until the
+              EPUB has rendered (isLoaded) AND the entry transition has ended
+              (!entering ≈ cover-fly handoff ≈ 800ms) — so the cover is the last
+              thing that moves — then fades out to expose the page beneath.
+              Reduced motion → instant reveal. */}
+          {reducedMotion
+            ? (!isLoaded || entering) && <ReaderSkeleton />
+            : !contentRevealed && (
+                <ReaderSkeleton
+                  visible={!isLoaded || entering}
+                  onFadeOut={() => setContentRevealed(true)}
+                />
+              )}
           <div
             className="h-full w-full"
             style={{
