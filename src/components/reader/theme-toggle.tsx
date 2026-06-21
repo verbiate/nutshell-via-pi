@@ -9,7 +9,10 @@ export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
 
+  // ponytail: mounted guard avoids hydration mismatch (resolvedTheme is
+  // server-unknown). useSyncExternalStore has no store to subscribe to here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

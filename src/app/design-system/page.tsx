@@ -548,7 +548,7 @@ export default function DesignSystemPage() {
       <div className="px-5 py-4 space-y-3">
         <button className="w-full rounded-md border border-line bg-card px-3 py-2 text-sm font-medium text-foreground">+ Add bookmark</button>
         <div className="rounded-md bg-paper-deep px-3 py-2">
-          <p className="truncate text-sm text-foreground">"It was the best of times…"</p>
+          <p className="truncate text-sm text-foreground">&quot;It was the best of times…&quot;</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">2m ago</p>
         </div>
       </div>
@@ -580,7 +580,7 @@ export default function DesignSystemPage() {
         <Lightbulb className="h-10 w-10 text-muted-foreground/40" />
         <div>
           <p className="text-sm font-medium text-foreground">No explainers yet</p>
-          <p className="mt-1 text-xs text-muted-foreground">Click "Explain this to me" while reading to generate one.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Click &quot;Explain this to me&quot; while reading to generate one.</p>
         </div>
       </div>
     ),

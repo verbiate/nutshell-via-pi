@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import ePub, { Book, Rendition, NavItem } from "@likecoin/epub-ts";
+import ePub, { Book, Rendition, NavItem, Contents } from "@likecoin/epub-ts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
@@ -285,10 +285,21 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               rendition.themes.override(prop, value, true);
             }
 
+            // ponytail: cream/sepia paper bg makes white-background images
+            // float as bright boxes. multiply lets them absorb the page tint.
+            // Scoped to the .light/.sepia class epub.js puts on the content
+            // body (themes.select → addClass); dark is excluded because
+            // multiply on near-black erases images.
+            rendition.hooks.content.register((contents: Contents) => {
+              contents.addStylesheetCss(
+                ".light img, .sepia img { mix-blend-mode: multiply; }",
+                "br-image-blend",
+              );
+            });
+
             // Wire relocated event for progress and position
             rendition.on(
               "relocated",
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (location: any) => {
                 if (!mounted) return;
                 const cfi = location.start.cfi ?? null;

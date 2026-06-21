@@ -32,8 +32,10 @@ export function SearchPanel({ bookId, onResultClick }: SearchPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch TXT once on panel open
+  // ponytail: data-load on open is a legit effect; React Query refactor is separate scope
   useEffect(() => {
     if (!open || text) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     fetch(`/api/reader/txt?bookId=${encodeURIComponent(bookId)}`)
       .then((res) => res.json())

@@ -45,12 +45,18 @@ interface HomeViewProps {
   userName: string | null;
   books: LibraryBook[];
   digestImage: string | null;
+  // ponytail: when true, this HomeView is rendered as a non-interactive
+  // snapshot (e.g. inside BookshelfSnapshot for the refresh-back-nav case).
+  // Skips router.refresh() and disables interactive elements. The real
+  // Bookshelf on /my-library always has static=false.
+  static?: boolean;
 }
 
-export function HomeView({ userName, books, digestImage }: HomeViewProps) {
+export function HomeView({ userName, books, digestImage, static: isStatic = false }: HomeViewProps) {
   // ponytail: greeting computed on mount to respect the viewer's local timezone
   const [greeting, setGreeting] = useState("Hello");
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGreeting(timeGreeting());
   }, []);
 
@@ -59,28 +65,49 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
 
   // ponytail: keep the daily-digest image stable across a reader → library
   // return. The image is re-picked at random server-side on every page load, so
-  // without this a back-return would flash a new photo. On a back-return visit
-  // (suppressShelfReveal) reuse the previously-shown image from sessionStorage;
-  // otherwise adopt the fresh server image and cache it for next time. Chosen
-  // once on mount — later router.refresh() digestImage changes are ignored.
-  const [digestSrc] = useState<string | null>(() => {
-    if (suppressShelfReveal && typeof window !== "undefined") {
+  // without this a back-return would flash a new photo. The live HomeView reads
+  // sessionStorage in the useState initializer ONLY on a soft-nav back-return
+  // (suppressShelfReveal:true — safe because soft nav doesn't re-hydrate); on a
+  // fresh page load it uses the server prop and matches SSR.
+  //
+  // Static (snapshot) mode can't read sessionStorage in the initializer without
+  // breaking hydration (the snapshot is server-rendered as part of the reader
+  // RSC). It uses the prop initially, then a post-hydration useEffect below
+  // syncs the cached value so the snapshot matches the live shelf at swap.
+  // The snapshot never writes to storage — the live shelf is the source of
+  // truth, and a write here would clobber the cached value before the sync
+  // effect can read it.
+  const [digestSrc, setDigestSrc] = useState<string | null>(() => {
+    if (!isStatic && suppressShelfReveal && typeof window !== "undefined") {
       const cached = window.sessionStorage.getItem("nutshell.digest");
       if (cached) return cached;
     }
     return digestImage;
   });
   useEffect(() => {
+    if (isStatic) return;
     if (typeof window !== "undefined" && digestSrc) {
       window.sessionStorage.setItem("nutshell.digest", digestSrc);
     }
-  }, [digestSrc]);
+  }, [digestSrc, isStatic]);
+  // Static only: swap in the cached digest after hydration so the snapshot
+  // matches what the live shelf will show at swap. Runs post-hydration to
+  // avoid SSR mismatch. Idempotent — re-runs after the set-state but finds
+  // cached === digestSrc and no-ops.
+  useEffect(() => {
+    if (!isStatic || typeof window === "undefined") return;
+    const cached = window.sessionStorage.getItem("nutshell.digest");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (cached && cached !== digestSrc) setDigestSrc(cached);
+  }, [isStatic, digestSrc]);
 
   useEffect(() => {
     // Refresh on mount so returning from the reader (or any soft nav) shows the
     // latest recency/progress instead of the client Router Cache's stale RSC.
+    // Snapshots skip this — they're rendered off-screen and replaced at swap.
+    if (isStatic) return;
     router.refresh();
-  }, [router]);
+  }, [router, isStatic]);
 
   const first = userName?.split(" ")[0] || "reader";
 
@@ -113,7 +140,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
           <TabsContent value="bookshelf" className="lg:absolute lg:inset-0">
             <SmoothScrollArea className="lg:absolute lg:inset-0">
               <div className="pb-3">
-                <Bookshelf books={books} />
+                <Bookshelf books={books} static={isStatic} />
               </div>
               {/* ponytail: sticky to the bookshelf scroll box at lg; ceiling — on a near-empty shelf the bar sits at end of flow rather than pinned. Upgrade: lift as sibling overlay + controlled Tabs. */}
               {/* data-shelf-bar: hook for SceneTransitionProvider to freeze this

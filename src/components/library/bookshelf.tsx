@@ -11,9 +11,14 @@ import type { LibraryBook } from "@/types/book";
 
 interface BookshelfProps {
   books: LibraryBook[];
+  // ponytail: when true, skip the GSAP ripple reveal + hero/returningHero
+  // machinery. Used by BookshelfSnapshot so the cards paint immediately at
+  // full opacity (the snapshot is off-screen; IntersectionObserver would
+  // never fire and cards would stick at opacity 0).
+  static?: boolean;
 }
 
-export function Bookshelf({ books }: BookshelfProps) {
+export function Bookshelf({ books, static: isStatic = false }: BookshelfProps) {
   const reducedMotion = usePrefersReducedMotion();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { returningHero, settleHero, suppressShelfReveal } = useSceneTransition();
@@ -36,19 +41,29 @@ export function Bookshelf({ books }: BookshelfProps) {
     () => !returningHero?.fly,
   );
   const heroBookId = returningHero?.bookId ?? stickyHero;
+  // ponytail: stickyHero + heroRevealed track an animation prop transition
+  // (FLIP fly-back). Deriving during render breaks the initial-hidden guard.
+  // Static mode (snapshot) skips — the snapshot must not participate in the fly
+  // protocol, or its early settleHero call kills the real shelf's part-1 fly.
+  /* eslint-disable react-hooks/set-state-in-effect */
   React.useLayoutEffect(() => {
+    if (isStatic) return;
     if (returningHero) {
       setStickyHero(returningHero.bookId);
       setHeroRevealed(!returningHero.fly);
     } else {
       setHeroRevealed(true);
     }
-  }, [returningHero]);
+  }, [returningHero, isStatic]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Measure the hero cover rect + hand it to the provider. fly:true triggers
   // the back fly to this slot; fly:false just releases the hero. Runs before
   // paint so the hero is already hidden when the fly origin is captured.
+  // Static mode (snapshot) skips — only the real shelf on back-arrival calls
+  // settleHero, so the part-1 fly runs its full 0.8s without an early dissolve.
   React.useLayoutEffect(() => {
+    if (isStatic) return;
     if (!returningHero) return;
     const cardSelector = `[data-book-card][data-book-id="${CSS.escape(returningHero.bookId)}"]`;
     const card = containerRef.current?.querySelector(cardSelector);
@@ -58,7 +73,7 @@ export function Bookshelf({ books }: BookshelfProps) {
     } else {
       settleHero(null);
     }
-  }, [returningHero, settleHero]);
+  }, [returningHero, settleHero, isStatic]);
 
   // ponytail: IntersectionObserver + gsap.to, deliberately NOT ScrollTrigger.batch.
   // Bookshelf's effect runs child-first, before SmoothScrollArea registers its
@@ -69,6 +84,9 @@ export function Bookshelf({ books }: BookshelfProps) {
   // this is fully self-contained with no coordination with SmoothScrollArea.
   useGSAP(
     () => {
+      // Static mode (snapshot): no ripple, no observer. Cards stay at full
+      // opacity (no initial gsap.set).
+      if (isStatic) return;
       // Returning from the reader: suppress the ripple reveal this visit.
       // suppressShelfReveal is visit-level (provider) and survives a remount;
       // returningHero covers the first mount. Either latches the sticky ref.
@@ -126,7 +144,7 @@ export function Bookshelf({ books }: BookshelfProps) {
     },
     {
       scope: containerRef,
-      dependencies: [books, reducedMotion, returningHero, suppressShelfReveal],
+      dependencies: [books, reducedMotion, returningHero, suppressShelfReveal, isStatic],
       // ponytail: revertOnUpdate removed — context.revert() otherwise fired on
       // every books-ref change (home-view's router.refresh hands down a new
       // array each mount) and on every reduced-motion toggle, tearing down the

@@ -210,8 +210,10 @@ export function ExplainerPanel({
   );
 
   // Auto-generate when sheet opens from idle state
+  // ponytail: effect is the right tool — auto-fire on open transition, not on a user event
   useEffect(() => {
     if (open && state === "idle") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       generate();
     }
   }, [open, state, generate]);

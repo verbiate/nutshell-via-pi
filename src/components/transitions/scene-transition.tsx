@@ -564,8 +564,16 @@ export function SceneTransitionProvider({
         gsap.set(dim, {
           display: "block",
           width: `${document.documentElement.clientWidth}px`,
-        }); // opacity left at DIM from forward
+        });
       const clone = layer.firstElementChild as HTMLElement | null;
+      // ponytail: the forward-clone case inherits dim opacity from forward nav
+      // (DIM_OPACITY, set at :515). The snapshot case (refresh/deep-link) had no
+      // forward nav, so dim is at its initial 0 — restore it to DIM_OPACITY
+      // here so the back timeline's DIM_OPACITY → 0 tween actually fades.
+      // Without this the snapshot back-nav would show no dimming at all.
+      if (dim && clone?.hasAttribute("data-snapshot")) {
+        gsap.set(dim, { opacity: DIM_OPACITY });
+      }
       // ponytail: a resize during the reader session stale the forward clone's
       // pinned width (captured at forward nav to the old viewport — line 355).
       // Reflow it to the current viewport so the grid (auto-fill,
@@ -584,6 +592,18 @@ export function SceneTransitionProvider({
       // clone that matches the real shelf at swap. Runs before the slot-0
       // measure so the part-1 fly targets the top slot.
       if (clone) zeroScrollOffsets(clone);
+
+      // ponytail: a snapshot-clone (rendered by BookshelfSnapshot for the
+      // refresh/deep-link case) never went through forward-nav's freezeShelfBar
+      // call (scene-transition.tsx:497) — its [data-shelf-bar] still carries
+      // position:fixed/sticky and would drift upward independently of the
+      // bookshelf mid-transition (the exact failure freezeShelfBar prevents).
+      // Run the freeze here, now that the layer is shown and the clone is
+      // measurable. library===clone is intentional: the snapshot has no live
+      // counterpart, so both rects come from the clone itself.
+      if (clone && clone.hasAttribute("data-snapshot")) {
+        freezeShelfBar(clone, clone);
+      }
 
       // ponytail: make slot 0 of the cloned shelf read as VACANT so the
       // returning book has a clear spot to land during the slide-out. The clone
@@ -992,6 +1012,84 @@ export function _demoFreezeShelfBar() {
   assert(
     clonedBar.parentElement === clone,
     "cloned bar must be reparented to the clone root",
+  );
+  return true;
+}
+
+// ponytail: self-check for the snapshot-case freeze — when BookshelfSnapshot
+// mounts a clone for the refresh/deep-link case, the back-nav branch calls
+// freezeShelfBar(clone, clone) (both args the same element, since there's no
+// live library to measure from). Verifies the self-reference case pins
+// correctly: the bar ends up absolute at its captured offset relative to the
+// snapshot root. Without this guard, a regression that special-cased
+// library===clone (e.g. skipped the reparent) would silently break the
+// refresh-back-nav animation.
+export function _demoFreezeShelfBarSnapshot() {
+  const mockRect = (
+    top: number,
+    left: number,
+    width: number,
+    height: number,
+  ): DOMRect =>
+    ({
+      top,
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+  // Snapshot root with the same structure BookshelfSnapshot renders: a
+  // [data-shelf-bar] descendant inside the subtree.
+  const snapshot = document.createElement("div");
+  snapshot.setAttribute("data-snapshot", "");
+  const inner = document.createElement("div");
+  const bar = document.createElement("div");
+  bar.setAttribute("data-shelf-bar", "");
+  inner.appendChild(bar);
+  snapshot.appendChild(inner);
+
+  // Mock rects: snapshot fills the viewport at (0,0,1280,800); the bar lives
+  // somewhere inside the right column at (662, 504, 776, 138).
+  snapshot.getBoundingClientRect = () => mockRect(0, 0, 1280, 800);
+  bar.getBoundingClientRect = () => mockRect(662, 504, 776, 138);
+
+  // Self-reference call — this is what the back-nav branch does for snapshots.
+  freezeShelfBar(snapshot, snapshot);
+
+  const assert = (cond: boolean, msg: string) => {
+    if (!cond)
+      throw new Error(
+        "scene-transition snapshot freeze self-check failed: " + msg,
+      );
+  };
+  assert(
+    bar.style.position === "absolute",
+    "snapshot bar must be position:absolute after self-freeze",
+  );
+  assert(
+    bar.style.top === "662px",
+    "snapshot bar top must be 662px (662 - 0)",
+  );
+  assert(
+    bar.style.left === "504px",
+    "snapshot bar left must be 504px (offset from snapshot root)",
+  );
+  assert(
+    bar.style.width === "776px",
+    "snapshot bar width must be 776px (captured, not full width)",
+  );
+  assert(
+    bar.parentElement === snapshot,
+    "snapshot bar must be reparented to the snapshot root (no-op if already there, but still correct)",
+  );
+  assert(
+    snapshot.style.position === "relative",
+    "snapshot root must become position:relative (containing block)",
   );
   return true;
 }

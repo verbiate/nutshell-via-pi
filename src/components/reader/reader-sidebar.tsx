@@ -36,7 +36,9 @@ export function ReaderSidebar({
   // ponytail: hold the last active tool so content stays mounted during the
   // close slide — otherwise the panel goes empty mid-animation.
   const [lastTool, setLastTool] = useState<ReaderTool["id"] | null>(activeTool);
+  // ponytail: usePrevious pattern — keep last active tool mounted during close slide
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTool) setLastTool(activeTool);
   }, [activeTool]);
 

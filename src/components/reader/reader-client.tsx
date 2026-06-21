@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
@@ -11,6 +12,7 @@ import { ReaderSkeleton } from "./reader-skeleton";
 import { ReaderError } from "./reader-error";
 import { backToLibrary } from "./back-nav";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
+import { BookshelfSnapshot } from "@/components/transitions/bookshelf-snapshot";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { FloatingToolbar } from "./floating-toolbar";
 import { ReaderSidebar } from "./reader-sidebar";
@@ -34,6 +36,8 @@ import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
 import { useTtsPlayback } from "@/hooks/use-tts-playback";
 import { cn } from "@/lib/utils";
+import { shouldDisplayProgress } from "@/lib/reader/progress";
+import type { LibraryBook } from "@/types/book";
 
 interface SavedPosition {
   paragraphIndex: number;
@@ -51,6 +55,12 @@ export interface ReaderClientProps {
   epubUrl: string;
   isAdmin?: boolean;
   bookCreatedAt?: string;
+  // ponytail: initial library snapshot for BookshelfSnapshot — the back-nav
+  // fallback when the user deep-linked/refreshed (no forward nav captured a
+  // library clone). Re-fetched on back-click for fresh recency order.
+  librarySnapshot: LibraryBook[];
+  libraryUserName: string | null;
+  libraryDigestImage: string | null;
 }
 
 export function ReaderClient({
@@ -62,8 +72,16 @@ export function ReaderClient({
   epubUrl,
   isAdmin,
   bookCreatedAt,
+  librarySnapshot: initialLibrary,
+  libraryUserName,
+  libraryDigestImage,
 }: ReaderClientProps) {
   const { navigate: sceneNavigate, entering, forwardFlyActive } = useSceneTransition();
+  // ponytail: mutable library snapshot state — updated synchronously on
+  // back-click via flushSync before backToLibrary fires, so the snapshot clone
+  // in [data-scene-clone] reflects post-read recency order at animation time.
+  const [librarySnapshot, setLibrarySnapshot] =
+    useState<LibraryBook[]>(initialLibrary);
   const viewerRef = useRef<EpubViewerHandle>(null);
   // Wraps the EpubViewer; its width animates with the sidebar. We listen to
   // transitionend on this element to trigger epub.js re-pagination.
@@ -102,6 +120,23 @@ export function ReaderClient({
   // skeleton unmounts. Resets per mount (reader-client remounts per book).
   const [contentRevealed, setContentRevealed] = useState(false);
 
+  // ponytail: direction-aware wobble filter for the progress bar. Diagnostic
+  // trace on Creativity, Inc. showed epub.js fires `relocated` 2–3× per page
+  // turn (post-display, SCROLLED, RESIZED) and the rAF measurement can briefly
+  // land on an adjacent page in the WRONG direction during the transition —
+  // forward nav emits a transient 45 while settling at 46; backward nav emits
+  // a transient 46 while settling at 45. High-water mark couldn't tell those
+  // apart from real movement. Direction tag from the user's last explicit
+  // next/prev + a 500 ms window does: reject opposite-direction movement
+  // inside the window, accept everything else (TOC/search/bookmark jumps pass
+  // through with dir=null).
+  // ponytail: ceiling — same-direction overshoot (46→47→46 settling) still
+  // briefly shows. Acceptable; rare and small. Upgrade path: track expected
+  // delta per action.
+  const displayedPctRef = useRef(0);
+  const lastActionDirRef = useRef<"forward" | "backward" | null>(null);
+  const lastActionTimeRef = useRef(0);
+
   const initialLanguage = (user as any)?.preferredLanguage || "en";
 
   // ─── Selection / floating toolbar state ────────────────────────────────────────
@@ -127,7 +162,6 @@ export function ReaderClient({
   // progress bar uses. Set in handleRenditionReady. Ceiling: if locations aren't
   // generated yet at save time (rare — user bookmarks before first paint settles),
   // locationFromCfi returns -1 and pageNumber falls back to null.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renditionRef = useRef<any>(null);
 
   // ─── Highlights data (via React Query) ────────────────────────────────────────
@@ -232,6 +266,28 @@ export function ReaderClient({
     // slide-out to commit; it's a no-op when nothing is pending (the common
     // case, since positions also debounce-save every 3s while reading).
     await flushPendingSave();
+    // ponytail: re-fetch the library so BookshelfSnapshot's clone reflects
+    // post-read recency order. Without this, a user who deep-linked to
+    // multiple books in one session would see those books in pre-read order
+    // in the snapshot but post-read order in the real shelf — a visible
+    // reshuffle at swap. flushSync forces a synchronous commit so the
+    // snapshot's useLayoutEffect re-clones into [data-scene-clone] before
+    // backToLibrary fires. Non-blocking on failure — fall back to the
+    // initial server-fetched snapshot.
+    try {
+      const res = await fetch("/api/books");
+      if (res.ok) {
+        const data = (await res.json()) as { books: LibraryBook[] };
+        if (Array.isArray(data.books) && data.books.length > 0) {
+          flushSync(() => setLibrarySnapshot(data.books));
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[ReaderClient] Library re-fetch failed (non-blocking):",
+        err,
+      );
+    }
     // ponytail: capture the sidebar cover clone BEFORE the reader slides out so
     // the back fly has a stable origin. If a forward fly is still inbound (user
     // backed during the slide-in), the real cover is mid-transition — treat as
@@ -267,6 +323,19 @@ export function ReaderClient({
   }, []);
 
   const handleProgressChange = useCallback((pct: number) => {
+    const sinceAction =
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+      lastActionTimeRef.current;
+    if (
+      !shouldDisplayProgress(
+        pct,
+        displayedPctRef.current,
+        lastActionDirRef.current,
+        sinceAction,
+      )
+    )
+      return;
+    displayedPctRef.current = pct;
     setPercentage(pct);
   }, []);
 
@@ -280,11 +349,27 @@ export function ReaderClient({
       cfi: string,
       percentage: number
     ) => {
+      // ponytail: apply the same direction-aware wobble gate as the progress
+      // bar so transient wrong-direction percentages don't get persisted to DB.
+      // Both this and handleProgressChange fire per relocated; whichever runs
+      // first mutates displayedPctRef, the other sees the updated value and
+      // agrees. CFI/paragraph update unconditionally — position is always
+      // accurate even if the bar lags.
+      const sinceAction =
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+        lastActionTimeRef.current;
+      const accepted = shouldDisplayProgress(
+        percentage,
+        displayedPctRef.current,
+        lastActionDirRef.current,
+        sinceAction,
+      );
+      if (accepted) displayedPctRef.current = percentage;
       const next: SavedPosition = {
         paragraphIndex: position.paragraphIndex,
         charOffset: position.charOffset,
         cfi,
-        percentage,
+        percentage: accepted ? percentage : displayedPctRef.current,
       };
       setCurrentCfi(cfi);
       lastPositionRef.current = next;
@@ -469,9 +554,15 @@ export function ReaderClient({
 
     if (e.key === "ArrowRight") {
       e.preventDefault();
+      // ponytail: tag direction+time so the wobble gate can reject transient
+      // backward CFIs epub.js measures mid-transition during forward nav.
+      lastActionDirRef.current = "forward";
+      lastActionTimeRef.current = performance.now();
       viewerRef.current?.next().catch((err) => console.error("[Reader] next() error:", err));
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
+      lastActionDirRef.current = "backward";
+      lastActionTimeRef.current = performance.now();
       viewerRef.current?.prev().catch((err) => console.error("[Reader] prev() error:", err));
     }
   }, []);
@@ -503,7 +594,6 @@ export function ReaderClient({
         doc.addEventListener("keydown", handleKeyDown);
         iframeDocRef.current = doc;
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = rendition as any;
       renditionRef.current = r;
       attachToDoc(r?.contents?.document);
@@ -597,11 +687,15 @@ export function ReaderClient({
 
   // Apply TTS playback speed to the audio element whenever it changes or a new
   // section loads. ponytail: audio.playbackRate is live-adjustable, no reload.
+  // ponytail: false positive — assigning to the DOM element the ref points to,
+  // not mutating the tts object. Rule can't tell ref-typed properties apart.
+  /* eslint-disable react-hooks/immutability */
   useEffect(() => {
     if (tts.audioRef.current) {
       tts.audioRef.current.playbackRate = bookSettings.voiceSpeed;
     }
   }, [bookSettings.voiceSpeed, tts.audioRef, tts.state.state]);
+  /* eslint-enable react-hooks/immutability */
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -613,10 +707,12 @@ export function ReaderClient({
   // the slide-in, before isLoaded) doesn't fire a spurious opacity dip on the
   // not-yet-mounted EpubViewer.
   const prevOpenRef = useRef(false);
+  // ponytail: track sidebar open/close transitions to fire the epub re-pagination dip
   useEffect(() => {
     const isOpen = activeTool !== null;
     if (prevOpenRef.current !== isOpen) {
       prevOpenRef.current = isOpen;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (isLoaded) setSidebarAnimating(true);
     }
   }, [activeTool, isLoaded]);
@@ -643,10 +739,12 @@ export function ReaderClient({
   // URL nav has no scene transition). Functional update so a user who closed it
   // during the slide-in isn't overridden.
   const autoOpenedRef = useRef(false);
+  // ponytail: one-shot entry effect opens the sidebar concurrent with slide-in
   useEffect(() => {
     if (autoOpenedRef.current) return;
     if (!entering && !isLoaded) return;
     autoOpenedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTool((prev) => prev ?? "reader");
   }, [entering, isLoaded]);
 
@@ -666,6 +764,16 @@ export function ReaderClient({
         "--reader-delay": entering ? "300ms" : "0ms",
       } as React.CSSProperties}
     >
+      {/* ponytail: BookshelfSnapshot — provides the receding-library background
+          for back-nav when the user deep-linked/refreshed (no forward clone).
+          Renders off-screen and self-mounts into [data-scene-clone] via
+          cloneNode. No-op when a forward-captured clone is already present. */}
+      <BookshelfSnapshot
+        books={librarySnapshot}
+        userName={libraryUserName}
+        digestImage={libraryDigestImage}
+      />
+
       {/* Hidden audio element for TTS playback */}
       <audio ref={tts.audioRef} className="hidden" />
 
@@ -779,6 +887,11 @@ export function ReaderClient({
               />
             }
             ttsTrigger={
+              // ponytail: false positive — useTtsPlayback returns an object mixing a
+              // real ref (audioRef) with regular useState (state). The rule
+              // conservatively flags all property access on the object; tts.state
+              // is ordinary state, not a ref.
+              /* eslint-disable react-hooks/refs */
               <TtsTrigger
                 state={
                   tts.state.state === "GENERATING"
@@ -789,6 +902,7 @@ export function ReaderClient({
                 }
                 onClick={handleListenFromHere}
               />
+              /* eslint-enable react-hooks/refs */
             }
           />
           <ReadingProgress percentage={percentage} sidebarOpen={activeTool !== null} />
@@ -866,12 +980,15 @@ export function ReaderClient({
       )}
 
       {/* TTS audio player — outside the isLoaded check so it persists independently */}
+      {/* ponytail: false positive — see ttsTrigger comment above; tts mixes ref+state */}
+      {/* eslint-disable react-hooks/refs */}
       <TtsPlayer
         state={tts.state}
         onPlayPause={tts.togglePlayPause}
         onScrub={tts.scrub}
         onClose={tts.close}
       />
+      {/* eslint-enable react-hooks/refs */}
     </div>
   );
 }
