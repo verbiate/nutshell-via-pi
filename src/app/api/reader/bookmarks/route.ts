@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/reader/bookmarks
- * Body: { bookId, cfi, paragraphIndex, charOffset, selectedText?, note? }
+ * Body: { bookId, cfi, paragraphIndex, charOffset, pageNumber?, note? }
  */
 export async function POST(request: Request) {
   try {
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       cfi?: string;
       paragraphIndex?: number;
       charOffset?: number;
-      selectedText?: string;
+      pageNumber?: number | null;
       sectionHref?: string;
       note?: string;
     };
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { bookId, cfi, paragraphIndex, charOffset, selectedText, sectionHref, note } = body;
+    const { bookId, cfi, paragraphIndex, charOffset, pageNumber, sectionHref, note } = body;
     if (!bookId || !cfi || paragraphIndex === undefined || charOffset === undefined) {
       return NextResponse.json({ error: "bookId, cfi, paragraphIndex, and charOffset are required" }, { status: 400 });
     }
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       cfi,
       paragraphIndex,
       charOffset,
-      selectedText,
+      pageNumber,
       sectionHref,
       note,
     });

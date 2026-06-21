@@ -58,7 +58,7 @@ describe("READ-06: Bookmark service", () => {
       cfi: "epubcfi(/6/2!/4/2)",
       paragraphIndex: 5,
       charOffset: 10,
-      selectedText: "hello",
+      pageNumber: 42,
     });
     expect(db.bookmark.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -67,7 +67,7 @@ describe("READ-06: Bookmark service", () => {
         cfi: "epubcfi(/6/2!/4/2)",
         paragraphIndex: 5,
         charOffset: 10,
-        selectedText: "hello",
+        pageNumber: 42,
       }),
     });
   });
@@ -112,6 +112,7 @@ describe("READ-07: Highlight service", () => {
       charOffsetEnd: 21,
       selectedText: "hello world",
       color: "#FEC405",
+      pageNumber: 7,
     });
     expect(db.highlight.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -123,6 +124,7 @@ describe("READ-07: Highlight service", () => {
         charOffsetEnd: 21,
         selectedText: "hello world",
         color: "#FEC405",
+        pageNumber: 7,
       }),
     });
   });

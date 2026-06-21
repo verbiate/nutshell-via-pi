@@ -119,7 +119,7 @@ export async function createBookmark(
     cfi: string;
     paragraphIndex: number;
     charOffset: number;
-    selectedText?: string;
+    pageNumber?: number | null;
     sectionHref?: string;
     note?: string;
   }
@@ -131,7 +131,7 @@ export async function createBookmark(
       cfi: data.cfi,
       paragraphIndex: data.paragraphIndex,
       charOffset: data.charOffset,
-      selectedText: data.selectedText,
+      pageNumber: data.pageNumber,
       sectionHref: data.sectionHref,
       note: data.note,
     },
@@ -169,6 +169,7 @@ export async function createHighlight(
     selectedText: string;
     color: string;
     sectionHref?: string;
+    pageNumber?: number | null;
     note?: string;
   }
 ) {
@@ -183,6 +184,7 @@ export async function createHighlight(
       selectedText: data.selectedText,
       color: data.color,
       sectionHref: data.sectionHref,
+      pageNumber: data.pageNumber,
       note: data.note,
     },
   });

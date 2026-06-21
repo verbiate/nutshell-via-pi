@@ -60,7 +60,7 @@ export function ReaderSidebar({
       <aside
         aria-label={tool?.label ?? undefined}
         aria-hidden={!isOpen}
-        className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(34,24,5,0.3)]"
+        className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col gap-9 bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(34,24,5,0.3)]"
         style={{
           transform: `translateX(${isOpen ? "0px" : "var(--reader-rail-w)"})`,
           opacity: isOpen ? 1 : 0,
@@ -78,7 +78,7 @@ export function ReaderSidebar({
               tab uses the shared title + description + icon header.
             */}
             {tool.id !== "reader" && (
-              <header className="flex items-center gap-4 border-b border-line px-12 py-4">
+              <header className="flex items-center gap-4 px-12 pt-12">
                 <div className="min-w-0 flex-1">
                   <h2
                     className="font-serif text-[20px] font-medium leading-[1.2] text-foreground"
@@ -109,7 +109,10 @@ export function ReaderSidebar({
               </header>
             )}
             <ScrollArea className="min-h-0 flex-1">
-              {panels[tool.id]}
+              {/* ponytail: pb-12 gives every panel a uniform 48px trailing
+                  margin so the last item never butts against the sidebar's
+                  bottom edge (matches the px-12 horizontal margin). */}
+              <div className="pb-12">{panels[tool.id]}</div>
             </ScrollArea>
           </>
         )}

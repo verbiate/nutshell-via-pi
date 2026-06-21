@@ -1,5 +1,7 @@
 # Data Model
 
+_Verified 2026-06-21 against `src/server/db/schema.prisma`._
+
 Schema lives at **`src/server/db/schema.prisma`** (NON-DEFAULT path — Prisma CLI
 needs `--schema=`). SQLite, so **no native enums**; `role` is a `String` with
 app-level validation (`schema.prisma:10`).
@@ -40,8 +42,9 @@ model Explainer {
   @@index([contentHash])
 }
 ```
-`contentHash = SHA-256(promptType + sourceText + promptVersion)` — see
-`services/explainer.ts:40` (`computeContentHash`, with `\x00` separators).
+`contentHash = SHA-256(promptType + "\x00" + sourceText + "\x00" + String(promptVersion))`
+— see `services/explainer.ts:40` (`computeContentHash`). Null-byte separators
+prevent field-boundary collisions; `String()` coerces the prompt version.
 **Language is NOT in the hash** — that's why it's a separate column: the same
 source text in 13 languages shares one `contentHash` but yields 13 distinct
 cache rows. `promptVersion` IS in the hash, so editing an admin `PromptTemplate`

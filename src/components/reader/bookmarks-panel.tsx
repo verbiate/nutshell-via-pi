@@ -1,17 +1,24 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, Trash2 } from "lucide-react";
+import { BookmarkPlus, ChevronDown, MoreHorizontal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 interface BookmarkItem {
   id: string;
   cfi: string;
   paragraphIndex: number;
   charOffset: number;
-  selectedText: string | null;
+  pageNumber: number | null;
   sectionHref: string | null;
   createdAt: string;
 }
@@ -33,16 +40,6 @@ function flattenToc(
     if (item.subitems) flattenToc(item.subitems, acc);
   }
   return acc;
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export function BookmarksPanel({
@@ -73,7 +70,9 @@ export function BookmarksPanel({
   }, [flat]);
 
   // ponytail: group by section, ordered by TOC position; unknown sections fall
-  // into a trailing "Bookmarks" bucket so nothing is silently dropped.
+  // into a trailing "Bookmarks" bucket so nothing is silently dropped. Sort by
+  // pageNumber (epub.js location) — falls back to paragraphIndex for legacy
+  // rows captured before pageNumber existed.
   const groups = useMemo(() => {
     const byHref = new Map<string, BookmarkItem[]>();
     const ungrouped: BookmarkItem[] = [];
@@ -87,14 +86,27 @@ export function BookmarksPanel({
         ungrouped.push(b);
       }
     }
-    byHref.forEach((arr) => arr.sort((a, b) => a.paragraphIndex - b.paragraphIndex));
-    ungrouped.sort((a, b) => a.paragraphIndex - b.paragraphIndex);
+    const rank = (b: BookmarkItem) => b.pageNumber ?? b.paragraphIndex;
+    byHref.forEach((arr) => arr.sort((a, b) => rank(a) - rank(b)));
+    ungrouped.sort((a, b) => rank(a) - rank(b));
     const ordered = flat
       .filter((f) => byHref.has(f.href))
       .map((f) => ({ label: f.label, items: byHref.get(f.href)! }));
     if (ungrouped.length) ordered.push({ label: "Bookmarks", items: ungrouped });
     return ordered;
   }, [bookmarks, flat, labelForHref]);
+
+  // ponytail: collapse state is in-memory React state (no persistence). Resets
+  // when the panel unmounts. Default all-expanded so a fresh open shows every
+  // bookmark; derive the initial set from the current groups.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (label: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
 
   const handleDelete = async (id: string) => {
     try {
@@ -126,16 +138,15 @@ export function BookmarksPanel({
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="px-12 py-3">
+    <div className="flex flex-col gap-9">
+      <div className="px-12">
         <Button
           variant="outline"
-          size="sm"
           className="w-full gap-2"
           onClick={handleAdd}
           disabled={!currentCfi}
         >
-          <BookmarkPlus className="h-4 w-4" />
+          <BookmarkPlus />
           Add bookmark
         </Button>
       </div>
@@ -149,47 +160,88 @@ export function BookmarksPanel({
         </div>
       )}
 
-      {groups.map((g) => (
-        <div key={g.label} className="border-t border-line">
-          <div className="flex items-center justify-between px-12 pt-3 pb-1">
-            <span className="truncate pr-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {g.label}
-            </span>
-            <span className="shrink-0 rounded-full bg-paper-deep px-1.5 text-[10px] font-medium text-foreground">
-              {g.items.length}
-            </span>
-          </div>
-          <div className="pb-1">
-            {g.items.map((b) => (
-              <div
-                key={b.id}
-                className="group flex items-center gap-2 py-2 pl-12 pr-12"
+      {/*
+        ponytail: chapter groups packed at 8px (Figma spec). The outer gap-9
+        still separates the "Add bookmark" button from the list as a section;
+        this inner gap-2 is the between-section spacing from the mockup.
+      */}
+      <div className="flex flex-col gap-2">
+        {groups.map((g) => {
+          const isCollapsed = collapsed.has(g.label);
+          return (
+            <div key={g.label}>
+              {/*
+                ponytail: 30px-tall section header with a border-b flush against
+                the row (Figma spec). The first list item has no top divider, so
+                this border-b is the only line between header and first item — no
+                double line.
+              */}
+              <button
+                type="button"
+                onClick={() => toggle(g.label)}
+                aria-expanded={!isCollapsed}
+                className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12 text-left"
               >
-                <button
-                  onClick={() => onBookmarkClick(b.cfi)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <p className="type-toc-section truncate font-normal text-foreground">
-                    {b.selectedText || "Bookmark"}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {formatRelativeTime(b.createdAt)}
-                  </p>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => handleDelete(b.id)}
-                  aria-label="Remove bookmark"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+                <ChevronDown
+                  className={cn(
+                    "h-[14px] w-[14px] shrink-0 text-foreground transition-transform",
+                    isCollapsed && "-rotate-90"
+                  )}
+                />
+                <span className="type-section-label flex-1 truncate text-foreground">
+                  {g.label}
+                </span>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground">
+                  {g.items.length}
+                </span>
+              </button>
+              {!isCollapsed && (
+                <div className="divide-y divide-line/50">
+                  {g.items.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex items-center gap-2 px-12 py-3"
+                    >
+                      <button
+                        onClick={() => onBookmarkClick(b.cfi)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="type-toc-section font-normal text-foreground">
+                          {b.pageNumber != null
+                            ? `Page ${b.pageNumber}`
+                            : "Bookmark"}
+                        </p>
+                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          {/*
+                            ponytail: always-visible circular outline trigger
+                            (Figma mockup). Was hover-revealed ghost; mockup
+                            shows it persistent at all widths.
+                          */}
+                          <Button
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 rounded-full border border-line"
+                            aria-label="Bookmark actions"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleDelete(b.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                            Delete bookmark
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -130,6 +130,7 @@ describe("POST /api/reader/highlights", () => {
         charOffsetEnd: 5,
         selectedText: "hello",
         color: "#FEC405",
+        pageNumber: 42,
       }),
     });
     const res = await POST(req);
@@ -139,7 +140,7 @@ describe("POST /api/reader/highlights", () => {
     expect(createHighlight).toHaveBeenCalledWith(
       "u1",
       "b1",
-      expect.objectContaining({ selectedText: "hello", color: "#FEC405" })
+      expect.objectContaining({ selectedText: "hello", color: "#FEC405", pageNumber: 42 })
     );
   });
 });

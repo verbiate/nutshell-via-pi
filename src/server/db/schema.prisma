@@ -176,7 +176,7 @@ model Bookmark {
   cfi            String
   paragraphIndex Int
   charOffset     Int
-  selectedText   String?
+  pageNumber     Int?
   sectionHref    String?
   note           String?
   createdAt      DateTime @default(now())
@@ -200,6 +200,7 @@ model Highlight {
   selectedText   String
   color          String
   sectionHref    String?
+  pageNumber     Int?
   note           String?
   createdAt      DateTime @default(now())
 

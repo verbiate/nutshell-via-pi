@@ -103,9 +103,9 @@ export function BookSettingsPanel({
   );
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-9">
       {/* PAGE ADJUSTMENTS */}
-      <div className="px-12 py-4 flex flex-col gap-5">
+      <div className="px-12 flex flex-col gap-5">
         <SectionLabel>Page Adjustments</SectionLabel>
 
         {/* Theme swatches */}
@@ -210,7 +210,7 @@ export function BookSettingsPanel({
       </div>
 
       {/* VOICE ADJUSTMENTS */}
-      <div className="px-12 py-4 flex flex-col gap-5">
+      <div className="px-12 flex flex-col gap-5">
         <SectionLabel>Voice Adjustments</SectionLabel>
 
         {/* Reading speed */}

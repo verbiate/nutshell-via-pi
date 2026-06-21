@@ -243,8 +243,20 @@
        is variant-owned) — same reasoning as type-button/type-tab on color. */
     --type-toc-size: 15px;
     --type-toc-line-height: 1.3;
-    --type-toc-letter-spacing: -0.005em;
+    --type-toc-letter-spacing: -0.025em;
     --type-toc-hanging-punct: first last;
+
+    /* ponytail: section/group label role — DM Sans 14px semibold for list
+       section headers (Bookmarks chapter groups, Highlights date/chapter/color
+       groups). Same family/weight/tracking as type-tab but at 14px — a distinct
+       Figma-locked role, hence its own token rather than overriding type-tab.
+       Color omitted (variant-owned — text-foreground everywhere it's used). */
+    --type-section-label-family: var(--font-sans);
+    --type-section-label-weight: 600;
+    --type-section-label-size: 14px;
+    --type-section-label-line-height: 1.35;
+    --type-section-label-letter-spacing: -0.025em;
+    --type-section-label-hanging-punct: first last;
 
     /* Typography — prose (Tweakpane-driven, consumed by .ds-prose) */
     --prose-font-family: var(--font-serif);
@@ -433,6 +445,19 @@
     line-height: var(--type-toc-line-height);
     letter-spacing: var(--type-toc-letter-spacing);
     hanging-punctuation: var(--type-toc-hanging-punct);
+}
+
+@utility type-section-label {
+    /* ponytail: list section/group header role (Bookmarks chapter rows,
+       Highlights date/chapter/color group rows). var(--font-sans) resolves via
+       next/font's hashed --font-sans the same way type-button/type-tab do.
+       Color omitted — variant classes (text-foreground) own color. */
+    font-family: var(--type-section-label-family);
+    font-weight: var(--type-section-label-weight);
+    font-size: var(--type-section-label-size);
+    line-height: var(--type-section-label-line-height);
+    letter-spacing: var(--type-section-label-letter-spacing);
+    hanging-punctuation: var(--type-section-label-hanging-punct);
 }
 
 @layer base {

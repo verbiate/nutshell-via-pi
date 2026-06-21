@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/reader/highlights
- * Body: { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref?, note? }
+ * Body: { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref?, pageNumber?, note? }
  * `color` is required and must be one of the three highlighter hexes — there is
  * no default; the user picks a swatch in the floating toolbar.
  */
@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       selectedText?: string;
       color?: string;
       sectionHref?: string;
+      pageNumber?: number | null;
       note?: string;
     };
     try {
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref, note } = body;
+    const { bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, selectedText, color, sectionHref, pageNumber, note } = body;
     if (!bookId || !cfi || paragraphIndex === undefined || charOffsetStart === undefined || charOffsetEnd === undefined || !selectedText) {
       return NextResponse.json({ error: "bookId, cfi, paragraphIndex, charOffsetStart, charOffsetEnd, and selectedText are required" }, { status: 400 });
     }
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       selectedText,
       color,
       sectionHref,
+      pageNumber,
       note,
     });
 

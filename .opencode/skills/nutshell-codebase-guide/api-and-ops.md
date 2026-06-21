@@ -1,5 +1,7 @@
 # API & Ops
 
+_Verified 2026-06-21 against `src/app/api/` + `.env.example`._
+
 ## API surface (`src/app/api/`)
 
 App Router route handlers; all protected handlers call `requireAuth` /
@@ -97,6 +99,8 @@ alongside it in `__tests__/`.
 
 - Reader chrome: glassmorphism (`h-12`), reading progress bar (`h-1`).
 - Three themes: **light → sepia → dark**; `ThemeToggle` is mount-gated.
+- Post-v1.0: top chrome + left sidebar (`reader-sidebar.tsx`) + panel system
+  (`reader-panel.tsx`) replaces the old tool-rail. See `architecture.md` flow #2.
 - `BookCard` shows cover + reading-progress bar + hover effects; `RoleBadge`
   shows Pro/Admin tier.
 
@@ -114,3 +118,8 @@ alongside it in `__tests__/`.
 - `.planning/STATE.md` — phase progress (v1.0 = 6/6 phases complete).
 - `.planning/ROADMAP.md` — phase goals, requirements, success criteria.
 - `.planning/PROJECT.md` — "What This Is" + key decisions.
+- `.task-reports/` — post-v1.0 per-task review notes (design-system expansion,
+  Tweakpane integration, etc.). One report file per task in a feature batch.
+- `docs/superpowers/plans/` — post-v1.0 implementation plan docs (e.g.
+  `2026-06-17-nutshell-foundations.md`, `2026-06-19-tweakpane-design-system.md`).
+- `git log --since=2026-05-08` — every commit since v1.0 shipped.

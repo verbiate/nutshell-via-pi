@@ -151,7 +151,7 @@ export function ReaderPanel({
   const [bookExplainerOpen, setBookExplainerOpen] = useState(false);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-9">
       {/* Book details card */}
       {/*
         ponytail: row is items-start + the cover is self-start so the cover's
@@ -163,7 +163,7 @@ export function ReaderPanel({
         For long titles where text > cover, the cover stays pinned at top
         (determinism wins) and the column simply grows.
       */}
-      <div className="flex items-start gap-3 px-12 py-4">
+      <div className="flex items-start gap-3 px-12 pt-12">
         {/* data-hero-cover: the fly transition clones this frame. Fixed width +
             natural aspect (matching the bookshelf card) so the fly clone lands
             at the correct size/treatment. shadow-book unifies the frame with the
@@ -204,7 +204,7 @@ export function ReaderPanel({
       </div>
 
       {/* Action row */}
-      <div className="flex flex-col gap-3 px-12 pb-4">
+      <div className="flex flex-col gap-3 px-12">
         <Button
           className="w-full gap-2 bg-chocolate text-white hover:bg-chocolate/90"
           onClick={onListenFromHere}
@@ -217,7 +217,7 @@ export function ReaderPanel({
           className="w-full gap-2"
           onClick={() => setBookExplainerOpen(true)}
         >
-          <Lightbulb className="text-lav" />
+          <Lightbulb />
           Ask the book
         </Button>
       </div>
@@ -231,7 +231,7 @@ export function ReaderPanel({
 
       {/* Table of contents */}
       {toc.length > 0 && (
-        <div className="border-t border-line">
+        <div>
           <div className="py-1">
             {toc.map((item) => (
               <TocEntry

@@ -171,17 +171,68 @@ function zeroScrollOffsets(clone: HTMLElement) {
   }
 }
 
+// Freeze the cloned search bar's position so it scales with the recede transform
+// as part of the library, instead of recomputing its position:fixed (mobile) /
+// position:sticky (lg) against the clone's new geometry and scroll state. Without
+// this the bar drifts upward independently of the bookshelf mid-transition,
+// breaking the illusion that the shelf recedes as one unit. The blur layers
+// inside the bar travel with it (they're absolute children), so one freeze
+// covers both.
+//
+// ponytail: reparents the cloned bar to the library-clone root and pins it
+// absolutely at its captured viewport-relative offset. The clone becomes the
+// containing block via position:relative (transform alone only catches fixed
+// descendants, not absolute). Captured ONCE at forward nav; persists through
+// the back-direction reuse — inline styles survive cloneNode reuse and the
+// scroll-zeroing, since absolute positioning is scroll-independent. Ceiling: a
+// vertical resize between forward and back stale the captured top — the bar's
+// bottom-pinned role makes the drift imperceptible in practice.
+function freezeShelfBar(library: HTMLElement, clone: HTMLElement) {
+  const bar = library.querySelector("[data-shelf-bar]") as HTMLElement | null;
+  if (!bar) return;
+  const clonedBar = clone.querySelector(
+    "[data-shelf-bar]",
+  ) as HTMLElement | null;
+  if (!clonedBar) return;
+  const barRect = bar.getBoundingClientRect();
+  const libraryRect = library.getBoundingClientRect();
+  clone.appendChild(clonedBar);
+  clone.style.position = "relative";
+  clonedBar.style.position = "absolute";
+  // ponytail: pin left + width from the captured rect (not left:0/right:0) so
+  // the bar keeps its true horizontal extent. At lg the live bar is position:
+  // sticky inside the right column's SmoothScrollArea (lg:grid-cols-[480px_1fr]
+  // in home-view.tsx), so its width is the right column's, not the library's.
+  // Spanning left:0/right:0 here made the inner pill (max-w-[520px] +
+  // justify-center) re-center to full library width — shifting it off the books.
+  clonedBar.style.left = `${barRect.left - libraryRect.left}px`;
+  clonedBar.style.width = `${barRect.width}px`;
+  clonedBar.style.right = "auto";
+  clonedBar.style.bottom = "auto";
+  clonedBar.style.top = `${barRect.top - libraryRect.top}px`;
+  clonedBar.style.height = `${barRect.height}px`;
+  clonedBar.style.margin = "0px";
+  // Hide the SmoothScrollArea custom scrollbar thumb in the clone — its inline
+  // opacity (captured from thumbVisible state in smooth-scroll-area.tsx:201)
+  // may be 1 if the user scrolled recently, leaving a dark vertical bar
+  // floating over the receding shelf.
+  const track = clone.querySelector(
+    "[data-scrollbar-track]",
+  ) as HTMLElement | null;
+  if (track) track.style.opacity = "0";
+}
+
 // Approximate resting rect of the sidebar cover (top-RIGHT — the sidebar lives
 // at `right: var(--reader-rail-w)`). Computed from the reader geometry vars so
 // the forward fly lands where the real cover will mount. dismissFly() fades the
 // clone out over the real element, so a few px of error here are imperceptible.
 // ponytail: the Contents tab renders NO generic sidebar header above the panel,
-// so HEADER_H is 0 (the cover's top = the details card's py-4 = PAD_Y). The
-// details card uses px-12 (PAD_X = 48), and the cover is self-start top-pinned
-// (see reader-panel.tsx) so its top is deterministic regardless of title length.
-// coverW reads --reader-cover-w; coverH is derived at 3/4 aspect to match
-// BookCover's placeholder ratio. Real covers may differ slightly — the handoff
-// crossfade hides the discrepancy.
+// so HEADER_H is 0 (the cover's top = the details card's pt-12 = PAD_Y = 48).
+// The details card uses px-12 (PAD_X = 48), and the cover is self-start
+// top-pinned (see reader-panel.tsx) so its top is deterministic regardless of
+// title length. coverW reads --reader-cover-w; coverH is derived at 3/4 aspect
+// to match BookCover's placeholder ratio. Real covers may differ slightly — the
+// handoff crossfade hides the discrepancy.
 function computeReaderCoverRect(): DOMRect {
   const cs = getComputedStyle(document.documentElement);
   const num = (v: string, d: number) => {
@@ -192,7 +243,7 @@ function computeReaderCoverRect(): DOMRect {
   const railW = num(cs.getPropertyValue("--reader-rail-w"), 94);
   const vw = window.innerWidth;
   const HEADER_H = 0;
-  const PAD_Y = 16;
+  const PAD_Y = 48;
   const PAD_X = 48;
   const coverW = num(cs.getPropertyValue("--reader-cover-w"), 108);
   const coverH = Math.round((coverW * 4) / 3);
@@ -305,6 +356,11 @@ export function SceneTransitionProvider({
   // between a quick handoff (part-1 flew) and a full fly (fallback).
   const backFlyPart1Ref = useRef(false);
 
+  // ponytail: stash <html>.style.overflow across the transition so it can be
+  // restored exactly (empty string = default). Locked at navigate(), restored
+  // at every completion/abort path + unmount.
+  const prevHtmlOverflowRef = useRef<string>("");
+
   // Fade a parked clone out + remove it, clearing the owning ref if it still
   // points at the same node (a later fly may have reassigned it).
   const retireClone = useCallback(
@@ -350,6 +406,22 @@ export function SceneTransitionProvider({
     setForwardFlyActive(false);
   }, []);
 
+  // ponytail: lock <html> scroll during the transition. The route swap briefly
+  // mounts both routes; at mobile the library has no overflow:hidden (its
+  // bookshelf grows the body), and the reader's w-screen (100vw) then trips a
+  // horizontal scrollbar as 100vw > visible width once the body has a vertical
+  // one. Locking <html> suppresses both. Ceiling: doesn't fix the underlying
+  // w-screen issue on the reader — only the transition symptom. Unlocked at
+  // every completion/abort path (6 sites) + unmount.
+  const lockScroll = useCallback(() => {
+    prevHtmlOverflowRef.current = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+  }, []);
+
+  const unlockScroll = useCallback(() => {
+    document.documentElement.style.overflow = prevHtmlOverflowRef.current;
+  }, []);
+
   const navigate = useCallback(
     (url: string, direction: Direction, opts?: NavigateOpts) => {
       // Re-entrancy guard — ignore a second nav while one is mid-flight.
@@ -382,6 +454,9 @@ export function SceneTransitionProvider({
           router.push(url);
           return;
         }
+        // Lock body scroll now — the route swap happens once router.push fires
+        // below, and we need overflow:hidden in place before then.
+        lockScroll();
         // Capture scroll BEFORE cloning (non-mutating read of live scrollTop).
         const scrollOffsets = captureScrollOffsets(library);
         const clone = library.cloneNode(true) as HTMLElement;
@@ -414,6 +489,12 @@ export function SceneTransitionProvider({
         // there's no paint between display:block and the scrollTop write.
         gsap.set(layer, { display: "block", width: stageWidth });
         applyScrollOffsets(clone, scrollOffsets);
+        // Freeze the search bar's position in the clone BEFORE the transform
+        // runs — otherwise its position:fixed/sticky recomputes against the
+        // clone's new geometry and drifts up independently of the bookshelf.
+        // Captured here (live library still mounted); persists through the
+        // back-direction clone reuse.
+        freezeShelfBar(library, clone);
         // will-change pre-promotes so the clone's first paint isn't mid-frame.
         gsap.set(clone, { ...FULL_TRANSFORM, willChange: "transform" });
         gsap.set(dim, {
@@ -473,6 +554,8 @@ export function SceneTransitionProvider({
         router.push(url);
         return;
       }
+      // Lock body scroll for the back transition window.
+      lockScroll();
       gsap.set(layer, {
         display: "block",
         width: `${document.documentElement.clientWidth}px`,
@@ -575,7 +658,7 @@ export function SceneTransitionProvider({
         backFlyPart1Ref.current = true;
       }
     },
-    [router, reducedMotion, returningHero],
+    [router, reducedMotion, returningHero, lockScroll],
   );
 
   // Bookshelf → provider: the hero slot is ready (real shelf mounted, hero held
@@ -651,6 +734,7 @@ export function SceneTransitionProvider({
             setEntering(false);
             clearLayer();
             clearFly();
+            unlockScroll();
             return;
           }
           // Defer the heavy reader children until the slide-in is done so the
@@ -674,6 +758,8 @@ export function SceneTransitionProvider({
                 // compositing while the reader is open. Restored on back.
                 gsap.set(cloneLayerRef.current, { display: "none" });
                 gsap.set(dimRef.current, { display: "none" });
+                // Body scroll restored — the reader has settled.
+                unlockScroll();
               },
             },
           );
@@ -724,6 +810,7 @@ export function SceneTransitionProvider({
           pendingRef.current = null;
           setEntering(false);
           clearLayer();
+          unlockScroll();
         }
         return;
       }
@@ -736,6 +823,7 @@ export function SceneTransitionProvider({
         clearLayer();
         clearFly();
         setReturningHero(null);
+        unlockScroll();
       }
       return;
     }
@@ -749,13 +837,19 @@ export function SceneTransitionProvider({
       if (layer && layer.childElementCount > 0) clearLayer();
       if (forwardFlyRef.current || backFlyRef.current) clearFly();
       setSuppressShelfReveal(false);
+      // Defensive: a previous transition may have locked scroll and crashed
+      // before unlocking. Idempotent restore here keeps the page scrollable.
+      unlockScroll();
     }
-  }, [pathname, clearLayer, clearFly]);
+  }, [pathname, clearLayer, clearFly, unlockScroll]);
 
-  // Clean up fly state on unmount.
+  // Clean up fly state + restore body scroll on unmount.
   useEffect(() => {
-    return () => clearFly();
-  }, [clearFly]);
+    return () => {
+      clearFly();
+      unlockScroll();
+    };
+  }, [clearFly, unlockScroll]);
 
   const value = useMemo(
     () => ({
@@ -828,5 +922,76 @@ export function _demoTransitionMath() {
   assert(EASE === "power3.inOut", "ease must be power3.inOut (matches reference)");
   assert(FLY_DUR === 0.7, "fly duration must be 0.7s");
   assert(HANDOFF_DUR === 0.2, "handoff fade must be 0.2s");
+  return true;
+}
+
+// ponytail: self-check for freezeShelfBar — verifies the freeze pins the cloned
+// bar absolutely at the captured offset and reparents it to the clone root.
+// Mocks getBoundingClientRect on the live elements (the freeze only reads rects
+// from the live library + bar, not from the clone, so cloneNode's failure to
+// carry instance-method overrides across doesn't matter).
+export function _demoFreezeShelfBar() {
+  // Realistic lg rect set: library fills the viewport, bar sits in the right
+  // column (lg:grid-cols-[480px_1fr] → right column starts at x=504 in a 1280px
+  // viewport with a 24px gap), full column width = 776px.
+  const mockRect = (
+    top: number,
+    left: number,
+    width: number,
+    height: number
+  ): DOMRect =>
+    ({
+      top,
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  const library = document.createElement("div");
+  const bar = document.createElement("div");
+  bar.setAttribute("data-shelf-bar", "");
+  library.appendChild(bar);
+  library.getBoundingClientRect = () => mockRect(0, 0, 1280, 800);
+  bar.getBoundingClientRect = () => mockRect(662, 504, 776, 138);
+
+  const clone = library.cloneNode(true) as HTMLElement;
+  freezeShelfBar(library, clone);
+
+  const clonedBar = clone.querySelector("[data-shelf-bar]") as HTMLElement;
+  const assert = (cond: boolean, msg: string) => {
+    if (!cond)
+      throw new Error("scene-transition freeze self-check failed: " + msg);
+  };
+  assert(
+    clonedBar.style.position === "absolute",
+    "cloned bar must be position:absolute",
+  );
+  assert(clonedBar.style.top === "662px", "top must be 662px (662 - 0)");
+  assert(
+    clonedBar.style.left === "504px",
+    "left must be 504px (captured from right column, not 0)",
+  );
+  assert(
+    clonedBar.style.width === "776px",
+    "width must be 776px (captured, not full library width)",
+  );
+  assert(clonedBar.style.height === "138px", "height must be 138px");
+  assert(
+    clonedBar.style.right === "auto",
+    "right must be auto (left+width pin, not left+right stretch)",
+  );
+  assert(clonedBar.style.bottom === "auto", "bottom must be auto (override)");
+  assert(
+    clone.style.position === "relative",
+    "clone must be position:relative (containing block for the absolute bar)",
+  );
+  assert(
+    clonedBar.parentElement === clone,
+    "cloned bar must be reparented to the clone root",
+  );
   return true;
 }

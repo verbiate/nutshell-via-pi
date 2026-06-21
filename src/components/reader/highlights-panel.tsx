@@ -3,10 +3,17 @@
 import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, StickyNote } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Trash2, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import {
   HIGHLIGHT_COLORS,
   highlightColorLabel,
@@ -17,6 +24,7 @@ interface HighlightItem {
   id: string;
   cfi: string;
   paragraphIndex: number;
+  pageNumber: number | null;
   selectedText: string;
   color: string;
   sectionHref: string | null;
@@ -77,7 +85,7 @@ function HighlightRow({
   };
 
   return (
-    <div className="group flex gap-2 py-2 pl-12 pr-12">
+    <div className="flex gap-2 py-2 pl-12 pr-12">
       <div
         className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
         style={highlightSwatchStyle(highlight.color)}
@@ -93,7 +101,9 @@ function HighlightRow({
           </p>
         </button>
         <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-          Paragraph {highlight.paragraphIndex}
+          {highlight.pageNumber != null
+            ? `Page ${highlight.pageNumber}`
+            : `Paragraph ${highlight.paragraphIndex}`}
         </p>
 
         {highlight.note && !editing && (
@@ -148,15 +158,23 @@ function HighlightRow({
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        onClick={() => onDelete(highlight.id)}
-        aria-label="Remove highlight"
-      >
-        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-8 w-8 shrink-0 rounded-full border border-line"
+            aria-label="Highlight actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => onDelete(highlight.id)}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+            Delete highlight
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -166,6 +184,8 @@ function GroupBlock({
   count,
   swatch,
   items,
+  isCollapsed,
+  onToggle,
   onNavigate,
   onDelete,
   onNoteSave,
@@ -174,39 +194,61 @@ function GroupBlock({
   count: number;
   swatch?: string;
   items: HighlightItem[];
+  isCollapsed: boolean;
+  onToggle: () => void;
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
-    <div className="border-t border-line">
-      <div className="flex items-center justify-between px-12 pt-3 pb-1">
-        <span className="flex items-center gap-1.5 truncate pr-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div>
+      {/*
+        ponytail: matches Bookmarks chapter header — 30px tall, type-section-label
+        (DM Sans 14/600), border-b flush with the row, circular outline count
+        badge, collapsible chevron. Keeps the two tabs visually consistent.
+      */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!isCollapsed}
+        className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12 text-left"
+      >
+        <ChevronDown
+          className={cn(
+            "h-[14px] w-[14px] shrink-0 text-foreground transition-transform",
+            isCollapsed && "-rotate-90"
+          )}
+        />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate pr-2 type-section-label text-foreground"
+        >
           {swatch && (
             <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
               style={highlightSwatchStyle(swatch)}
               aria-hidden
             />
           )}
-          {label}
+          <span className="truncate">{label}</span>
         </span>
-        <span className="shrink-0 rounded-full bg-paper-deep px-1.5 text-[10px] font-medium text-foreground">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground"
+        >
           {count}
         </span>
-      </div>
-      <div className="pb-1">
-        {items.map((h) => (
-          <HighlightRow
-            key={h.id}
-            highlight={h}
-            onNavigate={onNavigate}
-            onDelete={onDelete}
-            onNoteSave={onNoteSave}
-          />
-        ))}
-      </div>
+      </button>
+      {!isCollapsed && (
+        <div className="pb-1">
+          {items.map((h) => (
+            <HighlightRow
+              key={h.id}
+              highlight={h}
+              onNavigate={onNavigate}
+              onDelete={onDelete}
+              onNoteSave={onNoteSave}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -217,6 +259,25 @@ export function HighlightsPanel({
   onHighlightClick,
 }: HighlightsPanelProps) {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("date");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const groupKey = (
+    tab: string,
+    g: { label: string; swatch?: string }
+  ) => `${tab}-${g.label}-${g.swatch ?? ""}`;
+  const toggleGroup = (
+    tab: string,
+    g: { label: string; swatch?: string }
+  ) =>
+    setCollapsed((prev) => {
+      const key = groupKey(tab, g);
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   const { data, isLoading } = useQuery({
     queryKey: ["highlights", bookId],
     queryFn: async () => {
@@ -328,24 +389,34 @@ export function HighlightsPanel({
   }
 
   const renderGroups = (
+    tab: string,
     groups: { label: string; swatch?: string; items: HighlightItem[] }[]
-  ) =>
-    groups.map((g) => (
-      <GroupBlock
-        key={g.label + (g.swatch ?? "")}
-        label={g.label}
-        count={g.items.length}
-        swatch={g.swatch}
-        items={g.items}
-        onNavigate={onHighlightClick}
-        onDelete={handleDelete}
-        onNoteSave={handleNoteSave}
-      />
-    ));
+  ) => (
+    <div className="flex flex-col gap-2">
+      {groups.map((g) => (
+        <GroupBlock
+          key={g.label + (g.swatch ?? "")}
+          label={g.label}
+          count={g.items.length}
+          swatch={g.swatch}
+          items={g.items}
+          isCollapsed={collapsed.has(groupKey(tab, g))}
+          onToggle={() => toggleGroup(tab, g)}
+          onNavigate={onHighlightClick}
+          onDelete={handleDelete}
+          onNoteSave={handleNoteSave}
+        />
+      ))}
+    </div>
+  );
 
   return (
-    <Tabs defaultValue="date" className="flex flex-col">
-      <div className="px-12 pt-2">
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="flex flex-col gap-9"
+    >
+      <div className="px-12">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="date">Date</TabsTrigger>
           <TabsTrigger value="chapter">Chapter</TabsTrigger>
@@ -353,13 +424,13 @@ export function HighlightsPanel({
         </TabsList>
       </div>
       <TabsContent value="date" className="mt-0">
-        {renderGroups(dateGroups)}
+        {renderGroups("date", dateGroups)}
       </TabsContent>
       <TabsContent value="chapter" className="mt-0">
-        {renderGroups(chapterGroups)}
+        {renderGroups("chapter", chapterGroups)}
       </TabsContent>
       <TabsContent value="color" className="mt-0">
-        {renderGroups(colorGroups)}
+        {renderGroups("color", colorGroups)}
       </TabsContent>
     </Tabs>
   );

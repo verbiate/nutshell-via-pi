@@ -42,22 +42,6 @@ interface SavedPosition {
   percentage?: number;
 }
 
-// ponytail: temporary stand-in for sidebar sections not yet built.
-function SidebarPlaceholder({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[120px] flex-col gap-2 px-12 py-4">
-      {[0, 1, 2].map((i) => (
-        <p
-          key={i}
-          className="text-sm leading-relaxed text-muted-foreground"
-        >
-          {label}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 export interface ReaderClientProps {
   bookId: string;
   bookTitle?: string;
@@ -138,6 +122,13 @@ export function ReaderClient({
   // Most recent position; read by flush helpers on unmount / tab hide so the
   // latest page is not lost when the 3s debounce hasn't fired yet.
   const lastPositionRef = useRef<SavedPosition | null>(null);
+  // ponytail: cached epub.js rendition so handleSaveBookmark can compute the
+  // synthetic "page" (book.locations.locationFromCfi) — same location system the
+  // progress bar uses. Set in handleRenditionReady. Ceiling: if locations aren't
+  // generated yet at save time (rare — user bookmarks before first paint settles),
+  // locationFromCfi returns -1 and pageNumber falls back to null.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renditionRef = useRef<any>(null);
 
   // ─── Highlights data (via React Query) ────────────────────────────────────────
   const queryClient = useQueryClient();
@@ -373,6 +364,14 @@ export function ReaderClient({
     async (color: string) => {
       if (!selectedCfi) return;
       try {
+        // ponytail: derive the synthetic page from epub.js locations, same as
+        // bookmarks. Falls back to null if locations aren't generated yet.
+        const loc = renditionRef.current?.book?.locations;
+        let pageNumber: number | null = null;
+        if (loc && typeof loc.locationFromCfi === "function") {
+          const idx = loc.locationFromCfi(selectedCfi);
+          if (typeof idx === "number" && idx >= 0) pageNumber = idx + 1;
+        }
         const res = await fetch("/api/reader/highlights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -385,6 +384,7 @@ export function ReaderClient({
             selectedText,
             color,
             sectionHref: currentHref || undefined,
+            pageNumber,
           }),
         });
         if (res.ok) {
@@ -420,6 +420,17 @@ export function ReaderClient({
 
   const handleSaveBookmark = useCallback(
     async (cfi: string) => {
+      // ponytail: derive the synthetic page from epub.js locations (the same
+      // system the progress bar uses) — NOT paragraphIndex, which the codebase
+      // flags as an unreliable placeholder. locationFromCfi returns a 0-based
+      // index after locations.generate() resolves; guard for the pre-generation
+      // window and fall back to null.
+      const loc = renditionRef.current?.book?.locations;
+      let pageNumber: number | null = null;
+      if (loc && typeof loc.locationFromCfi === "function") {
+        const idx = loc.locationFromCfi(cfi);
+        if (typeof idx === "number" && idx >= 0) pageNumber = idx + 1;
+      }
       try {
         const res = await fetch("/api/reader/bookmarks", {
           method: "POST",
@@ -429,7 +440,7 @@ export function ReaderClient({
             cfi,
             paragraphIndex: savedPosition?.paragraphIndex ?? 0,
             charOffset: savedPosition?.charOffset ?? 0,
-            selectedText: null,
+            pageNumber,
             sectionHref: currentHref || undefined,
           }),
         });
@@ -494,6 +505,7 @@ export function ReaderClient({
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = rendition as any;
+      renditionRef.current = r;
       attachToDoc(r?.contents?.document);
       r?.on?.("rendered", (_section: unknown, contents: { document: Document }) => {
         attachToDoc(contents.document);
@@ -830,7 +842,17 @@ export function ReaderClient({
                 onHighlightClick={handleNavigateToCfi}
               />
             ),
-            bulb: <SidebarPlaceholder label="Explainers" />,
+            bulb: (
+              <div className="px-12 py-8 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  No explainers yet
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Ask about the book, a section, or a passage to create
+                  explainers. You can find past explainers here.
+                </p>
+              </div>
+            ),
             type: (
               <BookSettingsPanel
                 theme={readerTheme}

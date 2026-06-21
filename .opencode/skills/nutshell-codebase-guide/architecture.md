@@ -1,5 +1,7 @@
 # Architecture
 
+_Verified 2026-06-21 against `src/` + `src/server/services/`._
+
 ## Layers (from the knowledge graph `layers[]`)
 
 | Layer | Where | Role |
@@ -84,12 +86,27 @@ Route: `(reader)/book/[id]/reader` → `reader-client.tsx` (highest fan-out node
 - `reader-client.tsx` orchestrates viewer + position + all side panels
   (ToC, bookmarks, search, explainer, TTS).
 
+**Post-v1.0 reader chrome (commit `4960292`)** — the old tool-rail was replaced
+by a layered chrome:
+- `reader-chrome.tsx` — top glassmorphism bar (`h-12`), hide-on-idle, hosts
+  reading-progress bar + back-nav + TTS trigger.
+- `reader-sidebar.tsx` — left rail with toggle buttons per panel.
+- `reader-panel.tsx` — the panel host; mounts one of `bookmarks-panel.tsx`,
+  `highlights-panel.tsx`, `search-panel.tsx`, `book-settings-panel.tsx`,
+  `theme-toggle.tsx`, or `tts-player.tsx` based on sidebar selection.
+- `scene-transition.tsx` (`src/components/transitions/`) — GSAP-powered
+  bookshelf↔reader handoff wrapped by `SceneTransitionProvider` in
+  `components/providers.tsx`.
+- `reader-skeleton.tsx` — loading state shown while the EPUB renders.
+- Hooks in `src/hooks/` drive the chrome: `use-prefers-reduced-motion`,
+  `use-media-query`, `use-mobile`, `use-tts-playback`, `use-session`.
+
 ### 3. Explainer — cache-first SSE streaming
 `GET/POST /api/explainers` → `services/explainer.ts`
 
-1. Compute `contentHash = SHA-256(promptType + sourceText + promptVersion)`
-   (`explainer.ts:40`). Language & tier are NOT hashed — they're separate
-   composite-key columns.
+1. Compute `contentHash = SHA-256(promptType + "\x00" + sourceText + "\x00" + String(promptVersion))`
+   (`explainer.ts:40`). Null-byte separators + `String()` coercion. Language &
+   tier are NOT hashed — they're separate composite-key columns.
 2. Check `Explainer` table by `(contentHash, language, contentType, tier)`.
 3. **Hit** → serve cached instantly.
 4. **Miss** → `prompt-builder.ts` composes the localized prompt (admin
