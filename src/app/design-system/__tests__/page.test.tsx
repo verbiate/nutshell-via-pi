@@ -92,6 +92,49 @@ describe("Design system page", () => {
     });
   });
 
+  describe("Section 02 — Typography", () => {
+    it("renders the Typography section heading", () => {
+      expect(render()).toContain("Typography");
+    });
+
+    it("renders the three UI role specimens via their type-* utility classes", () => {
+      const html = render();
+      // Header specimen (Good morning, Reader) driven by type-header
+      expect(html).toContain("type-header");
+      expect(html).toContain("Good morning, Reader");
+      // Button specimen renders an actual Button with type-button baked in
+      expect(html).toContain("type-button");
+      expect(html).toContain("Add a book");
+      // Tab specimen renders three TabsTriggers with type-tab baked in
+      expect(html).toContain("type-tab");
+      expect(html).toContain("Bookshelf");
+    });
+
+    it("shows the Figma-locked token summaries under each specimen", () => {
+      const html = render();
+      expect(html).toContain("Plex Serif · 400 · 30px · 1.07 · ls −0.005em");
+      expect(html).toContain("DM Sans · 600 · 15px · 1.35");
+      expect(html).toContain("DM Sans · 600 · 12px · 1.35 · ls −0.025em");
+    });
+
+    it("renders the dialable prose sample wrapped in .ds-prose", () => {
+      const html = render();
+      expect(html).toContain("ds-prose");
+      // Real prose with curly quotes and a 0 (exercises oldstyle figures)
+      expect(html).toContain("0th of October");
+      expect(html).toContain("five-and-seventy");
+    });
+
+    it("retrofits the intro paragraph to consume .ds-prose instead of fixed sizing", () => {
+      const html = render();
+      // The intro paragraph must drop text-[15.5px] and max-w-[60ch] in favor
+      // of the dialable vars; .ds-prose wraps it and color stays via text-ink/80.
+      expect(html).toContain("ds-prose mt-3 text-ink/80");
+      expect(html).not.toContain("max-w-[60ch]");
+      expect(html).not.toContain("text-[15.5px]");
+    });
+  });
+
   describe("Gallery scoped wrapper and layout vars", () => {
     it("mounts the .ds-gallery wrapper as the setter target", () => {
       expect(render()).toContain("ds-gallery");
@@ -115,7 +158,7 @@ describe("Design system page", () => {
     });
   });
 
-  describe("Section 06 — Library", () => {
+  describe("Section 07 — Library", () => {
     it("renders the Library section heading", () => {
       expect(render()).toContain("Library");
     });
@@ -141,7 +184,7 @@ describe("Design system page", () => {
     });
   });
 
-  describe("Section 07 — Reader chrome", () => {
+  describe("Section 08 — Reader chrome", () => {
     it("renders the ReaderChrome Bookshelf back button inside the frame", () => {
       const html = render();
       expect(html).toContain("Reader chrome"); // section-07-specific
@@ -167,7 +210,7 @@ describe("Design system page", () => {
     });
   });
 
-  describe("Section 08 — Reader sidebar", () => {
+  describe("Section 09 — Reader sidebar", () => {
     it("renders all five rail tool buttons with their aria-labels", () => {
       const html = render();
       expect(html).toContain("Reader sidebar"); // section-08-specific
@@ -193,7 +236,7 @@ describe("Design system page", () => {
     });
   });
 
-  describe("Section 09 — Selection & settings", () => {
+  describe("Section 10 — Selection & settings", () => {
     it("renders the FloatingToolbar mirror with Ask and Copy actions", () => {
       const html = render();
       expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
@@ -214,6 +257,14 @@ describe("Design system page", () => {
       const html = render();
       expect(html).toContain("Selection &amp; settings"); // section-09 anchor (React escapes & in HTML)
       expect(html).toContain("It was the best of times");
+    });
+
+    it("retrofits the reading paragraph to .ds-prose (drops font-serif/leading-relaxed)", () => {
+      const html = render();
+      expect(html).toContain("Selection &amp; settings");
+      // The Dickens sample now drives vars via .ds-prose; color via text-ink.
+      expect(html).toContain("ds-prose text-ink");
+      expect(html).not.toContain("font-serif text-base leading-relaxed text-ink");
     });
 
     it("leaves §09 FloatingToolbar highlight swatches as literal hex", () => {

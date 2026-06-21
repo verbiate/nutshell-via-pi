@@ -2,8 +2,14 @@
 
 import { useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { Headphones, Lightbulb } from "lucide-react";
+import { Lightbulb, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ExplainerPanel } from "@/components/explainer/explainer-panel";
 import { BookCover } from "@/components/library/book-cover";
@@ -30,34 +36,57 @@ function TocEntry({
 
   return (
     <div>
-      <div className="group flex items-center">
+      <div className="group relative flex items-center pr-12">
+        {/*
+          ponytail: active top-level rows get a left accent bar (the mockup's
+          chapter indicator). Subitems keep their existing indent border instead
+          — mixing a bar into the indented column reads as noise.
+        */}
+        {isActive && level === 0 && (
+          <span
+            aria-hidden
+            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-lav"
+          />
+        )}
         <button
           onClick={() => onNavigate(item.href)}
           className={cn(
-            "flex-1 text-left py-2 pr-4 text-sm transition-colors",
+            "type-toc-section flex-1 text-left py-2 pr-4 transition-colors",
             isActive
-              ? "font-medium text-primary"
-              : "text-foreground hover:text-primary",
+              ? "font-medium text-foreground"
+              : "font-normal text-foreground hover:text-primary",
             level > 0 && "border-l-2 border-border ml-4"
           )}
           style={{
-            paddingLeft: level > 0 ? `${level * 16 + 16}px` : "16px",
+            paddingLeft: level > 0 ? `${48 + level * 16}px` : "48px",
           }}
         >
           {item.label}
         </button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="h-6 w-6 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExplainerOpen(true);
-          }}
-          aria-label={`Explain section: ${item.label}`}
-        >
-          <Lightbulb className="h-3.5 w-3.5 text-lav" />
-        </Button>
+        {/*
+          ponytail: hover-revealed overflow menu (matches the prior lightbulb's
+          reveal model). Single item for now — "Ask about this" opens the
+          section Explainer, same as the old lightbulb. Room to add per-section
+          actions (Listen from here, etc.) without touching row layout.
+        */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-6 w-6 opacity-100 transition-opacity shrink-0 hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+              aria-label={`Ask about ${item.label}`}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setExplainerOpen(true)}>
+              <Lightbulb className="h-4 w-4 text-lav" />
+              Ask about this
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <ExplainerPanel
         open={explainerOpen}
@@ -110,7 +139,6 @@ export function ReaderPanel({
   bookTitle,
   author,
   coverPath,
-  language,
   toc,
   currentHref,
   onNavigate,
@@ -121,12 +149,21 @@ export function ReaderPanel({
   coverHidden,
 }: ReaderPanelProps) {
   const [bookExplainerOpen, setBookExplainerOpen] = useState(false);
-  const showLang = !!language && language !== "und";
 
   return (
     <div className="flex flex-col">
       {/* Book details card */}
-      <div className="flex items-start gap-3 px-5 py-4">
+      {/*
+        ponytail: row is items-start + the cover is self-start so the cover's
+        top is ALWAYS cardTop (never shifted by title/author height). That makes
+        the cover's resting rect statically computable for the forward fly
+        (computeReaderCoverRect in scene-transition.tsx). The text column still
+        reads as vertically centered against the cover: it stretches
+        (self-stretch) to the cover's height and centers its block internally.
+        For long titles where text > cover, the cover stays pinned at top
+        (determinism wins) and the column simply grows.
+      */}
+      <div className="flex items-start gap-3 px-12 py-4">
         {/* data-hero-cover: the fly transition clones this frame. Fixed width +
             natural aspect (matching the bookshelf card) so the fly clone lands
             at the correct size/treatment. shadow-book unifies the frame with the
@@ -134,25 +171,29 @@ export function ReaderPanel({
             clone at the handoff so its fade-out reveals it cleanly. coverHidden
             holds it empty while a fly is inbound, then reveals. */}
         <div
-          className="relative w-[66px] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book"
+          className="relative w-[var(--reader-cover-w)] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book"
           data-hero-cover=""
           style={{ opacity: coverHidden ? 0 : 1 }}
         >
           <BookCover coverPath={coverPath} title={bookTitle} />
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-serif text-[15px] font-medium leading-tight text-foreground line-clamp-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center self-stretch">
+          <h3
+            className="line-clamp-3 font-serif text-[20px] font-medium leading-[1.2] text-foreground"
+            style={{
+              letterSpacing: "-0.005em",
+              hangingPunctuation: "first last",
+            }}
+          >
             {bookTitle}
           </h3>
           {author && (
-            <p className="mt-1 text-xs text-muted-foreground truncate">
+            <p
+              className="mt-1 truncate font-sans text-[15px] font-semibold leading-[1.35] text-foreground/60"
+              style={{ hangingPunctuation: "first last" }}
+            >
               {author}
             </p>
-          )}
-          {showLang && (
-            <span className="mt-2 inline-block rounded-full bg-paper-deep px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
-              {language}
-            </span>
           )}
           {isAdmin && bookCreatedAt && (
             <p className="mt-1 text-[10px] text-muted-foreground/70">
@@ -163,22 +204,20 @@ export function ReaderPanel({
       </div>
 
       {/* Action row */}
-      <div className="flex gap-2 px-5 pb-4">
+      <div className="flex flex-col gap-3 px-12 pb-4">
         <Button
-          size="sm"
-          className="flex-1 gap-1.5"
+          className="w-full gap-2 bg-chocolate text-white hover:bg-chocolate/90"
           onClick={onListenFromHere}
         >
-          <Headphones className="h-3.5 w-3.5" />
+          <Play className="text-blue" />
           Listen from here
         </Button>
         <Button
           variant="outline"
-          size="sm"
-          className="flex-1 gap-1.5"
+          className="w-full gap-2"
           onClick={() => setBookExplainerOpen(true)}
         >
-          <Lightbulb className="h-3.5 w-3.5 text-lav" />
+          <Lightbulb className="text-lav" />
           Ask the book
         </Button>
       </div>
@@ -193,11 +232,6 @@ export function ReaderPanel({
       {/* Table of contents */}
       {toc.length > 0 && (
         <div className="border-t border-line">
-          <div className="px-5 pt-3 pb-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Contents
-            </p>
-          </div>
           <div className="py-1">
             {toc.map((item) => (
               <TocEntry

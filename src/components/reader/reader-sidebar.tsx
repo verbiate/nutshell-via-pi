@@ -41,8 +41,8 @@ export function ReaderSidebar({
   }, [activeTool]);
 
   const displayedTool = activeTool ?? lastTool;
-  const label = displayedTool
-    ? READER_TOOLS.find((t) => t.id === displayedTool)?.label ?? null
+  const tool = displayedTool
+    ? READER_TOOLS.find((t) => t.id === displayedTool) ?? null
     : null;
 
   return (
@@ -58,7 +58,7 @@ export function ReaderSidebar({
         their meeting edge gapless throughout the animation.
       */}
       <aside
-        aria-label={label ?? undefined}
+        aria-label={tool?.label ?? undefined}
         aria-hidden={!isOpen}
         className="absolute bottom-0 right-[var(--reader-rail-w)] top-0 z-20 hidden w-[var(--reader-sidebar-w)] flex-col bg-background sm:flex [box-shadow:8px_0_16px_-10px_rgba(34,24,5,0.3)]"
         style={{
@@ -70,13 +70,46 @@ export function ReaderSidebar({
           transitionTimingFunction: "cubic-bezier(.5, 0, .2, 1)",
         }}
       >
-        {displayedTool && label && (
+        {tool && (
           <>
-            <header className="border-b border-line px-5 py-3">
-              <h2 className="text-sm font-semibold text-foreground">{label}</h2>
-            </header>
+            {/*
+              ponytail: Contents (reader) renders its own book-title headline
+              inside the panel, so it skips the generic tab header. Every other
+              tab uses the shared title + description + icon header.
+            */}
+            {tool.id !== "reader" && (
+              <header className="flex items-center gap-4 border-b border-line px-12 py-4">
+                <div className="min-w-0 flex-1">
+                  <h2
+                    className="font-serif text-[20px] font-medium leading-[1.2] text-foreground"
+                    style={{
+                      letterSpacing: "-0.005em",
+                      hangingPunctuation: "first last",
+                    }}
+                  >
+                    {tool.label}
+                  </h2>
+                  <p
+                    className="mt-1 text-xs font-semibold leading-[1.35] text-foreground/60"
+                    style={{ hangingPunctuation: "first last" }}
+                  >
+                    {tool.description}
+                  </p>
+                </div>
+                {(() => {
+                  const Icon = ICONS[tool.icon];
+                  return (
+                    <Icon
+                      className="h-16 w-16 shrink-0 text-foreground/30"
+                      strokeWidth={1.2}
+                      aria-hidden
+                    />
+                  );
+                })()}
+              </header>
+            )}
             <ScrollArea className="min-h-0 flex-1">
-              {panels[displayedTool]}
+              {panels[tool.id]}
             </ScrollArea>
           </>
         )}

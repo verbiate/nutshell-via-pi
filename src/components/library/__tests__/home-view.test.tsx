@@ -31,6 +31,17 @@ describe("HomeView", () => {
     expect(html).toContain("Find more books");
   });
 
+  it("applies type-header to the greeting (Figma-locked typography token)", () => {
+    const html = render(
+      <HomeView userName="Mary" books={[]} digestImage={null} />,
+    );
+    // ponytail: header typography is driven by the type-header @utility, which
+    // consumes the --type-header-* tokens. Drift from the Figma spec
+    // (34px/500/leading-tight) is closed.
+    expect(html).toContain("type-header");
+    expect(html).not.toContain("font-serif text-[34px] font-medium");
+  });
+
   it("renders the bookshelf search bar", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,

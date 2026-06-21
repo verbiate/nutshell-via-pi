@@ -175,8 +175,13 @@ function zeroScrollOffsets(clone: HTMLElement) {
 // at `right: var(--reader-rail-w)`). Computed from the reader geometry vars so
 // the forward fly lands where the real cover will mount. dismissFly() fades the
 // clone out over the real element, so a few px of error here are imperceptible.
-// ponytail: HEADER_H (sidebar header px-5 py-3 + text-sm) is a measured
-// constant; re-measure if the sidebar header layout changes.
+// ponytail: the Contents tab renders NO generic sidebar header above the panel,
+// so HEADER_H is 0 (the cover's top = the details card's py-4 = PAD_Y). The
+// details card uses px-12 (PAD_X = 48), and the cover is self-start top-pinned
+// (see reader-panel.tsx) so its top is deterministic regardless of title length.
+// coverW reads --reader-cover-w; coverH is derived at 3/4 aspect to match
+// BookCover's placeholder ratio. Real covers may differ slightly — the handoff
+// crossfade hides the discrepancy.
 function computeReaderCoverRect(): DOMRect {
   const cs = getComputedStyle(document.documentElement);
   const num = (v: string, d: number) => {
@@ -186,11 +191,11 @@ function computeReaderCoverRect(): DOMRect {
   const sidebarW = num(cs.getPropertyValue("--reader-sidebar-w"), 400);
   const railW = num(cs.getPropertyValue("--reader-rail-w"), 94);
   const vw = window.innerWidth;
-  const HEADER_H = 44;
+  const HEADER_H = 0;
   const PAD_Y = 16;
-  const PAD_X = 20;
-  const coverH = 88;
-  const coverW = Math.round((coverH * 3) / 4);
+  const PAD_X = 48;
+  const coverW = num(cs.getPropertyValue("--reader-cover-w"), 108);
+  const coverH = Math.round((coverW * 4) / 3);
   const left = vw - railW - sidebarW + PAD_X;
   const top = HEADER_H + PAD_Y;
   return {

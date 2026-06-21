@@ -15,8 +15,8 @@ export function UploadBookDialog() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="h-[46px] bg-white text-espresso hover:bg-white/90">
-          <Plus className="mr-2 h-4 w-4 text-blue-600" />
+        <Button>
+          <Plus />
           Add a book
         </Button>
       </DialogTrigger>

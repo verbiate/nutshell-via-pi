@@ -106,6 +106,56 @@ const TWEAK_FOLDERS: TweakFolder[] = [
       { key: "toolbar-shadow-y", config: { min: 0, max: 32, step: 1, label: "Toolbar Shadow Y" } },
     ],
   },
+  {
+    title: "Typography",
+    expanded: true,
+    bindings: [
+      // ponytail: dropdown bindings are the first non-numeric bindings in this
+      // pane. Tweakpane handles { options: {Label: value} } as a List; the
+      // existing addBindingWithReset + enableUnclampedEntry plumbing passes
+      // config through opaquely and enableUnclampedEntry is gated on min/max,
+      // so discrete bindings fall through cleanly to the change handler.
+      { key: "prose-font-family", config: { options: {
+        "Plex Serif": "var(--font-serif)",
+        "DM Sans": "var(--font-sans)",
+        "System Serif": 'Georgia, "Times New Roman", serif',
+        "Mono": 'ui-monospace, "SF Mono", Menlo, monospace',
+      }, label: "Family" } },
+      { key: "prose-font-size", config: { min: 14, max: 24, step: 1, label: "Size" } },
+      { key: "prose-line-height", config: { min: 1.2, max: 1.8, step: 0.05, label: "Leading" } },
+      { key: "prose-max-width", config: { min: 40, max: 80, step: 1, label: "Measure" } },
+      { key: "prose-text-align", config: { options: {
+        Left: "left",
+        Justify: "justify",
+      }, label: "Align" } },
+      { key: "prose-hyphens", config: { options: {
+        Manual: "manual",
+        Auto: "auto",
+      }, label: "Hyphens" } },
+    ],
+  },
+  {
+    title: "OpenType",
+    bindings: [
+      // ponytail: optical-sizing only kicks in for variable fonts. next/font
+      // loads Plex Serif as static weights, so this control affects DM Sans
+      // but not Plex. Loading Plex with opsz axis would be a layout.tsx change.
+      { key: "prose-ligatures", config: { options: {
+        None: "none",
+        Common: "common-ligatures",
+      }, label: "Ligatures" } },
+      { key: "prose-numeric", config: { options: {
+        "Lining prop": "lining-nums proportional-nums",
+        "Oldstyle prop": "oldstyle-nums proportional-nums",
+        "Lining tabular": "lining-nums tabular-nums",
+        "Oldstyle tabular": "oldstyle-nums tabular-nums",
+      }, label: "Figures" } },
+      { key: "prose-optical", config: { options: {
+        Auto: "auto",
+        None: "none",
+      }, label: "Optical" } },
+    ],
+  },
 ];
 
 const SURFACES = [
@@ -556,6 +606,20 @@ export default function DesignSystemPage() {
   box-shadow: 0 3px 3px rgba(0,0,0,.25), 0 12px 12px rgba(0,0,0,.28); }
 .tp-reset-button { border: 0; background: transparent; color: #555; cursor: pointer; padding: 0 4px; margin-left: 4px; border-radius: 3px; font-size: 12px; line-height: 1; transition: all 0.15s ease; flex-shrink: 0; }
 .tp-reset-button:hover { color: #aaa; background: rgba(255, 255, 255, 0.08); }
+/* ponytail: prose wrapper consumes all 9 --prose-* vars driven by Tweakpane.
+   Gallery-scoped so it only affects the design-system page; reader body text
+   is independently driven by READER_THEME_OVERRIDES (themes.ts). */
+.ds-prose {
+  font-family: var(--prose-font-family);
+  font-size: var(--prose-font-size);
+  line-height: var(--prose-line-height);
+  max-width: var(--prose-max-width);
+  text-align: var(--prose-text-align);
+  hyphens: var(--prose-hyphens);
+  font-variant-ligatures: var(--prose-ligatures);
+  font-variant-numeric: var(--prose-numeric);
+  font-optical-sizing: var(--prose-optical);
+}
 `}</style>
       <main className="mx-auto max-w-5xl px-7 py-14">
         <header className="mb-14">
@@ -565,7 +629,7 @@ export default function DesignSystemPage() {
           <h1 className="mt-1 font-serif text-4xl font-medium leading-tight text-espresso">
             A reading surface with a quiet voice
           </h1>
-          <p className="mt-3 max-w-[60ch] text-[15.5px] text-ink/80">
+          <p className="ds-prose mt-3 text-ink/80">
             Tan surfaces, chocolate ink, a peach-to-pink accent reserved for primary action and
             progress, and a lavender ring for the active tool. All gradients run in OKLCH for
             perceptual smoothness. UI text is <b>DM Sans</b>; headlines and book copy are{" "}
@@ -706,9 +770,92 @@ export default function DesignSystemPage() {
           </div>
         </section>
 
-        {/* 02 Actions */}
+        {/* 02 Typography */}
         <section className="mb-14">
-          <SectionLabel num="02" title="Actions" />
+          <SectionLabel num="02" title="Typography" />
+          <div className="grid gap-5 md:grid-cols-2">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardDescription>UI roles · Figma-locked specimens</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Header specimen */}
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                    Header · type-header
+                  </p>
+                  <p className="type-header">Good morning, Reader</p>
+                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                    Plex Serif · 400 · 30px · 1.07 · ls −0.005em
+                  </p>
+                </div>
+                {/* Button specimen */}
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                    Button · type-button
+                  </p>
+                  <Button>
+                    <Plus /> Add a book
+                  </Button>
+                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                    DM Sans · 600 · 15px · 1.35
+                  </p>
+                </div>
+                {/* Tab specimen */}
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                    Tab · type-tab
+                  </p>
+                  <Tabs defaultValue="bookshelf">
+                    <TabsList variant="line" className="w-full grid grid-cols-3">
+                      <TabsTrigger value="bookshelf">Bookshelf</TabsTrigger>
+                      <TabsTrigger value="explainers">Explainers</TabsTrigger>
+                      <TabsTrigger value="find">Find</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                    DM Sans · 600 · 12px · 1.35 · ls −0.025em
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardDescription>Body · dialable via Tweakpane</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* ponytail: live prose sample exercising OpenType features —
+                    curly quotes, em-dash, fi ligature, oldstyle numerals (0, 5, 7),
+                    mixed punctuation. Drives .ds-prose so the Typography +
+                    OpenType folders in the pane edit it live. */}
+                <div className="ds-prose space-y-3 text-ink">
+                  <p>
+                    It was the 0th of October, in the year 1789 — the famous &ldquo;fi&rdquo; affair,
+                    as the field-officers called it — when five-and-seventy horsemen rode
+                    into the valley and found nothing to affront them but the fog.
+                  </p>
+                  <p>
+                    &ldquo;The first principle of typography,&rdquo; she wrote, &ldquo;is that the
+                    letters must breathe.&rdquo; She underlined <em>breathe</em> twice and
+                    moved on. There were 768 of them in all, and the work took her nicely
+                    through the autumn.
+                  </p>
+                </div>
+                <p className="mt-4 text-[11px] text-muted-foreground">
+                  Drives <code className="font-mono">.ds-prose</code>, which also wraps the
+                  intro paragraph above and the reading sample in §10. Open the Typography
+                  and OpenType folders in the pane to dial size, leading, measure, alignment,
+                  hyphenation, ligatures, figure style, and optical sizing.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* 03 Actions */}
+        <section className="mb-14">
+          <SectionLabel num="03" title="Actions" />
           <Card className="shadow-card">
             <CardContent className="space-y-6">
               <div>
@@ -751,9 +898,9 @@ export default function DesignSystemPage() {
           </Card>
         </section>
 
-        {/* 03 Navigation */}
+        {/* 04 Navigation */}
         <section className="mb-14">
-          <SectionLabel num="03" title="Navigation" />
+          <SectionLabel num="04" title="Navigation" />
           <div className="grid gap-5 md:grid-cols-2">
             <Card className="shadow-card">
               <CardHeader>
@@ -792,9 +939,9 @@ export default function DesignSystemPage() {
           </div>
         </section>
 
-        {/* 04 Book Settings */}
+        {/* 05 Book Settings */}
         <section className="mb-14">
-          <SectionLabel num="04" title="Book Settings" />
+          <SectionLabel num="05" title="Book Settings" />
           <div className="grid gap-5 md:grid-cols-2">
             <Card className="shadow-card">
               <CardHeader>
@@ -851,9 +998,9 @@ export default function DesignSystemPage() {
           </div>
         </section>
 
-        {/* 05 Progress & Search */}
+        {/* 06 Progress & Search */}
         <section className="mb-14">
-          <SectionLabel num="05" title="Progress & Search" />
+          <SectionLabel num="06" title="Progress & Search" />
           <Card className="shadow-card">
             <CardContent className="space-y-5">
               <div>
@@ -878,9 +1025,9 @@ export default function DesignSystemPage() {
           </Card>
         </section>
 
-        {/* 06 Library */}
+        {/* 07 Library */}
         <section className="mb-14">
-          <SectionLabel num="06" title="Library" />
+          <SectionLabel num="07" title="Library" />
           <div className="grid gap-5">
             <Card className="shadow-card">
               <CardHeader>
@@ -956,9 +1103,9 @@ export default function DesignSystemPage() {
           </div>
         </section>
 
-        {/* 07 Reader chrome */}
+        {/* 08 Reader chrome */}
         <section className="mb-14">
-          <SectionLabel num="07" title="Reader chrome" />
+          <SectionLabel num="08" title="Reader chrome" />
           <Card className="shadow-card">
             <CardHeader>
               <CardDescription>ReaderChrome + ReadingProgress + TtsPlayer mirror · all in a contained frame</CardDescription>
@@ -1013,9 +1160,9 @@ export default function DesignSystemPage() {
           </Card>
         </section>
 
-        {/* 08 Reader sidebar */}
+        {/* 09 Reader sidebar */}
         <section className="mb-14">
-          <SectionLabel num="08" title="Reader sidebar" />
+          <SectionLabel num="09" title="Reader sidebar" />
           <Card className="shadow-card">
             <CardHeader>
               <CardDescription>ReaderSidebar · rail toggle swaps the panel content</CardDescription>
@@ -1057,9 +1204,9 @@ export default function DesignSystemPage() {
           </Card>
         </section>
 
-        {/* 09 Selection & settings */}
+        {/* 10 Selection & settings */}
         <section className="mb-14">
-          <SectionLabel num="09" title="Selection & settings" />
+          <SectionLabel num="10" title="Selection & settings" />
           <Card className="shadow-card">
             <CardHeader>
               <CardDescription>FloatingToolbar mirror · Ask / Copy / highlight swatches</CardDescription>
@@ -1092,7 +1239,7 @@ export default function DesignSystemPage() {
                     ))}
                   </div>
                 </div>
-                <p className="font-serif text-base leading-relaxed text-ink">
+                <p className="ds-prose text-ink">
                   It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
                   foolishness, it was the epoch of belief, it was the epoch of incredulity…
                 </p>

@@ -77,7 +77,7 @@ function HighlightRow({
   };
 
   return (
-    <div className="group flex gap-2 py-2 pl-4 pr-2">
+    <div className="group flex gap-2 py-2 pl-12 pr-12">
       <div
         className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
         style={highlightSwatchStyle(highlight.color)}
@@ -88,7 +88,7 @@ function HighlightRow({
           onClick={() => onNavigate(highlight.cfi)}
           className="block w-full text-left"
         >
-          <p className="line-clamp-3 text-sm leading-relaxed text-foreground">
+          <p className="type-toc-section line-clamp-3 font-normal text-foreground">
             {highlight.selectedText}
           </p>
         </button>
@@ -181,7 +181,7 @@ function GroupBlock({
   if (items.length === 0) return null;
   return (
     <div className="border-t border-line">
-      <div className="flex items-center justify-between px-5 pt-3 pb-1">
+      <div className="flex items-center justify-between px-12 pt-3 pb-1">
         <span className="flex items-center gap-1.5 truncate pr-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {swatch && (
             <span
@@ -310,7 +310,7 @@ export function HighlightsPanel({
 
   if (isLoading) {
     return (
-      <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+      <div className="px-12 py-8 text-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
@@ -318,7 +318,7 @@ export function HighlightsPanel({
 
   if (highlights.length === 0) {
     return (
-      <div className="px-5 py-8 text-center">
+      <div className="px-12 py-8 text-center">
         <p className="text-sm font-medium text-foreground">No highlights yet</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Select text while reading to highlight it.
@@ -345,7 +345,7 @@ export function HighlightsPanel({
 
   return (
     <Tabs defaultValue="date" className="flex flex-col">
-      <div className="px-3 pt-2">
+      <div className="px-12 pt-2">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="date">Date</TabsTrigger>
           <TabsTrigger value="chapter">Chapter</TabsTrigger>

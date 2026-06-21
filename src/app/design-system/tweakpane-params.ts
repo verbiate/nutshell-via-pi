@@ -1,7 +1,7 @@
 export type ParamValue = string | number;
 export type DefaultParams = Readonly<Record<string, ParamValue>>;
 
-type Format = "raw" | "px" | "rem" | "ms" | "percent";
+type Format = "raw" | "px" | "rem" | "ms" | "percent" | "ch" | "em" | "unitless";
 type Target = "root" | "gallery";
 
 interface ParamConfig {
@@ -58,6 +58,22 @@ const CONFIG: readonly ParamConfig[] = [
   { key: "tts-bar-blur", value: 6, target: "gallery", format: "px" },
   { key: "toolbar-w", value: 220, target: "gallery", format: "px" },
   { key: "toolbar-shadow-y", value: 8, target: "gallery", format: "px" },
+
+  // ponytail: prose typography — consumed by .ds-prose wrapper on /design-system
+  // and the retrofitted intro / §09 reading sample. Defaults mirror the
+  // screen-typography skill's macro recommendations (65ch measure, 1.5 leading)
+  // and IBM Plex Serif's available OpenType features.
+  { key: "prose-font-size", value: 18, target: "root", format: "px" },
+  { key: "prose-line-height", value: 1.5, target: "root", format: "unitless" },
+  { key: "prose-max-width", value: 65, target: "root", format: "ch" },
+  // String-valued (discrete) keys below — Tweakpane binds these via `options`
+  // dropdowns in page.tsx, not numeric sliders. format: "raw" writes them as-is.
+  { key: "prose-font-family", value: "var(--font-serif)", target: "root", format: "raw" },
+  { key: "prose-text-align", value: "left", target: "root", format: "raw" },
+  { key: "prose-hyphens", value: "manual", target: "root", format: "raw" },
+  { key: "prose-ligatures", value: "common-ligatures", target: "root", format: "raw" },
+  { key: "prose-numeric", value: "oldstyle-nums proportional-nums", target: "root", format: "raw" },
+  { key: "prose-optical", value: "auto", target: "root", format: "raw" },
 ];
 
 const UNIT_SUFFIX: Record<Format, string> = {
@@ -66,6 +82,9 @@ const UNIT_SUFFIX: Record<Format, string> = {
   rem: "rem",
   ms: "ms",
   percent: "%",
+  ch: "ch",
+  em: "em",
+  unitless: "",
 };
 
 function formatValue(value: ParamValue, format: Format): string {

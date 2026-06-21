@@ -88,10 +88,13 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     expect(hideBtn, "Hide-controls button should be present").toBeTruthy();
     for (const btn of [bookshelfBtn!, hideBtn!]) {
       // ponytail: same proportions as the "Add a book" button (h-46px), minus its fill.
-      // bg-transparent wins via tailwind-merge; only [a]:hover:bg-primary/80 (anchor-only) remains.
+      // bg-transparent wins via tailwind-merge at rest; the default variant's
+      // hover:bg-white/90 survives (no hover: override is added), which is fine —
+      // it's a hover state, not a resting fill. The regex matches bg-white only
+      // as a complete class (surrounded by space or quote), excluding hover:bg-white/90.
       expect(btn).toContain("h-[46px]");
       expect(btn).toContain("bg-transparent");
-      expect(btn).not.toContain("bg-white");
+      expect(btn).not.toMatch(/[\s"]bg-white[\s"]/);
     }
   });
 });

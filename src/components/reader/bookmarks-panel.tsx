@@ -119,7 +119,7 @@ export function BookmarksPanel({
 
   if (isLoading) {
     return (
-      <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+      <div className="px-12 py-8 text-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
@@ -127,7 +127,7 @@ export function BookmarksPanel({
 
   return (
     <div className="flex flex-col">
-      <div className="px-5 py-3">
+      <div className="px-12 py-3">
         <Button
           variant="outline"
           size="sm"
@@ -141,7 +141,7 @@ export function BookmarksPanel({
       </div>
 
       {groups.length === 0 && (
-        <div className="px-5 py-8 text-center">
+        <div className="px-12 py-8 text-center">
           <p className="text-sm font-medium text-foreground">No bookmarks yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Bookmark your place to jump back here later.
@@ -151,7 +151,7 @@ export function BookmarksPanel({
 
       {groups.map((g) => (
         <div key={g.label} className="border-t border-line">
-          <div className="flex items-center justify-between px-5 pt-3 pb-1">
+          <div className="flex items-center justify-between px-12 pt-3 pb-1">
             <span className="truncate pr-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {g.label}
             </span>
@@ -163,13 +163,13 @@ export function BookmarksPanel({
             {g.items.map((b) => (
               <div
                 key={b.id}
-                className="group flex items-center gap-2 py-2 pl-5 pr-2"
+                className="group flex items-center gap-2 py-2 pl-12 pr-12"
               >
                 <button
                   onClick={() => onBookmarkClick(b.cfi)}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <p className="truncate text-sm text-foreground">
+                  <p className="type-toc-section truncate font-normal text-foreground">
                     {b.selectedText || "Bookmark"}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">

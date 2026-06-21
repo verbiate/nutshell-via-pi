@@ -91,7 +91,7 @@ export function HomeView({ userName, books, digestImage }: HomeViewProps) {
     >
       <div className="grid shrink-0 gap-4 lg:grid-cols-[480px_1fr] lg:items-end lg:gap-6">
         <div>
-          <h1 className="font-serif text-[34px] font-medium leading-tight text-espresso">
+          <h1 className="type-header">
             {greeting}, {first}
           </h1>
           <p className="text-base text-muted-foreground">

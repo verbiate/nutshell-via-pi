@@ -45,7 +45,7 @@ interface SavedPosition {
 // ponytail: temporary stand-in for sidebar sections not yet built.
 function SidebarPlaceholder({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[120px] flex-col gap-2 px-5 py-4">
+    <div className="flex min-h-[120px] flex-col gap-2 px-12 py-4">
       {[0, 1, 2].map((i) => (
         <p
           key={i}

@@ -104,24 +104,8 @@ export function BookSettingsPanel({
 
   return (
     <div className="flex flex-col">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-serif text-[15px] font-medium leading-tight text-foreground">
-              Book Settings
-            </h3>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              Any changes will apply to the current book only. You can also apply
-              the change to all books by selecting &ldquo;set as default&rdquo;.
-            </p>
-          </div>
-          <span className="font-serif text-3xl text-muted-foreground/40 select-none">Aa</span>
-        </div>
-      </div>
-
       {/* PAGE ADJUSTMENTS */}
-      <div className="px-5 py-4 flex flex-col gap-5">
+      <div className="px-12 py-4 flex flex-col gap-5">
         <SectionLabel>Page Adjustments</SectionLabel>
 
         {/* Theme swatches */}
@@ -226,7 +210,7 @@ export function BookSettingsPanel({
       </div>
 
       {/* VOICE ADJUSTMENTS */}
-      <div className="px-5 py-4 flex flex-col gap-5">
+      <div className="px-12 py-4 flex flex-col gap-5">
         <SectionLabel>Voice Adjustments</SectionLabel>
 
         {/* Reading speed */}

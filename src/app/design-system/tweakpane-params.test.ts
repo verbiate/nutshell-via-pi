@@ -43,6 +43,15 @@ const expectedDefaults: Record<string, ParamValue> = {
   "tts-bar-blur": 6,
   "toolbar-w": 220,
   "toolbar-shadow-y": 8,
+  "prose-font-size": 18,
+  "prose-line-height": 1.5,
+  "prose-max-width": 65,
+  "prose-font-family": "var(--font-serif)",
+  "prose-text-align": "left",
+  "prose-hyphens": "manual",
+  "prose-ligatures": "common-ligatures",
+  "prose-numeric": "oldstyle-nums proportional-nums",
+  "prose-optical": "auto",
 };
 
 interface DocStub {
@@ -127,6 +136,29 @@ describe("applyParam contract", () => {
     applyParam[key](value);
     expect(doc.gallerySet).toHaveBeenCalledWith(`--${key}`, formatted);
     expect(doc.rootSet).not.toHaveBeenCalledWith(`--${key}`, formatted);
+  });
+
+  it.each([
+    ["prose-font-size", 20, "20px"],
+    ["prose-max-width", 70, "70ch"],
+    ["prose-line-height", 1.65, "1.65"],
+  ] as const)("prose numeric setter %s formats %s -> %s on :root", (key, value, formatted) => {
+    const doc = installDoc({ galleryPresent: true });
+    applyParam[key](value);
+    expect(doc.rootSet).toHaveBeenCalledWith(`--${key}`, formatted);
+  });
+
+  it.each([
+    ["prose-font-family", "var(--font-sans)", "var(--font-sans)"],
+    ["prose-text-align", "justify", "justify"],
+    ["prose-hyphens", "auto", "auto"],
+    ["prose-ligatures", "none", "none"],
+    ["prose-numeric", "lining-nums tabular-nums", "lining-nums tabular-nums"],
+    ["prose-optical", "none", "none"],
+  ] as const)("prose string setter %s writes %s -> %s as-is on :root", (key, value, formatted) => {
+    const doc = installDoc({ galleryPresent: true });
+    applyParam[key](value);
+    expect(doc.rootSet).toHaveBeenCalledWith(`--${key}`, formatted);
   });
 
   it("gallery setters target the .ds-gallery element via querySelector", () => {

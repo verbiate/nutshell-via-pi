@@ -12,10 +12,12 @@ describe("READER_TOOLS", () => {
     ]);
   });
 
-  it("every tool has a label and icon key", () => {
+  it("every tool has a label, description, and icon key", () => {
     for (const tool of READER_TOOLS) {
       expect(typeof tool.label).toBe("string");
       expect(tool.label.length).toBeGreaterThan(0);
+      expect(typeof tool.description).toBe("string");
+      expect(tool.description.length).toBeGreaterThan(0);
       expect(typeof tool.icon).toBe("string");
     }
   });

@@ -204,7 +204,58 @@
     /* Reader sidebar geometry + motion tokens */
     --reader-sidebar-w: 400px;
     --reader-rail-w: 94px;
+    --reader-cover-w: 108px;
     --reader-dur: 250ms;
+
+    /* Typography — UI roles (Figma-locked) */
+    /* ponytail: --type-header-family uses the literal stack (not var(--font-serif))
+       because the @theme inline block emits `--font-serif: var(--font-serif)` on
+       :root, a self-reference that computes to invalid there. The token-stream is
+       what gets inherited, so --type-header-family inherits `var(--font-serif)`
+       and substitution at :root yields invalid. Bypassing with the literal stack
+       matches SERIF_STACK in book-settings-panel.tsx and removes the chain. */
+    --type-header-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --type-header-weight: 400;
+    --type-header-size: 30px;
+    --type-header-line-height: 1.07;
+    --type-header-letter-spacing: -0.005em;
+    --type-header-color: var(--chocolate);
+    --type-header-hanging-punct: first last;
+
+    --type-button-family: var(--font-sans);
+    --type-button-weight: 600;
+    --type-button-size: 15px;
+    --type-button-line-height: 1.35;
+    --type-button-color: var(--chocolate-dark);
+
+    --type-tab-family: var(--font-sans);
+    --type-tab-weight: 600;
+    --type-tab-size: 12px;
+    --type-tab-line-height: 1.35;
+    --type-tab-letter-spacing: -0.025em;
+    --type-tab-color: var(--chocolate-dark);
+
+    /* ponytail: TOC/section title role — IBM Plex Serif, 15px, line-height 1.3.
+       Family is intentionally NOT tokenized here: next/font registers the serif
+       under a hashed --font-serif, so the literal "IBM Plex Serif" stack doesn't
+       resolve — the type-toc-section utility uses var(--font-serif) directly.
+       Weight + color are also omitted (weight flips 400→500 on selection, color
+       is variant-owned) — same reasoning as type-button/type-tab on color. */
+    --type-toc-size: 15px;
+    --type-toc-line-height: 1.3;
+    --type-toc-letter-spacing: -0.005em;
+    --type-toc-hanging-punct: first last;
+
+    /* Typography — prose (Tweakpane-driven, consumed by .ds-prose) */
+    --prose-font-family: var(--font-serif);
+    --prose-font-size: 18px;
+    --prose-line-height: 1.5;
+    --prose-max-width: 65ch;
+    --prose-text-align: left;
+    --prose-hyphens: manual;
+    --prose-ligatures: common-ligatures;
+    --prose-numeric: oldstyle-nums proportional-nums;
+    --prose-optical: auto;
 }
 
 .dark {
@@ -334,6 +385,54 @@
     box-shadow:
         0 3px 3px rgba(0, 0, 0, 0.25),
         0 12px 12px rgba(0, 0, 0, 0.28);
+}
+
+/* ponytail: UI role utilities consume the Figma-locked --type-* tokens.
+   One utility per role; variant classes (text-primary-foreground, text-white
+   on gradient, text-foreground/60 on inactive tabs) still own color for
+   type-button/type-tab. type-header carries its own color (no variants). */
+@utility type-header {
+    font-family: var(--type-header-family);
+    font-weight: var(--type-header-weight);
+    font-size: var(--type-header-size);
+    line-height: var(--type-header-line-height);
+    letter-spacing: var(--type-header-letter-spacing);
+    color: var(--type-header-color);
+    hanging-punctuation: var(--type-header-hanging-punct);
+    /* ponytail: Figma spec also sets leading-trim: both; text-edge: cap;
+       CSS Inline 3 draft — zero stable browser support as of 2026.
+       line-height (1.07) carries the trim intent. Re-add when shipped. */
+}
+
+@utility type-button {
+    font-family: var(--type-button-family);
+    font-weight: var(--type-button-weight);
+    font-size: var(--type-button-size);
+    line-height: var(--type-button-line-height);
+    /* ponytail: color intentionally omitted — variant classes own color.
+       --type-button-color exists for reference/spec display only. */
+}
+
+@utility type-tab {
+    font-family: var(--type-tab-family);
+    font-weight: var(--type-tab-weight);
+    font-size: var(--type-tab-size);
+    line-height: var(--type-tab-line-height);
+    letter-spacing: var(--type-tab-letter-spacing);
+    /* ponytail: color omitted — same reason as type-button. */
+}
+
+@utility type-toc-section {
+    /* ponytail: family uses var(--font-serif) directly — NOT a --type-toc-family
+       token. next/font registers IBM Plex Serif under a hashed --font-serif
+       (see layout.tsx), so the literal "IBM Plex Serif" stack never resolves;
+       var(--font-serif) is what the working `font-serif` utility / title use.
+       Weight + color omitted (selection flips 400/500; color is variant-owned). */
+    font-family: var(--font-serif);
+    font-size: var(--type-toc-size);
+    line-height: var(--type-toc-line-height);
+    letter-spacing: var(--type-toc-letter-spacing);
+    hanging-punctuation: var(--type-toc-hanging-punct);
 }
 
 @layer base {
