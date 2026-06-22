@@ -61,6 +61,13 @@ export interface ReaderClientProps {
   librarySnapshot: LibraryBook[];
   libraryUserName: string | null;
   libraryDigestImage: string | null;
+  // ponytail: token budget inputs for the Explainer's "X% full" indicator.
+  // bookTxtTokens is the dominant term (full book plaintext re-sent on every
+  // follow-up); null = lazy backfill pending (Playground shows "+ pending").
+  // contextWindow is the user's CURRENT tier model's window, resolved server-
+  // side via getOpenRouterConfig + getContextWindow.
+  bookTxtTokens?: number | null;
+  contextWindow?: number;
 }
 
 export function ReaderClient({
@@ -75,6 +82,8 @@ export function ReaderClient({
   librarySnapshot: initialLibrary,
   libraryUserName,
   libraryDigestImage,
+  bookTxtTokens,
+  contextWindow,
 }: ReaderClientProps) {
   const { navigate: sceneNavigate, entering, forwardFlyActive } = useSceneTransition();
   // ponytail: mutable library snapshot state — updated synchronously on
@@ -977,6 +986,8 @@ export function ReaderClient({
                 bookId={bookId}
                 pendingRequest={pendingRequest}
                 onConsumed={() => setPendingRequest(null)}
+                bookTxtTokens={bookTxtTokens}
+                contextWindow={contextWindow}
               />
             ),
             type: (

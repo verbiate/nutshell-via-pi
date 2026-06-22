@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Serif } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { AppToaster } from "@/components/ui/app-toaster";
 import { Providers } from "@/components/providers";
 
 const dmSans = DM_Sans({
@@ -33,7 +33,7 @@ export default function RootLayout({
       <body className={`${dmSans.variable} ${plexSerif.variable} font-sans antialiased`}>
         <Providers>
           {children}
-          <Toaster position="bottom-right" />
+          <AppToaster />
         </Providers>
       </body>
     </html>

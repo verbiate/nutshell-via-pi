@@ -7,6 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Send, Square, Lightbulb, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  countTokens,
+  formatTokens,
+  EXPLAINER_TEMPLATE_TOKENS,
+} from "@/lib/client-tokens";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
 // (list / thread) gated by `activeThreadId`. Receives `pendingPassage` from
@@ -44,12 +49,20 @@ export interface ExplainerThreadsPanelProps {
   bookId: string;
   pendingRequest: PendingExplainerRequest | null;
   onConsumed: () => void;
+  // ponytail: token-budget inputs for the "X% full" indicator. Both come from
+  // the reader server component (resolved via tier config + getContextWindow).
+  // Optional so the panel doesn't crash if a future caller omits them — the
+  // bar simply doesn't render.
+  bookTxtTokens?: number | null;
+  contextWindow?: number;
 }
 
 export function ExplainerThreadsPanel({
   bookId,
   pendingRequest,
   onConsumed,
+  bookTxtTokens,
+  contextWindow,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -330,6 +343,19 @@ export function ExplainerThreadsPanel({
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────
+  // ponytail: during initial stream, activeData isn't loaded yet — derive the
+  // thread type + passage text from the pendingRequest so the indicator can
+  // render meaningfully before the server roundtrip completes.
+  const activeThread = activeData?.thread as
+    | { type?: ThreadType; passageText?: string | null }
+    | undefined;
+  const threadType: ThreadType =
+    activeThread?.type ?? pendingRequest?.type ?? "book";
+  const threadPassageText: string | null =
+    activeThread?.passageText ??
+    (pendingRequest?.type === "passage" ? pendingRequest.text : null) ??
+    null;
+
   if (activeThreadId || streamingInitial) {
     return (
       <ThreadView
@@ -343,6 +369,10 @@ export function ExplainerThreadsPanel({
         onSend={sendFollowup}
         onStop={stop}
         onBack={backToList}
+        threadType={threadType}
+        threadPassageText={threadPassageText}
+        bookTxtTokens={bookTxtTokens}
+        contextWindow={contextWindow}
       />
     );
   }
@@ -443,6 +473,10 @@ function ThreadView({
   onSend,
   onStop,
   onBack,
+  threadType,
+  threadPassageText,
+  bookTxtTokens,
+  contextWindow,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -454,6 +488,10 @@ function ThreadView({
   onSend: () => void;
   onStop: () => void;
   onBack: () => void;
+  threadType: ThreadType;
+  threadPassageText: string | null;
+  bookTxtTokens?: number | null;
+  contextWindow?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -471,6 +509,27 @@ function ThreadView({
       ? "Refining the explanation…"
       : null;
 
+  // ponytail: X% full indicator. The dominant term is bookTxtTokens — the
+  // full book plaintext is re-sent in the system prompt on every follow-up
+  // (see rebuildSystemPrompt in explainer-threads.ts). Also counts the
+  // passage focus text (passage threads), the initial explainer response
+  // (sent as the first assistant message), all follow-up messages, the
+  // current draft, and a small per-type template-overhead constant.
+  // Returns null when inputs are missing (book size pending or window
+  // unknown) — caller hides the indicator in that case.
+  const indicator = computeContextIndicator({
+    bookTxtTokens,
+    contextWindow,
+    initialContent,
+    messages,
+    inputDraft: input,
+    threadType,
+    threadPassageText,
+  });
+  const pct = indicator?.pct ?? null;
+  const overBudget = indicator?.overBudget ?? false;
+  const fullLabel = indicator?.label ?? "";
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-2 py-2 border-b border-border flex items-center gap-2">
@@ -485,7 +544,29 @@ function ThreadView({
           Back
         </Button>
         <span className="text-xs text-muted-foreground">Discussion</span>
+        {pct !== null && (
+          <span
+            className="ml-auto text-[11px] tabular-nums text-muted-foreground"
+            title={fullLabel}
+          >
+            {Math.round(pct)}% full
+          </span>
+        )}
       </div>
+      {pct !== null && (
+        <div
+          className="h-1 w-full bg-muted overflow-hidden"
+          title={fullLabel}
+        >
+          <div
+            className={cn(
+              "h-full transition-all",
+              overBudget ? "bg-destructive" : "bg-primary"
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {/* Initial explainer response */}
@@ -585,4 +666,63 @@ function formatRelative(iso: string): string {
   if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
   if (sec < 604800) return `${Math.floor(sec / 86400)}d`;
   return new Date(iso).toLocaleDateString();
+}
+
+// ponytail: advisory "X% full" estimate for an explainer thread. Returns null
+// when bookTxtTokens or contextWindow is missing — caller hides the indicator.
+//
+// Token accounting follows what rebuildSystemPrompt actually puts on the wire
+// on a follow-up turn:
+//   1. Full book plaintext (book.txtTokens) — the dominant term; re-sent every turn
+//   2. Passage focus text (thread.passageText) — passage type only
+//   3. Initial explainer response — sent as the first assistant message
+//   4. All follow-up messages (user + assistant)
+//   5. Current draft (so the bar moves as the user types)
+//   6. EXPLAINER_TEMPLATE_TOKENS — constant scaffolding around the substitutions
+//
+// Known undercount: section-type threads re-extract section text from the EPUB
+// on every follow-up (not stored on the thread), so we can't count it client-
+// side. Typically 1-5% of the book — well under the template-overhead slack.
+function computeContextIndicator(args: {
+  bookTxtTokens?: number | null;
+  contextWindow?: number;
+  initialContent: string;
+  messages: Message[];
+  inputDraft: string;
+  threadType: ThreadType;
+  threadPassageText: string | null;
+}): { pct: number; overBudget: boolean; label: string } | null {
+  const {
+    bookTxtTokens,
+    contextWindow,
+    initialContent,
+    messages,
+    inputDraft,
+    threadPassageText,
+  } = args;
+  // Hide while inputs are unresolved. bookTxtTokens === null means the lazy
+  // backfill hasn't run; contextWindow === undefined/0 means the server
+  // couldn't resolve the tier model. In both cases the percentage would be
+  // meaningless, so we render nothing rather than mislead.
+  if (typeof bookTxtTokens !== "number" || !contextWindow || contextWindow <= 0) {
+    return null;
+  }
+
+  const messagesTokens = messages.reduce(
+    (s, m) => s + countTokens(m.content),
+    0
+  );
+  const usedTokens =
+    bookTxtTokens +
+    countTokens(initialContent) +
+    countTokens(threadPassageText ?? "") +
+    messagesTokens +
+    countTokens(inputDraft) +
+    EXPLAINER_TEMPLATE_TOKENS;
+
+  const pct = Math.min(100, (usedTokens / contextWindow) * 100);
+  const overBudget = usedTokens > contextWindow * 0.9;
+  const label = `~${formatTokens(usedTokens)} of ${formatTokens(contextWindow)} tokens (${Math.round(pct)}% full)`;
+
+  return { pct, overBudget, label };
 }

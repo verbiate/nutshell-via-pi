@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { countTokens as _countTokens } from "gpt-tokenizer/encoding/cl100k_base";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,21 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
 import { LANGUAGES } from "@/lib/languages";
-
-// ponytail: same encoding as the server (src/server/services/tokens.ts). cl100k_base
-// is the de-facto approximation across GPT/Claude/Llama/Gemini English.
-function countTokens(text: string): number {
-  if (!text) return 0;
-  return _countTokens(text);
-}
-
-// ponytail: strip OpenRouter variant suffixes (:nitro, :thinking, etc.) —
-// matches the server-side model-info lookup. Mirrors route logic so local
-// table hits and remote fetches agree.
-function stripVariant(slug: string): string {
-  const colonIdx = slug.indexOf(":");
-  return colonIdx > 0 ? slug.slice(0, colonIdx) : slug;
-}
+import { countTokens, formatTokens } from "@/lib/client-tokens";
 
 type Tier = "regular" | "pro" | "admin";
 
@@ -68,33 +53,6 @@ type SelectedBook = {
   author: string | null;
   txtTokens: number | null; // null = not yet computed (lazy backfill pending)
 };
-
-// ponytail: instant local lookup for common models; misses hit /api/admin/playground/model-info
-// which proxies OpenRouter with a 24h server cache. Add entries here as needed.
-const CONTEXT_WINDOWS: Record<string, number> = {
-  "google/gemini-2.0-flash-001": 1_048_576,
-  "google/gemini-2.5-flash": 1_048_576,
-  "google/gemini-flash-1.5": 1_000_000,
-  "anthropic/claude-sonnet-4.6": 200_000,
-  "anthropic/claude-sonnet-4.5": 200_000,
-  "anthropic/claude-3.5-sonnet": 200_000,
-  "anthropic/claude-3-5-sonnet": 200_000,
-  "anthropic/claude-3-opus": 200_000,
-  "anthropic/claude-haiku-4.5": 200_000,
-  "openai/gpt-4o": 128_000,
-  "openai/gpt-4o-mini": 128_000,
-  "openai/gpt-4-turbo": 128_000,
-  "openai/gpt-4": 8_192,
-  "meta-llama/llama-3.1-405b-instruct": 128_000,
-};
-
-const FALLBACK_CONTEXT_WINDOW = 120_000;
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1000)}K`;
-  return String(n);
-}
 
 export default function PlaygroundPage() {
   // --- Admin session (for default target language) ---
@@ -206,12 +164,9 @@ export default function PlaygroundPage() {
   const activeModelLabel = activeModel ?? "(not configured)";
 
   // --- Context window for the active model ---
-  // ponytail: local lookup is computed during render (pure). Remote fetch is
-  // done in an effect that only calls setState from async callbacks, never
-  // synchronously — avoids cascading renders.
-  const localLookup = activeModel
-    ? CONTEXT_WINDOWS[stripVariant(activeModel)]
-    : undefined;
+  // ponytail: always resolve via /api/admin/playground/model-info. The server
+  // wraps getContextWindow (model-info.ts) which hits OpenRouter's model list
+  // with a 24h process cache and falls back to FALLBACK_CONTEXT on any error.
   const [remote, setRemote] = useState<{
     model: string;
     window: number;
@@ -219,7 +174,7 @@ export default function PlaygroundPage() {
   } | null>(null);
 
   useEffect(() => {
-    if (!activeModel || localLookup) return;
+    if (!activeModel) return;
     let cancelled = false;
     fetch(
       `/api/admin/playground/model-info?model=${encodeURIComponent(activeModel)}`
@@ -237,20 +192,22 @@ export default function PlaygroundPage() {
         if (cancelled) return;
         setRemote({
           model: activeModel,
-          window: FALLBACK_CONTEXT_WINDOW,
+          window: 0,
           source: "fallback",
         });
       });
     return () => {
       cancelled = true;
     };
-  }, [activeModel, localLookup]);
+  }, [activeModel]);
 
+  // ponytail: while a fetch is in flight or doesn't match the current model,
+  // window is undefined and we render a loading state. The server's fallback
+  // (120K) is reported as source="fallback" via the API, not synthesized here.
   const contextWindow =
-    localLookup ??
-    (remote?.model === activeModel ? remote.window : FALLBACK_CONTEXT_WINDOW);
-  const contextSource: "lookup" | "cache" | "fetch" | "fallback" | "loading" =
-    localLookup ? "lookup" : remote?.model === activeModel ? remote.source : "loading";
+    remote?.model === activeModel ? remote.window : undefined;
+  const contextSource: "cache" | "fetch" | "fallback" | "loading" =
+    remote?.model === activeModel ? remote.source : "loading";
 
   // ponytail: switching tier or customModel invalidates the conversation — the
   // prior turns were against a different model/context, so keeping them would
@@ -330,9 +287,12 @@ export default function PlaygroundPage() {
     messages.reduce((s, m) => s + countTokens(m.content), 0) +
     countTokens(input);
   const usedTokens = bookTokens + chatTokens;
-  const window = contextWindow ?? FALLBACK_CONTEXT_WINDOW;
+  // ponytail: window may be undefined while the model-info fetch is in flight
+  // or 0 on fallback-error. Hide the bar (pct=0, overBudget=false) until it
+  // resolves; the label still shows used tokens + "(loading)".
+  const window = contextWindow ?? 0;
   const pct = window > 0 ? Math.min(100, (usedTokens / window) * 100) : 0;
-  const overBudget = usedTokens > window * 0.9;
+  const overBudget = window > 0 && usedTokens > window * 0.9;
 
   // Auto-scroll on new content
   useEffect(() => {

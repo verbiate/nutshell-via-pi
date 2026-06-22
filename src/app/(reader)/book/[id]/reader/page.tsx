@@ -2,6 +2,8 @@ import { readdir } from "fs/promises";
 import path from "path";
 import { requireAuth } from "@/lib/auth-guards";
 import { getBookForUser, getPersonalLibrary } from "@/server/services/library";
+import { getOpenRouterConfig } from "@/server/services/openrouter";
+import { getContextWindow } from "@/server/services/model-info";
 import { redirect } from "next/navigation";
 import { ReaderClient } from "@/components/reader/reader-client";
 
@@ -30,11 +32,17 @@ export default async function ReaderPage({
 }) {
   const { id } = await params;
   const session = await requireAuth();
-  const [book, librarySnapshot, digestImage] = await Promise.all([
+  // ponytail: resolve the user's tier model + its context window alongside
+  // the book and library fetches so the Explainer panel can show an "X% full"
+  // indicator without a separate roundtrip. Both are cheap: getOpenRouterConfig
+  // is one PK lookup, getContextWindow hits a 24h process cache.
+  const [{ model }, book, librarySnapshot, digestImage] = await Promise.all([
+    getOpenRouterConfig(session.role),
     getBookForUser(id, session.id),
     getPersonalLibrary(session.id),
     pickRandomDigestImage(),
   ]);
+  const { contextLength: contextWindow } = await getContextWindow(model);
 
   if (!book) {
     redirect("/my-library");
@@ -55,6 +63,8 @@ export default async function ReaderPage({
       librarySnapshot={librarySnapshot}
       libraryUserName={session.name}
       libraryDigestImage={digestImage}
+      bookTxtTokens={book.txtTokens}
+      contextWindow={contextWindow}
     />
   );
 }
