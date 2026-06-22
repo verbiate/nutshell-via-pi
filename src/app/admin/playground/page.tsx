@@ -267,6 +267,10 @@ export default function PlaygroundPage() {
     setSelectedBooks((prev) => prev.filter((b) => b.id !== id));
     setMessages([]);
   }
+  function clearBooks() {
+    setSelectedBooks([]);
+    setMessages([]);
+  }
 
   // Token estimates for the indicator.
   // Books: real BPE count from DB (cl100k_base), computed at upload or
@@ -570,23 +574,37 @@ export default function PlaygroundPage() {
           <Label className="text-xs text-muted-foreground">
             Books in context ({selectedBooks.length})
           </Label>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setBookModalOpen(true)}
-            // ponytail: Playground fills the book template per attached book.
-            // Multi-book fill is a future task; hard-cap at 1 here so the
-            // backend constraint (chat/route.ts) can't be bypassed from the UI.
-            disabled={streaming || selectedBooks.length >= 1}
-            title={
-              selectedBooks.length >= 1
-                ? "Playground supports at most one book. Remove the attached book to add another."
-                : undefined
-            }
-          >
-            <BookPlus className="h-3.5 w-3.5 mr-1" />
-            Add book
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedBooks.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearBooks}
+                disabled={streaming}
+                title="Remove all books from context"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Clear all books
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setBookModalOpen(true)}
+              // ponytail: Playground fills the book template per attached book.
+              // Multi-book fill is a future task; hard-cap at 1 here so the
+              // backend constraint (chat/route.ts) can't be bypassed from the UI.
+              disabled={streaming || selectedBooks.length >= 1}
+              title={
+                selectedBooks.length >= 1
+                  ? "Playground supports at most one book. Remove the attached book to add another."
+                  : undefined
+              }
+            >
+              <BookPlus className="h-3.5 w-3.5 mr-1" />
+              Add book
+            </Button>
+          </div>
         </div>
         {selectedBooks.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
