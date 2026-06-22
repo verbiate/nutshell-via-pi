@@ -141,3 +141,44 @@ export async function buildPassagePrompt(
     promptVersion: template.version,
   };
 }
+
+// ponytail: two-phase pass-2 builder. The orchestrator needs the template's
+// version UP FRONT (for the contentHash salt, before pass 1 runs) but can only
+// fill {{previous_response}} AFTER pass 1 returns. Splitting the load from
+// the fill avoids a second template lookup and keeps each function single-
+// responsibility. Caller passes bookText through from BuiltPrompt — re-reading
+// from disk would double the IO cost on every two-pass request.
+
+export async function loadBookPass2Template(): Promise<{
+  content: string;
+  version: number;
+}> {
+  const template = await db.promptTemplate.findUnique({
+    where: { type: "book_pass2" },
+  });
+  if (!template) throw new Error("book_pass2 prompt template not found");
+  return { content: template.content, version: template.version };
+}
+
+export async function buildBookPass2Prompt(
+  bookId: string,
+  language: string,
+  previousResponse: string,
+  bookText: string
+): Promise<{ prompt: string; promptVersion: number }> {
+  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+  if (!book) throw new Error("Book not found");
+
+  const { content, version } = await loadBookPass2Template();
+
+  const prompt = fillTemplate(content, {
+    title: book.title,
+    author: book.author ?? "Unknown",
+    language: book.language,
+    target_language: language,
+    book_text: bookText,
+    previous_response: previousResponse,
+  });
+
+  return { prompt, promptVersion: version };
+}

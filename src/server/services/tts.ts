@@ -24,7 +24,7 @@ export interface TtsAudioCreateInput {
 export interface GenerateTtsParams {
   bookId: string;
   sectionHref: string;
-  tier: "regular" | "pro";
+  tier: "regular" | "pro" | "admin";
   signal?: AbortSignal;
 }
 

@@ -38,7 +38,9 @@ export async function POST(request: Request) {
 
     const { bookId, type, language, sectionHref, passageText, passageCfi } = body;
     const preferredLanguage = language || user.preferredLanguage || "en";
-    const tier = user.role === "pro" ? "pro" : "regular";
+    // ponytail: respect user's actual tier (regular/pro/admin) — admin requests
+    // use admin-tier key/model, not regular's.
+    const tier = user.role as "regular" | "pro" | "admin";
 
     if (!bookId || !type) {
       return new Response(

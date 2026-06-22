@@ -36,6 +36,7 @@ import {
   createExplainer,
   computeContentHash,
 } from "@/server/services/explainer";
+import { fillTemplate } from "@/server/services/prompt-builder";
 
 describe("EXP-05/06: Explainer cache", () => {
   beforeEach(() => {
@@ -59,6 +60,21 @@ describe("EXP-05/06: Explainer cache", () => {
     it("differs by promptVersion", () => {
       const h1 = computeContentHash("hello", 1, "book");
       const h2 = computeContentHash("hello", 2, "book");
+      expect(h1).not.toBe(h2);
+    });
+
+    it("differs when extraSalt is supplied vs omitted", () => {
+      // ponytail: two-pass book explainers share the book template version
+      // with one-pass but must not collide in the cache. extraSalt encodes the
+      // pass-2 template version so the rows diverge.
+      const h1 = computeContentHash("hello", 1, "book");
+      const h2 = computeContentHash("hello", 1, "book", undefined, "twoPass:3");
+      expect(h1).not.toBe(h2);
+    });
+
+    it("differs by extraSalt value (pass-2 version bump invalidates cache)", () => {
+      const h1 = computeContentHash("hello", 1, "book", undefined, "twoPass:3");
+      const h2 = computeContentHash("hello", 1, "book", undefined, "twoPass:4");
       expect(h1).not.toBe(h2);
     });
   });
@@ -162,5 +178,26 @@ describe("EXP-07: Grounding", () => {
     expect(result.prompt).toContain("Title: Test Book");
     expect(result.prompt).toContain("Text: hello world");
     expect(result.promptVersion).toBe(1);
+  });
+});
+
+describe("fillTemplate: two-pass tokens", () => {
+  it("substitutes {{previous_response}} and {{book_text}}", () => {
+    const prompt = fillTemplate(
+      "Source: {{book_text}}\nDraft: {{previous_response}}",
+      {
+        book_text: "BOOK",
+        previous_response: "DRAFT",
+      }
+    );
+    expect(prompt).toBe("Source: BOOK\nDraft: DRAFT");
+  });
+
+  it("leaves unknown tokens as empty strings (fillTemplate contract)", () => {
+    // ponytail: this is the silent-failure mode admins hit if they typo a
+    // token name. Pinning the behavior so a future "stricter" change is
+    // intentional and visible.
+    const prompt = fillTemplate("[{{missing_token}}]", {});
+    expect(prompt).toBe("[]");
   });
 });

@@ -6,6 +6,7 @@ import {
   getExplainer,
 } from "./explainer";
 import { recordError } from "./errors";
+import { getSetting } from "./settings";
 
 // ponytail: explainer-threads wraps the existing generateExplainer cache logic
 // and adds the per-user multi-turn thread model. Initial response uses the
@@ -13,11 +14,15 @@ import { recordError } from "./errors";
 // (ExplainerMessage table).
 
 export interface InitialResponseEvent {
-  type: "chunk" | "cached" | "thread" | "error";
+  type: "chunk" | "cached" | "thread" | "error" | "status";
   chunk?: string;
   cached?: boolean;
   threadId?: string;
   error?: string;
+  // Two-pass progress: "explaining" = hidden pass 1 running; "refining" =
+  // streamed pass 2 running. Only emitted for book type when the
+  // bookTwoPassEnabled setting is on.
+  stage?: "explaining" | "refining";
 }
 
 export interface CreateThreadParams {
@@ -28,7 +33,7 @@ export interface CreateThreadParams {
   passageCfi?: string;
   sectionHref?: string;
   language: string;
-  tier: "regular" | "pro";
+  tier: "regular" | "pro" | "admin";
 }
 
 /**
@@ -43,11 +48,32 @@ export async function* streamInitialThreadResponse(
 
   // Build the prompt + source text via existing prompt-builder
   const promptData = await buildPromptData(params);
+
+  // Two-pass book explainer: when the admin toggle is on and this is a book
+  // request, run a hidden pass-1 explanation then a streamed pass-2 refinement.
+  // ponytail: the toggle is read every request (one AppSetting PK lookup) so
+  // flipping it takes effect immediately without a redeploy.
+  const twoPass =
+    type === "book" && (await getSetting("bookTwoPassEnabled")) === "true";
+
+  // ponytail: load the pass-2 template UP FRONT only to get its version for
+  // the contentHash salt (cache key must be stable before pass 1 runs). The
+  // actual prompt fill happens AFTER pass 1 returns, inside the streamBookTwoPass
+  // callback — {{previous_response}} can't exist until then.
+  let pass2Version = 0;
+  if (twoPass) {
+    const { loadBookPass2Template } = await import("./prompt-builder");
+    pass2Version = (await loadBookPass2Template()).version;
+  }
+
   const contentHash = computeContentHash(
     promptData.sourceText,
     promptData.promptVersion,
     type,
-    type === "section" || type === "passage" ? promptData.bookMd5 : undefined
+    type === "section" || type === "passage" ? promptData.bookMd5 : undefined,
+    // ponytail: salt the hash so two-pass rows never collide with one-pass book
+    // rows, and editing the pass-2 template invalidates independently.
+    twoPass ? `twoPass:${pass2Version}` : undefined
   );
 
   // Check cache (shared across all users)
@@ -66,7 +92,7 @@ export async function* streamInitialThreadResponse(
     yield { type: "chunk", chunk: cached.content };
   } else {
     // Stream from OpenRouter (mirror explainer.ts:148-167 logic)
-    const { streamExplainer, getOpenRouterConfig } = await import("./openrouter");
+    const { streamExplainer, streamBookTwoPass, getOpenRouterConfig } = await import("./openrouter");
     const { apiKey, model } = await getOpenRouterConfig(tier);
     if (!apiKey) {
       await recordError({
@@ -112,14 +138,42 @@ export async function* streamInitialThreadResponse(
 
     let fullContent = "";
     try {
-      for await (const chunk of streamExplainer({
-        prompt: promptData.prompt,
-        apiKey,
-        model,
-        maxTokens,
-      })) {
-        fullContent += chunk;
-        yield { type: "chunk", chunk };
+      if (twoPass) {
+        // Pass 1 runs hidden (accumulated inside streamBookTwoPass); pass 2 is
+        // streamed to the client. Status events let the UI show progress
+        // during the silent pass-1 window. The callback fills {{previous_response}}
+        // + {{book_text}} once pass 1's output is in hand.
+        const { buildBookPass2Prompt } = await import("./prompt-builder");
+        for await (const evt of streamBookTwoPass({
+          pass1Prompt: promptData.prompt,
+          buildPass2Prompt: (pass1Response) =>
+            buildBookPass2Prompt(
+              bookId,
+              language,
+              pass1Response,
+              promptData.bookText
+            ).then((r) => r.prompt),
+          apiKey,
+          model,
+          maxTokens,
+        })) {
+          if (evt.type === "status") {
+            yield { type: "status", stage: evt.stage };
+          } else if (evt.type === "chunk" && evt.chunk) {
+            fullContent += evt.chunk;
+            yield { type: "chunk", chunk: evt.chunk };
+          }
+        }
+      } else {
+        for await (const chunk of streamExplainer({
+          prompt: promptData.prompt,
+          apiKey,
+          model,
+          maxTokens,
+        })) {
+          fullContent += chunk;
+          yield { type: "chunk", chunk };
+        }
       }
     } catch (err: any) {
       const message = err instanceof OpenRouterError ? err.message : "Generation failed";
@@ -128,7 +182,7 @@ export async function* streamInitialThreadResponse(
         message,
         userId,
         bookId,
-        context: { tier, model, type, statusCode: err?.statusCode },
+        context: { tier, model, type, statusCode: err?.statusCode, twoPass },
       });
       yield { type: "error", error: message };
       return;

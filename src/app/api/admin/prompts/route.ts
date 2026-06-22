@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-guards";
-import { getPromptTemplates, getPromptTemplate, updatePromptTemplate } from "@/server/services/admin";
+import {
+  getPromptTemplates,
+  updatePromptTemplate,
+  getBookTwoPassEnabled,
+  updateBookTwoPassEnabled,
+} from "@/server/services/admin";
 
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json({ templates: await getPromptTemplates() });
+    const [templates, twoPassEnabled] = await Promise.all([
+      getPromptTemplates(),
+      getBookTwoPassEnabled(),
+    ]);
+    return NextResponse.json({ templates, twoPassEnabled });
   } catch (error: any) {
     if (error.statusCode === 401) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     if (error.statusCode === 403) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
@@ -17,13 +26,30 @@ export async function PATCH(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = await request.json();
-    const { type, content } = body as { type: string; content: string };
+    const { type, content, twoPassEnabled } = body as {
+      type?: string;
+      content?: string;
+      twoPassEnabled?: boolean;
+    };
 
-    if (!type || !content) {
-      return NextResponse.json({ error: "Type and content required" }, { status: 400 });
+    // ponytail: one route handles both template edits and the toggle. Either
+    // arm is optional, but at least one must be present.
+    const hasTemplateUpdate = Boolean(type && content);
+    const hasToggleUpdate = typeof twoPassEnabled === "boolean";
+    if (!hasTemplateUpdate && !hasToggleUpdate) {
+      return NextResponse.json(
+        { error: "Provide {type, content} and/or {twoPassEnabled}" },
+        { status: 400 }
+      );
     }
 
-    await updatePromptTemplate(admin.id, type, content);
+    if (hasTemplateUpdate) {
+      await updatePromptTemplate(admin.id, type as string, content as string);
+    }
+    if (hasToggleUpdate) {
+      await updateBookTwoPassEnabled(admin.id, twoPassEnabled as boolean);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     if (error.statusCode === 401) return NextResponse.json({ error: "Authentication required" }, { status: 401 });

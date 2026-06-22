@@ -2,6 +2,11 @@ import { db } from "@/server/db";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+// ponytail: extracted so the single-pass streamExplainer and the two-pass
+// pass-2 messages array share one source of truth for the system persona.
+export const EXPLAINER_SYSTEM_MESSAGE =
+  "You are an expert literary analyst. Your task is to explain the provided text accurately, without adding outside information.";
+
 export interface StreamExplainerOptions {
   prompt: string;
   apiKey: string;
@@ -69,8 +74,7 @@ export async function* streamExplainer(
       messages: [
         {
           role: "system",
-          content:
-            "You are an expert literary analyst. Your task is to explain the provided text accurately, without adding outside information.",
+          content: EXPLAINER_SYSTEM_MESSAGE,
         },
         { role: "user", content: options.prompt },
       ],
@@ -194,5 +198,73 @@ export async function* streamChat(
     }
   } finally {
     reader.releaseLock();
+  }
+}
+
+// ---- Two-pass book explainer ----
+
+export interface BookTwoPassEvent {
+  type: "status" | "chunk";
+  // "explaining" = pass 1 (hidden) running; "refining" = pass 2 (streamed) running.
+  stage?: "explaining" | "refining";
+  chunk?: string;
+}
+
+export interface StreamBookTwoPassOptions {
+  pass1Prompt: string;
+  // ponytail: pass-2 prompt is built from pass-1's output, which is accumulated
+  // inside this function. Caller hands a builder so it stays the owner of how
+  // {{previous_response}} + {{book_text}} get filled — streamBookTwoPass stays
+  // agnostic about prompt-builder.ts. streamExplainer adds the system message
+  // internally on pass 2, preserving persona consistency between passes.
+  buildPass2Prompt: (pass1Response: string) => string | Promise<string>;
+  apiKey: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Run a two-pass book explainer. Pass 1 generates a full explanation
+ * (accumulated server-side, NEVER yielded to the caller). Pass 2 refines
+ * pass 1's output; its chunks are yielded.
+ *
+ * Pass 2 is now token-pattern: the caller's buildPass2Prompt callback inlines
+ * {{previous_response}} (and {{book_text}} etc.) into the pass-2 template,
+ * and pass 2 runs as a single streamExplainer call. The earlier 4-message
+ * chat array is gone — pass 2 sees pass 1's draft only because the caller
+ * inlined it into the prompt body. Status events bracket each phase so the
+ * client UI can show progress during the silent pass-1 window.
+ */
+export async function* streamBookTwoPass(
+  options: StreamBookTwoPassOptions
+): AsyncGenerator<BookTwoPassEvent, void, unknown> {
+  // Pass 1: accumulate, do not surface. Reuses streamExplainer so the pass-1
+  // request shape (system message, temperature, max_tokens) matches one-pass.
+  yield { type: "status", stage: "explaining" };
+  let pass1Response = "";
+  for await (const chunk of streamExplainer({
+    prompt: options.pass1Prompt,
+    apiKey: options.apiKey,
+    model: options.model,
+    temperature: options.temperature,
+    maxTokens: options.maxTokens,
+  })) {
+    pass1Response += chunk;
+  }
+
+  // Pass 2: token-pattern refinement. Caller inlines pass-1 output via the
+  // callback; streamExplainer wraps the resulting prompt with the system
+  // persona, so pass 2 has the same shape as pass 1.
+  yield { type: "status", stage: "refining" };
+  const pass2Prompt = await options.buildPass2Prompt(pass1Response);
+  for await (const chunk of streamExplainer({
+    prompt: pass2Prompt,
+    apiKey: options.apiKey,
+    model: options.model,
+    temperature: options.temperature,
+    maxTokens: options.maxTokens,
+  })) {
+    yield { type: "chunk", chunk };
   }
 }

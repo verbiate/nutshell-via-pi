@@ -6,7 +6,7 @@ export interface ExplainerLookup {
   contentHash: string;
   language: string;
   contentType: "book" | "section" | "passage";
-  tier: "regular" | "pro";
+  tier: "regular" | "pro" | "admin";
 }
 
 export interface ExplainerCreateInput {
@@ -41,13 +41,18 @@ export function computeContentHash(
   sourceText: string,
   promptVersion: number,
   promptType: string,
-  bookMd5?: string
+  bookMd5?: string,
+  extraSalt?: string
 ): string {
   // ponytail: bookMd5 added so that the same section/passage text in two
   // different books gets distinct cache rows. Without it, a public-domain
   // Bible chapter quoted in two books would share an explainer — wrong, since
   // 'connections to other parts' should differ. Book type omits it (sourceText
   // IS the book, so already unique per book).
+  //
+  // extraSalt: used by two-pass book explainers so the refined (pass-2) cache
+  // row never collides with the one-pass book row, and a pass-2 template edit
+  // (bumping its version) invalidates independently of the book template.
   const hash = crypto.createHash("sha256");
   hash.update(promptType);
   hash.update("\x00");
@@ -58,6 +63,10 @@ export function computeContentHash(
   }
   hash.update("\x00");
   hash.update(String(promptVersion));
+  if (extraSalt) {
+    hash.update("\x00");
+    hash.update(extraSalt);
+  }
   return hash.digest("hex");
 }
 
@@ -81,7 +90,7 @@ export interface GenerateExplainerParams {
   bookId: string;
   type: "book" | "section" | "passage";
   language: string;
-  tier: "regular" | "pro";
+  tier: "regular" | "pro" | "admin";
   sectionHref?: string;
   passageText?: string;
 }

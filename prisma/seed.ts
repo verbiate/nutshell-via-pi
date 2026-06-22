@@ -37,6 +37,36 @@ async function main() {
     },
   });
 
+  // ponytail: pass-2 refinement template for the two-pass book explainer.
+  // Token-pattern: {{previous_response}} is filled with pass-1's hidden output,
+  // {{book_text}} lets the model re-ground in the source during refinement.
+  // Sent as a single user message via streamExplainer (system persona added
+  // internally) — NOT a 4-message chat array anymore.
+  // update:{} is intentionally NON-empty: re-running the seed overwrites any
+  // prior admin edits to this default so chat-pattern-era content gets migrated
+  // forward automatically. Bump version on content changes to invalidate cache.
+  await prisma.promptTemplate.upsert({
+    where: { type: "book_pass2" },
+    update: {
+      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.",
+      version: 2,
+    },
+    create: {
+      type: "book_pass2",
+      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.",
+      version: 2,
+    },
+  });
+
+  // ponytail: global off switch for the two-pass book explainer. Default off
+  // so existing behavior is unchanged until an admin opts in from the Prompt
+  // Templates admin page. Read via settings.ts:getSetting at request time.
+  await prisma.appSetting.upsert({
+    where: { key: "bookTwoPassEnabled" },
+    update: {},
+    create: { key: "bookTwoPassEnabled", value: "false" },
+  });
+
   // OpenRouterConfig: seed default model assignments per user type (EXP-09)
   // apiKey falls back to env var at runtime via getOpenRouterConfig()
   for (const userType of ["regular", "pro", "admin"] as const) {

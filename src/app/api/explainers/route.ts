@@ -19,7 +19,8 @@ export async function GET(request: Request) {
     const bookId = searchParams.get("bookId");
     const type = searchParams.get("type") as "book" | "section" | "passage";
     const language = searchParams.get("lang") || user.preferredLanguage || "en";
-    const tier = user.role === "pro" ? "pro" : "regular";
+    // ponytail: respect user's actual tier (regular/pro/admin) — see threads/route.ts
+    const tier = user.role as "regular" | "pro" | "admin";
     const sectionHref = searchParams.get("sectionHref");
     const passageText = searchParams.get("passageText");
 
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
       contentHash,
       language,
       contentType: type,
-      tier: user.role === "pro" ? "pro" : "regular",
+      tier: user.role as "regular" | "pro" | "admin",
     });
 
     if (existing) {

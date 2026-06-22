@@ -41,7 +41,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const tier = user.role === "pro" ? "pro" : "regular";
+    // ponytail: respect user's actual tier (regular/pro/admin) — see threads/route.ts
+    const tier = user.role as "regular" | "pro" | "admin";
 
     // Pass request.signal for cancellation support
     const result = await generateTtsAudio({

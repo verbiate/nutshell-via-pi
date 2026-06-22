@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { countTokens as _countTokens } from "gpt-tokenizer/encoding/cl100k_base";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -18,10 +25,12 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Send, Square, Trash2, Save, RotateCcw, ChevronDown, ChevronUp,
-  BookPlus, X, Search,
+  Send, Square, Trash2, RotateCcw, ChevronDown, ChevronUp,
+  BookPlus, X, Search, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/hooks/use-session";
+import { LANGUAGES } from "@/lib/languages";
 
 // ponytail: same encoding as the server (src/server/services/tokens.ts). cl100k_base
 // is the de-facto approximation across GPT/Claude/Llama/Gemini English.
@@ -88,7 +97,10 @@ function formatTokens(n: number): string {
 }
 
 export default function PlaygroundPage() {
-  const queryClient = useQueryClient();
+  // --- Admin session (for default target language) ---
+  const { user } = useSession();
+  const preferredLanguage: string =
+    (user as any)?.preferredLanguage || "en";
 
   // --- Config (tier → model map) ---
   const { data: configData } = useQuery({
@@ -103,7 +115,13 @@ export default function PlaygroundPage() {
   const modelForTier = (t: Tier) =>
     configs.find((c) => c.userType === t)?.model ?? null;
 
-  // --- System prompt: saved vs working copy ---
+  // --- Prompt overrides: session-local scratchpads, one per template. ---
+  // Canonical editors live at /admin/prompts. Playground fields initialize from
+  // saved values (system prompt via its own API, templates via the prompts API)
+  // and from the admin's preferredLanguage for the language dropdown. Edits are
+  // literal — what's in the field is what gets sent. Reset per field restores
+  // the saved baseline. Only `system` and `book` are wired into the discussion
+  // route today; section/passage/book_pass2 are visible but disabled.
   const { data: promptData } = useQuery({
     queryKey: ["admin-system-prompt"],
     queryFn: async () => {
@@ -112,43 +130,61 @@ export default function PlaygroundPage() {
       return res.json();
     },
   });
-  const savedPrompt: string | null = promptData?.prompt ?? null;
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [promptOpen, setPromptOpen] = useState(false);
-  // ponytail: hydrate working copy once after first read of savedPrompt. Avoids
-  // clobbering edits if the query refetches, and avoids a permanent dirty state
-  // from the empty-string default. Ref tracks "have we seeded yet".
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (!seededRef.current && promptData) {
-      setSystemPrompt(savedPrompt ?? "");
-      seededRef.current = true;
-    }
-  }, [promptData, savedPrompt]);
+  const savedSystemPrompt: string = promptData?.prompt ?? "";
 
-  const promptDirty = systemPrompt !== (savedPrompt ?? "");
-
-  const savePromptMutation = useMutation({
-    mutationFn: async (value: string) => {
-      const res = await fetch("/api/admin/system-prompt", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: value || null }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Save failed");
-      }
+  const { data: templatesData } = useQuery({
+    queryKey: ["admin-prompts"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/prompts");
+      if (!res.ok) throw new Error("Failed to load prompt templates");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-system-prompt"] });
-      toast.success("System prompt saved");
-    },
-    onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : "Save failed");
-    },
   });
+  const savedTemplates: Record<string, string> = {};
+  for (const t of templatesData?.templates ?? []) {
+    savedTemplates[t.type] = t.content ?? "";
+  }
+
+  const [systemOverride, setSystemOverride] = useState("");
+  const [bookOverride, setBookOverride] = useState("");
+  const [sectionOverride, setSectionOverride] = useState("");
+  const [passageOverride, setPassageOverride] = useState("");
+  const [bookPass2Override, setBookPass2Override] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState(preferredLanguage);
+  const [promptOpen, setPromptOpen] = useState(false);
+
+  // ponytail: hydrate all override fields ONCE after both saved sources load.
+  // Avoids clobbering admin edits on refetch, and avoids a permanently-dirty
+  // state from empty-string defaults. seededRef gates "have we initialized".
+  // setState-in-effect is intentional here — pattern matches BookPickerModal.
+  const seededRef = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (!promptData || !templatesData) return;
+    setSystemOverride(savedSystemPrompt);
+    setBookOverride(savedTemplates.book ?? "");
+    setSectionOverride(savedTemplates.section ?? "");
+    setPassageOverride(savedTemplates.passage ?? "");
+    setBookPass2Override(savedTemplates.book_pass2 ?? "");
+    seededRef.current = true;
+  }, [promptData, templatesData, savedSystemPrompt]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Also keep targetLanguage in sync if the admin changes their preference
+  // elsewhere — only seed once, mirroring the override fields.
+  // ponytail: setState-in-effect is intentional here — we want to seed once
+  // when the session resolves. Pattern matches BookPickerModal below. Dep is
+  // preferredLanguage (from session), not the state being set, so it can't
+  // actually cascade.
+  const langSeededRef = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (langSeededRef.current) return;
+    setTargetLanguage(preferredLanguage);
+    langSeededRef.current = true;
+  }, [preferredLanguage]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // --- Chat state ---
   const [tier, setTier] = useState<Tier>("admin");
@@ -156,6 +192,9 @@ export default function PlaygroundPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // Two-pass phase indicator: null when idle, "explaining" during hidden pass 1,
+  // "refining" during streamed pass 2. Surfaced as a badge on the streaming bubble.
+  const [twoPassPhase, setTwoPassPhase] = useState<"explaining" | "refining" | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -275,7 +314,9 @@ export default function PlaygroundPage() {
   // Token estimates for the indicator.
   // Books: real BPE count from DB (cl100k_base), computed at upload or
   // lazy-backfilled on first selection. Null = still computing.
-  // Chat: client-side BPE on systemPrompt + every message + the input draft.
+  // Discussion: client-side BPE on the WIRED override fields (system + book) +
+  // every message + the input draft. Section/passage/book_pass2 are not sent
+  // today, so they don't count toward the budget.
   // ponytail: per-piece encode (not joined) — matches how the API actually
   // counts message boundaries; ~4 tokens of per-message overhead ignored.
   const bookTokens = selectedBooks.reduce(
@@ -284,7 +325,8 @@ export default function PlaygroundPage() {
   );
   const booksLoading = selectedBooks.some((b) => b.txtTokens === null);
   const chatTokens =
-    countTokens(systemPrompt) +
+    countTokens(systemOverride) +
+    (selectedBooks.length > 0 ? countTokens(bookOverride) : 0) +
     messages.reduce((s, m) => s + countTokens(m.content), 0) +
     countTokens(input);
   const usedTokens = bookTokens + chatTokens;
@@ -327,7 +369,12 @@ export default function PlaygroundPage() {
         body: JSON.stringify({
           tier,
           model: customModel.trim() || undefined,
-          systemPrompt: systemPrompt.trim() || undefined,
+          targetLanguage,
+          // Only the wired overrides go on the wire. Disabled fields stay local.
+          promptOverrides: {
+            system: systemOverride,
+            book: bookOverride,
+          },
           bookIds: selectedBooks.length > 0 ? selectedBooks.map((b) => b.id) : undefined,
           // ponytail: don't send the empty assistant placeholder — OpenRouter
           // only wants the prior turns + the new user message.
@@ -391,7 +438,7 @@ export default function PlaygroundPage() {
       if (err?.name === "AbortError") {
         // Keep partial assistant message — intentional abort
       } else {
-        toast.error(err?.message || "Chat failed");
+        toast.error(err?.message || "Discussion failed");
       }
     } finally {
       setStreaming(false);
@@ -403,7 +450,108 @@ export default function PlaygroundPage() {
     abortRef.current?.abort();
   }
 
-  function clearChat() {
+  // Two-pass runner: single-shot audition. Requires exactly one book attached.
+  // Pass 1 (book template) runs hidden server-side; pass 2 (book_pass2 template
+  // filled with {{previous_response}}) streams to the client as the next
+  // assistant message. The discussion input is ignored — two-pass is not a
+  // discussion turn, it's a fresh single-shot explainer call.
+  async function runTwoPass() {
+    if (streaming) return;
+    if (selectedBooks.length !== 1) {
+      toast.error("Two-pass requires exactly one book attached");
+      return;
+    }
+    if (!activeModel) {
+      toast.error(`No model configured for ${tier} tier`);
+      return;
+    }
+
+    const assistantIndex = messages.length;
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    setStreaming(true);
+    setTwoPassPhase("explaining");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/admin/playground/two-pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier,
+          model: customModel.trim() || undefined,
+          bookId: selectedBooks[0].id,
+          targetLanguage,
+          promptOverrides: {
+            book: bookOverride,
+            book_pass2: bookPass2Override,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.body) {
+        toast.error("No response stream");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let acc = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          if (!data) continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === "error") {
+              toast.error(parsed.error);
+              setMessages((prev) =>
+                prev.filter((_, i) => i !== assistantIndex)
+              );
+              return;
+            }
+            if (parsed.type === "status" && parsed.stage) {
+              setTwoPassPhase(parsed.stage as "explaining" | "refining");
+            }
+            if (parsed.type === "chunk" && parsed.chunk) {
+              acc += parsed.chunk;
+              const snapshot = acc;
+              setMessages((prev) =>
+                prev.map((m, i) =>
+                  i === assistantIndex ? { ...m, content: snapshot } : m
+                )
+              );
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        // Keep partial assistant message — intentional abort
+      } else {
+        toast.error(err?.message || "Two-pass failed");
+      }
+    } finally {
+      setStreaming(false);
+      setTwoPassPhase(null);
+      abortRef.current = null;
+    }
+  }
+
+  function clearDiscussion() {
     if (streaming) abortRef.current?.abort();
     setMessages([]);
   }
@@ -466,7 +614,15 @@ export default function PlaygroundPage() {
             size="sm"
             variant="outline"
             onClick={() => setBookModalOpen(true)}
-            disabled={streaming}
+            // ponytail: Playground fills the book template per attached book.
+            // Multi-book fill is a future task; hard-cap at 1 here so the
+            // backend constraint (chat/route.ts) can't be bypassed from the UI.
+            disabled={streaming || selectedBooks.length >= 1}
+            title={
+              selectedBooks.length >= 1
+                ? "Playground supports at most one book. Remove the attached book to add another."
+                : undefined
+            }
           >
             <BookPlus className="h-3.5 w-3.5 mr-1" />
             Add book
@@ -523,7 +679,12 @@ export default function PlaygroundPage() {
         </div>
       </Card>
 
-      {/* System prompt panel */}
+      {/* Prompt overrides: session-local scratchpads, one per template plus the
+          target language dropdown. Canonical editors live at /admin/prompts.
+          Each field initializes from saved; edits are literal. Only `system`
+          and `book` are wired into the discussion route today; the others are
+          visible-but-disabled with tooltips. Language initializes from the
+          admin's preferredLanguage and fills {{target_language}} in templates. */}
       <Card className="mt-3">
         <button
           type="button"
@@ -531,13 +692,16 @@ export default function PlaygroundPage() {
           className="w-full flex items-center justify-between p-3 text-left"
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">System prompt</span>
-            {promptDirty && (
-              <Badge variant="outline" className="text-[10px]">Unsaved</Badge>
-            )}
-            {!promptDirty && savedPrompt && (
-              <Badge variant="secondary" className="text-[10px]">Saved</Badge>
-            )}
+            <span className="text-sm font-medium">Prompt overrides</span>
+            <Badge variant="outline" className="text-[10px]">
+              {[
+                systemOverride !== savedSystemPrompt && "system",
+                bookOverride !== (savedTemplates.book ?? "") && "book",
+                targetLanguage !== preferredLanguage && "lang",
+              ]
+                .filter(Boolean)
+                .join(", ") || "all default"}
+            </Badge>
           </div>
           {promptOpen ? (
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -546,33 +710,104 @@ export default function PlaygroundPage() {
           )}
         </button>
         {promptOpen && (
-          <div className="px-3 pb-3 space-y-2">
-            <Textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="Empty = no system message sent. Type to audition, Save as live to persist."
-              className="text-sm min-h-[80px]"
+          // ponytail: cap the panel height + scroll internally so all 5 fields
+          // don't push the discussion composer off-screen. ~40vh fits ~2 fields
+          // visible at once on a typical viewport and scrolls for the rest.
+          // Header (chevron + label) stays outside so collapse is always reachable.
+          <div className="max-h-[40vh] overflow-y-auto border-t border-border px-3 pb-3 pt-3 space-y-4">
+            {/* Target language: 2-char dropdown. Defaults to admin preferredLanguage. */}
+            <OverrideRow
+              label="Target language"
+              badge={
+                targetLanguage === preferredLanguage
+                  ? { text: "Default", variant: "secondary" as const }
+                  : { text: "Override active", variant: "default" as const }
+              }
+              onReset={() => setTargetLanguage(preferredLanguage)}
+              resetDisabled={streaming || targetLanguage === preferredLanguage}
+              resetLabel="Reset to preference"
+            >
+              <Select
+                value={targetLanguage}
+                onValueChange={setTargetLanguage}
+                disabled={streaming}
+              >
+                <SelectTrigger className="text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGES.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </OverrideRow>
+
+            {/* System prompt: WIRED — sent as system message when non-empty. */}
+            <OverrideTextareaRow
+              label="System prompt"
+              value={systemOverride}
+              onChange={setSystemOverride}
+              savedValue={savedSystemPrompt}
               disabled={streaming}
+              placeholder="Empty = no system message sent. Edit canonical under Prompt Templates → System Prompt."
+              minH="min-h-[80px]"
             />
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => savePromptMutation.mutate(systemPrompt)}
-                disabled={!promptDirty || savePromptMutation.isPending}
-              >
-                <Save className="h-3.5 w-3.5 mr-1" />
-                Save as live
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSystemPrompt(savedPrompt ?? "")}
-                disabled={!promptDirty || savePromptMutation.isPending}
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                Revert
-              </Button>
-            </div>
+
+            {/* Book template: WIRED — filled per attached book and sent as system message. */}
+            <OverrideTextareaRow
+              label="Book template"
+              value={bookOverride}
+              onChange={setBookOverride}
+              savedValue={savedTemplates.book ?? ""}
+              disabled={streaming}
+              placeholder="Used when a book is attached. {{book_text}}, {{title}}, {{author}}, {{language}}, {{target_language}} available."
+              minH="min-h-[120px]"
+              mono
+            />
+
+            {/* Section template: NOT WIRED — visible for parity, disabled with tooltip. */}
+            <OverrideTextareaRow
+              label="Section template"
+              value={sectionOverride}
+              onChange={setSectionOverride}
+              savedValue={savedTemplates.section ?? ""}
+              disabled={true}
+              placeholder="Not wired into discussion yet — edit on Prompt Templates → Section-Level."
+              minH="min-h-[80px]"
+              mono
+              tooltip="Section selection UI is future work. Edit on Prompt Templates page to affect production explainers."
+            />
+
+            {/* Passage template: NOT WIRED. */}
+            <OverrideTextareaRow
+              label="Passage template"
+              value={passageOverride}
+              onChange={setPassageOverride}
+              savedValue={savedTemplates.passage ?? ""}
+              disabled={true}
+              placeholder="Not wired into discussion yet — edit on Prompt Templates."
+              minH="min-h-[80px]"
+              mono
+              tooltip="Passage selection UI is future work. Edit on Prompt Templates page to affect production explainers."
+            />
+
+            {/* Pass-2 template: WIRED to Run two-pass button in the composer.
+                Click that button to execute a single-shot pass-1 (hidden) →
+                pass-2 (streamed) cycle against the attached book. */}
+            <OverrideTextareaRow
+              label="Pass-2 (refinement) template"
+              value={bookPass2Override}
+              onChange={setBookPass2Override}
+              savedValue={savedTemplates.book_pass2 ?? ""}
+              disabled={streaming}
+              placeholder="Used by Run two-pass. {{previous_response}}, {{book_text}}, {{title}}, {{author}}, {{language}}, {{target_language}} available."
+              minH="min-h-[80px]"
+              mono
+              tooltip="Click 'Run two-pass' in the composer to test against the attached book. Pass 1 hidden, pass 2 streamed."
+            />
           </div>
         )}
       </Card>
@@ -584,7 +819,7 @@ export default function PlaygroundPage() {
       >
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground text-center mt-8">
-            No messages yet. Send one below.
+            No messages yet. Start the discussion below.
           </p>
         )}
         {messages.map((m, i) => (
@@ -603,6 +838,18 @@ export default function PlaygroundPage() {
                   : "bg-background border border-border"
               )}
             >
+              {/* Two-pass phase indicator: shown only on the streaming bubble
+                  while a two-pass run is in progress. Tells the admin which
+                  hidden phase is consuming their request. */}
+              {m.role === "assistant" && streaming &&
+                i === messages.length - 1 && twoPassPhase && (
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Sparkles className="h-3 w-3 animate-pulse" />
+                  {twoPassPhase === "explaining"
+                    ? "Pass 1 explaining (hidden)…"
+                    : "Pass 2 refining…"}
+                </div>
+              )}
               {m.content || (m.role === "assistant" && streaming ? "…" : "")}
             </div>
           </div>
@@ -614,7 +861,7 @@ export default function PlaygroundPage() {
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder="Type a message to discuss…"
           className="text-sm min-h-[44px] max-h-[120px] resize-none"
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -629,16 +876,40 @@ export default function PlaygroundPage() {
             <Square className="h-4 w-4" />
           </Button>
         ) : (
-          <Button size="icon" onClick={send} disabled={!input.trim()} title="Send">
-            <Send className="h-4 w-4" />
-          </Button>
+          <>
+            <Button
+              size="icon"
+              onClick={send}
+              disabled={!input.trim()}
+              title="Send"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+            {/* Two-pass runner: single-shot audition against the attached book.
+                Disabled unless exactly one book is attached. The discussion
+                input is ignored — two-pass is a fresh single-shot call, not a
+                discussion turn. */}
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={runTwoPass}
+              disabled={selectedBooks.length !== 1}
+              title={
+                selectedBooks.length === 1
+                  ? "Run two-pass (pass 1 hidden, pass 2 streamed)"
+                  : "Attach exactly one book to enable two-pass"
+              }
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
+          </>
         )}
         <Button
           size="icon"
           variant="outline"
-          onClick={clearChat}
+          onClick={clearDiscussion}
           disabled={messages.length === 0}
-          title="Clear chat"
+          title="Clear discussion"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -836,5 +1107,97 @@ function BookPickerModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ponytail: two small helper components for the Prompt overrides panel. Kept
+// in this file (not split out) — single-use, tightly coupled to Playground
+// state. OverrideRow = generic row with label/badge/reset; OverrideTextareaRow
+// specializes it with a Textarea body. Both keep the per-row state badge
+// logic (Matches saved / Override active / Disabled) in one place.
+
+function OverrideRow({
+  label,
+  badge,
+  onReset,
+  resetDisabled,
+  resetLabel = "Reset to saved",
+  children,
+}: {
+  label: string;
+  badge: { text: string; variant: "default" | "secondary" | "outline" };
+  onReset: () => void;
+  resetDisabled?: boolean;
+  resetLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-foreground">{label}</Label>
+          <Badge variant={badge.variant} className="text-[10px]">
+            {badge.text}
+          </Badge>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onReset}
+          disabled={resetDisabled}
+          className="h-6 px-2 text-[11px]"
+        >
+          <RotateCcw className="h-3 w-3 mr-1" />
+          {resetLabel}
+        </Button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function OverrideTextareaRow({
+  label,
+  value,
+  onChange,
+  savedValue,
+  disabled,
+  placeholder,
+  minH = "min-h-[80px]",
+  mono = false,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  savedValue: string;
+  disabled: boolean;
+  placeholder: string;
+  minH?: string;
+  mono?: boolean;
+  tooltip?: string;
+}) {
+  const matchesSaved = value === savedValue;
+  const badge = disabled
+    ? { text: "Not wired", variant: "outline" as const }
+    : matchesSaved
+    ? { text: "No edits made", variant: "secondary" as const }
+    : { text: "Override active", variant: "default" as const };
+  return (
+    <OverrideRow
+      label={label}
+      badge={badge}
+      onReset={() => onChange(savedValue)}
+      resetDisabled={disabled || matchesSaved}
+    >
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn("text-xs", minH, mono && "font-mono")}
+        disabled={disabled}
+        title={disabled ? tooltip ?? "" : undefined}
+      />
+    </OverrideRow>
   );
 }

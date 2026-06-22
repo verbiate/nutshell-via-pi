@@ -87,6 +87,9 @@ export function ExplainerThreadsPanel({
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const [initialContent, setInitialContent] = useState<string>("");
   const [streamingInitial, setStreamingInitial] = useState(false);
+  // ponytail: two-pass progress phase (null for one-pass / after completion).
+  // Drives a "Explaining…" / "Refining…" label during pass 1's silent window.
+  const [phase, setPhase] = useState<"explaining" | "refining" | null>(null);
 
   // ponytail: when activeThreadId changes (or active data loads), reset local
   // state from server truth. This is the only place setState is called in an
@@ -116,6 +119,7 @@ export function ExplainerThreadsPanel({
       setLocalMessages([]);
       setStreamingInitial(true);
       setStreaming(true);
+      setPhase(null);
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -167,7 +171,11 @@ export function ExplainerThreadsPanel({
                 console.error("Thread creation failed:", parsed.error);
                 setStreamingInitial(false);
                 setStreaming(false);
+                setPhase(null);
                 return;
+              }
+              if (parsed.type === "status" && parsed.stage) {
+                setPhase(parsed.stage as "explaining" | "refining");
               }
               if (parsed.type === "chunk" && parsed.chunk) {
                 accumulated += parsed.chunk;
@@ -197,6 +205,7 @@ export function ExplainerThreadsPanel({
       } finally {
         setStreamingInitial(false);
         setStreaming(false);
+        setPhase(null);
         abortRef.current = null;
       }
     },
@@ -205,15 +214,11 @@ export function ExplainerThreadsPanel({
 
   // Handle a new pending request from the parent (user clicked an "ask about"
   // affordance — floating toolbar, ToC dropdown, or "Ask the book").
-  // ponytail: setState-in-effect is intentional — startThread resets state
-  // synchronously before its first await, which is what we want when a new
-  // request arrives. The dep is `pendingRequest` (parent-controlled), not any
-  // of the state being set, so no cascading renders possible.
-  // lastProcessedRef guards against React StrictMode's double-fire in dev:
-  // both fires pass the SAME pendingRequest reference (state hasn't propagated
-  // between them), so the ref check suppresses the duplicate POST. A new click
-  // creates a new object reference, so legit back-to-back requests still fire.
-  /* eslint-disable react-hooks/set-state-in-effect */
+  // ponytail: lastProcessedRef guards against React StrictMode's double-fire
+  // in dev: both fires pass the SAME pendingRequest reference (state hasn't
+  // propagated between them), so the ref check suppresses the duplicate POST.
+  // A new click creates a new object reference, so legit back-to-back requests
+  // still fire.
   useEffect(() => {
     if (!pendingRequest) return;
     if (lastProcessedRef.current === pendingRequest) return;
@@ -221,7 +226,6 @@ export function ExplainerThreadsPanel({
     startThread(pendingRequest);
     onConsumed();
   }, [pendingRequest, startThread, onConsumed]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   function selectThread(id: string) {
     if (streaming) return;
@@ -331,6 +335,7 @@ export function ExplainerThreadsPanel({
       <ThreadView
         initialContent={initialContent}
         streamingInitial={streamingInitial}
+        phase={phase}
         messages={localMessages}
         input={input}
         setInput={setInput}
@@ -430,6 +435,7 @@ function ListView({
 function ThreadView({
   initialContent,
   streamingInitial,
+  phase,
   messages,
   input,
   setInput,
@@ -440,6 +446,7 @@ function ThreadView({
 }: {
   initialContent: string;
   streamingInitial: boolean;
+  phase: "explaining" | "refining" | null;
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
@@ -453,6 +460,16 @@ function ThreadView({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [initialContent, messages]);
+
+  // ponytail: phase label only matters while the user is staring at an empty
+  // (or growing) bubble. "Explaining" = hidden pass 1 running, nothing shown
+  // yet; "Refining" = pass 2 streaming. One-pass explainers never set phase.
+  const phaseLabel =
+    phase === "explaining"
+      ? "Explaining the book…"
+      : phase === "refining"
+      ? "Refining the explanation…"
+      : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -472,6 +489,12 @@ function ThreadView({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {/* Initial explainer response */}
+        {streamingInitial && phaseLabel && !initialContent && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {phaseLabel}
+          </div>
+        )}
         <MessageBubble
           role="assistant"
           content={initialContent}

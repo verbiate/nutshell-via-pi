@@ -1,5 +1,6 @@
 import { db } from "@/server/db";
 import type { UserRole } from "@/types/book";
+import { getSetting, setSetting } from "./settings";
 
 // ---- Audit Logging ----
 
@@ -144,6 +145,56 @@ export async function updatePromptTemplate(
     entityId: type,
     oldValue: oldContent,
     newValue: content,
+  });
+}
+
+// ---- Two-pass book explainer toggle ----
+
+// Default pass-2 instruction. Keep in sync with prisma/seed.ts — seed is the
+// source of truth for fresh installs; this constant is the fallback used when
+// an admin flips the toggle on for a DB that hasn't been re-seeded. Token-
+// pattern: {{previous_response}} carries pass-1's draft, {{book_text}} lets
+// the model re-ground in the source.
+const DEFAULT_BOOK_PASS2_CONTENT =
+  "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.";
+
+// ponytail: stored as the bookTwoPassEnabled AppSetting ("true"/"false").
+// Surfaced in the Prompt Templates admin page alongside the book_pass2 row.
+export async function getBookTwoPassEnabled(): Promise<boolean> {
+  return (await getSetting("bookTwoPassEnabled")) === "true";
+}
+
+export async function updateBookTwoPassEnabled(
+  adminId: string,
+  enabled: boolean
+) {
+  const oldValue = await getSetting("bookTwoPassEnabled");
+  const newValue = enabled ? "true" : "false";
+  await setSetting("bookTwoPassEnabled", newValue);
+
+  if (enabled) {
+    // ponytail: ensure the pass-2 template exists so the next book explainer
+    // doesn't 500 with "book_pass2 prompt template not found" on a DB that was
+    // toggled without a re-seed. Upsert with update:{} preserves admin edits;
+    // only creates with the default when the row is missing.
+    await db.promptTemplate.upsert({
+      where: { type: "book_pass2" },
+      update: {},
+      create: {
+        type: "book_pass2",
+        content: DEFAULT_BOOK_PASS2_CONTENT,
+        version: 2,
+      },
+    });
+  }
+
+  await auditLog({
+    actorId: adminId,
+    action: "BOOK_TWOPASS_TOGGLED",
+    entityType: "app_setting",
+    entityId: "bookTwoPassEnabled",
+    oldValue,
+    newValue,
   });
 }
 

@@ -64,7 +64,11 @@ export async function POST(request: Request) {
     if (!hasAccess) return sseError("Access denied", 403);
 
     const preferredLanguage = language || user.preferredLanguage || "en";
-    const tier = user.role === "pro" ? "pro" : "regular";
+    // ponytail: respect the user's actual tier (regular/pro/admin). Previously
+    // collapsed admin→regular, which billed admin requests to the regular
+    // tier's API key and used its model — wrong since admin/pro/regular each
+    // have their own OpenRouterConfig row.
+    const tier = user.role as "regular" | "pro" | "admin";
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
