@@ -34,6 +34,12 @@ export interface ExtractedBookMetadata {
 // in this union — revert clears them.
 export type RevertableField = "title" | "author" | "language";
 
+export interface GenerationTiming {
+  generationMs: number;
+  model: string;
+  extractedAt: string;
+}
+
 export interface BookMetadataView {
   epub: {
     title: string;
@@ -50,10 +56,64 @@ export interface BookMetadataView {
     isNarrative: boolean | null;
     language: string | null;
     promptVersion: number;
+    extractionCount: number;
     model: string | null;
     extractedAt: string;
     updatedAt: string;
+    fastestGeneration: GenerationTiming | null;
+    latestGeneration: GenerationTiming | null;
   } | null;
+}
+
+export async function getExtractionCount(bookId: string): Promise<number> {
+  return db.auditLog.count({
+    where: {
+      action: "BOOK_METADATA_EXTRACTED",
+      entityType: "BookMetadata",
+      entityId: bookId,
+    },
+  });
+}
+
+// ponytail: one scan of the audit log returns both fastest and latest
+// generation timing. generationMs is stashed in each entry's newValue JSON
+// (see doExtractBookMetadata). Entries ordered desc by createdAt so the
+// first valid entry is the latest. Old entries without timing are skipped.
+export async function getGenerationStats(
+  bookId: string
+): Promise<{ fastest: GenerationTiming | null; latest: GenerationTiming | null }> {
+  const entries = await db.auditLog.findMany({
+    where: {
+      action: "BOOK_METADATA_EXTRACTED",
+      entityType: "BookMetadata",
+      entityId: bookId,
+    },
+    select: { newValue: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let fastest: GenerationTiming | null = null;
+  let latest: GenerationTiming | null = null;
+
+  for (const entry of entries) {
+    if (!entry.newValue) continue;
+    try {
+      const parsed = JSON.parse(entry.newValue);
+      if (typeof parsed.generationMs !== "number") continue;
+      const timing: GenerationTiming = {
+        generationMs: parsed.generationMs,
+        model: parsed.model ?? "unknown",
+        extractedAt: entry.createdAt.toISOString(),
+      };
+      if (!latest) latest = timing;
+      if (!fastest || timing.generationMs < fastest.generationMs) {
+        fastest = timing;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return { fastest, latest };
 }
 
 export async function getBookMetadataView(
@@ -64,6 +124,10 @@ export async function getBookMetadataView(
     select: { title: true, author: true, language: true, bookMetadata: true },
   });
   if (!book) return null;
+  const [extractionCount, genStats] = await Promise.all([
+    getExtractionCount(bookId),
+    getGenerationStats(bookId),
+  ]);
   return {
     epub: {
       title: book.title,
@@ -81,9 +145,12 @@ export async function getBookMetadataView(
           isNarrative: book.bookMetadata.isNarrative,
           language: book.bookMetadata.language,
           promptVersion: book.bookMetadata.promptVersion,
+          extractionCount,
           model: book.bookMetadata.model,
           extractedAt: book.bookMetadata.extractedAt.toISOString(),
           updatedAt: book.bookMetadata.updatedAt.toISOString(),
+          fastestGeneration: genStats.fastest,
+          latestGeneration: genStats.latest,
         }
       : null,
   };
@@ -172,20 +239,40 @@ async function doExtractBookMetadata(
   if (!apiKey)
     throw new OpenRouterError("Admin OpenRouter API key not configured", 500);
 
-  // ponytail: jsonMode fails cleanly on JSON-parse below if a model silently
-  // ignores response_format. Models known to support json_object include
-  // gpt-4o, claude-3.5+, gemini-2.0+. If admin picks an unsupported model
-  // the parse will throw and the route surfaces the message.
-  const raw = await completeChat({
-    apiKey,
-    model,
-    prompt,
-    temperature: 0,
-    maxTokens: 1024,
-    jsonMode: true,
-  });
-
-  const parsed = safeParseMetadata(raw);
+  // ponytail: 0.7 so Re-extract can produce varied metadata for the same
+  // book. Flash Lite is effectively deterministic below ~0.5 for JSON tasks.
+  // Retry once on failure — temp=0.7 can occasionally produce malformed JSON
+  // or trigger transient OpenRouter errors. generationMs measures only the
+  // successful attempt so timing comparisons stay fair.
+  let parsed: ExtractedBookMetadata | null = null;
+  let generationMs = 0;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2 && !parsed; attempt++) {
+    try {
+      const start = Date.now();
+      const raw = await completeChat({
+        apiKey,
+        model,
+        prompt,
+        temperature: 0.7,
+        // ponytail: reasoning models (e.g. gemini-3.5-flash) burn ~1000
+        // tokens on internal reasoning before emitting JSON. 1024 maxTokens
+        // truncates the output mid-JSON → "LLM did not return JSON".
+        // 4096 leaves room for reasoning + the small JSON metadata object.
+        maxTokens: 4096,
+        jsonMode: true,
+      });
+      generationMs = Date.now() - start;
+      parsed = safeParseMetadata(raw);
+    } catch (e) {
+      lastError = e;
+      console.error(
+        `[book-metadata] attempt ${attempt} failed for ${bookId}:`,
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+  if (!parsed) throw lastError;
 
   const previous = await db.bookMetadata.findUnique({ where: { bookId } });
   const row = await db.bookMetadata.upsert({
@@ -204,6 +291,9 @@ async function doExtractBookMetadata(
     },
   });
 
+  // ponytail: generationMs in newValue (not on the row) so the audit log
+  // carries timing per extraction without a schema migration. Read back by
+  // getFastestGeneration to surface the fastest model in the admin UI.
   await db.auditLog.create({
     data: {
       actorId,
@@ -211,7 +301,7 @@ async function doExtractBookMetadata(
       entityType: "BookMetadata",
       entityId: bookId,
       oldValue: previous ? JSON.stringify(previous) : null,
-      newValue: JSON.stringify(row),
+      newValue: JSON.stringify({ ...row, generationMs }),
     },
   });
 

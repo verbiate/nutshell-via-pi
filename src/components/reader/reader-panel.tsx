@@ -201,11 +201,6 @@ export function ReaderPanel({
               {author}
             </p>
           )}
-          {isAdmin && bookCreatedAt && (
-            <p className="mt-1 text-[10px] text-muted-foreground/70">
-              Uploaded {new Date(bookCreatedAt).toLocaleDateString()}
-            </p>
-          )}
         </div>
       </div>
 

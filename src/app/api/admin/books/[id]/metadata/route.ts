@@ -44,7 +44,13 @@ export async function GET(
   const view = await getBookMetadataView(id);
   if (!view)
     return NextResponse.json({ error: "Book not found" }, { status: 404 });
-  return NextResponse.json(view);
+  // ponytail: no-cache so the browser always revalidates — without this,
+  // TanStack Query's post-mutation invalidate triggers a refetch that the
+  // browser serves from HTTP heuristic cache, so the UI never visibly
+  // updates (extractedAt/promptVersion move server-side but not in DOM).
+  return NextResponse.json(view, {
+    headers: { "Cache-Control": "no-cache, no-transform" },
+  });
 }
 
 const ALLOWED_FIELDS: ReadonlySet<RevertableField> = new Set([

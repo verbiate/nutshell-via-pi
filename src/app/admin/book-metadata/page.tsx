@@ -33,6 +33,12 @@ interface BookListItem {
   md5: string;
 }
 
+interface GenerationTiming {
+  generationMs: number;
+  model: string;
+  extractedAt: string;
+}
+
 interface MetadataView {
   epub: { title: string; author: string | null; language: string };
   metadata: {
@@ -45,9 +51,12 @@ interface MetadataView {
     isNarrative: boolean | null;
     language: string | null;
     promptVersion: number;
+    extractionCount: number;
     model: string | null;
     extractedAt: string;
     updatedAt: string;
+    fastestGeneration: GenerationTiming | null;
+    latestGeneration: GenerationTiming | null;
   } | null;
 }
 
@@ -70,7 +79,12 @@ export default function BookMetadataPage() {
   const metadataQuery = useQuery({
     queryKey: ["admin-book-metadata", selectedBookId],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/books/${selectedBookId}/metadata`);
+      // ponytail: cache:'no-store' bypasses browser HTTP heuristic cache so
+      // post-mutation invalidation actually returns fresh data.
+      const res = await fetch(
+        `/api/admin/books/${selectedBookId}/metadata`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to load metadata");
       return res.json() as Promise<MetadataView>;
     },
@@ -286,7 +300,35 @@ export default function BookMetadataPage() {
                   </Table>
                   <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary">v{md.promptVersion}</Badge>
+                    <Badge variant="secondary">
+                      #{md.extractionCount} extraction
+                      {md.extractionCount === 1 ? "" : "s"}
+                    </Badge>
                     {md.model && <Badge variant="outline">{md.model}</Badge>}
+                    {md.fastestGeneration && (
+                      <Badge variant="outline" className="text-green-600">
+                        Best {(md.fastestGeneration.generationMs / 1000).toFixed(1)}s ·{" "}
+                        {md.fastestGeneration.model}
+                      </Badge>
+                    )}
+                    {md.fastestGeneration && md.latestGeneration &&
+                      md.fastestGeneration.extractedAt !== md.latestGeneration.extractedAt && (
+                        <Badge
+                          variant="outline"
+                          className={
+                            md.latestGeneration.generationMs > md.fastestGeneration.generationMs
+                              ? "text-amber-600"
+                              : "text-green-600"
+                          }
+                        >
+                          Latest {(md.latestGeneration.generationMs / 1000).toFixed(1)}s ·{" "}
+                          {md.latestGeneration.model} (
+                          {md.latestGeneration.generationMs > md.fastestGeneration.generationMs
+                            ? `+${((md.latestGeneration.generationMs - md.fastestGeneration.generationMs) / 1000).toFixed(1)}s`
+                            : `${((md.latestGeneration.generationMs - md.fastestGeneration.generationMs) / 1000).toFixed(1)}s`}{" "}
+                          vs best)
+                        </Badge>
+                      )}
                     <span>
                       Extracted {new Date(md.extractedAt).toLocaleString()}
                     </span>
