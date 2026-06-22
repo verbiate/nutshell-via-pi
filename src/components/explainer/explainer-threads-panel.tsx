@@ -367,14 +367,14 @@ function ListView({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <div className="flex flex-1 items-center justify-center py-8">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     );
   }
   if (threads.length === 0) {
     return (
-      <div className="px-6 py-8 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
         <Lightbulb className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
         <p className="text-sm font-medium text-foreground">No discussions yet</p>
         <p className="mt-1 text-xs text-muted-foreground">{emptyHint}</p>
@@ -382,7 +382,11 @@ function ListView({
     );
   }
   return (
-    <div className="py-2">
+    // ponytail: flex-1 + min-h-0 + overflow-y-auto so the list scrolls
+    // internally when it outgrows the panel (parent is min-h-0 flex-1 flex-col
+    // — see reader-sidebar.tsx — so heights propagate). Without min-h-0 the
+    // flex child won't actually constrain, and overflow-y-auto won't kick in.
+    <div className="flex-1 min-h-0 overflow-y-auto py-2">
       <p className="px-4 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
         Discussions
       </p>

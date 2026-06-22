@@ -110,12 +110,25 @@ export function ReaderSidebar({
                 })()}
               </header>
             )}
-            <ScrollArea className="min-h-0 flex-1">
-              {/* ponytail: pb-12 gives every panel a uniform 48px trailing
-                  margin so the last item never butts against the sidebar's
-                  bottom edge (matches the px-12 horizontal margin). */}
-              <div className="pb-12">{panels[tool.id]}</div>
-            </ScrollArea>
+            {tool.id === "bulb" ? (
+              // ponytail: bulb (explainer threads) is chat-shaped — its
+              // ThreadView anchors a header at top and composer at bottom with
+              // the messages scrolling between. Skipping the outer ScrollArea
+              // lets the panel's internal `h-full + flex-1 overflow-y-auto`
+              // layout work; otherwise heights don't propagate and the whole
+              // panel scrolls as one block (header + composer go along for
+              // the ride). Other panels stay list-shaped and keep ScrollArea.
+              <div className="min-h-0 flex-1 flex flex-col">
+                {panels[tool.id]}
+              </div>
+            ) : (
+              <ScrollArea className="min-h-0 flex-1">
+                {/* ponytail: pb-12 gives every panel a uniform 48px trailing
+                    margin so the last item never butts against the sidebar's
+                    bottom edge (matches the px-12 horizontal margin). */}
+                <div className="pb-12">{panels[tool.id]}</div>
+              </ScrollArea>
+            )}
           </>
         )}
       </aside>
