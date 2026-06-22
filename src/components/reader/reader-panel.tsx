@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { ExplainerPanel } from "@/components/explainer/explainer-panel";
 import { BookCover } from "@/components/library/book-cover";
 
 interface TocEntryProps {
@@ -19,8 +18,7 @@ interface TocEntryProps {
   onNavigate: (href: string) => void;
   level?: number;
   currentHref?: string;
-  bookId: string;
-  initialLanguage: string;
+  onAskAboutSection?: (href: string, label: string) => void;
 }
 
 function TocEntry({
@@ -28,11 +26,9 @@ function TocEntry({
   onNavigate,
   level = 0,
   currentHref,
-  bookId,
-  initialLanguage,
+  onAskAboutSection,
 }: TocEntryProps) {
   const isActive = currentHref ? item.href === currentHref : false;
-  const [explainerOpen, setExplainerOpen] = useState(false);
 
   return (
     <div>
@@ -64,10 +60,10 @@ function TocEntry({
           {item.label}
         </button>
         {/*
-          ponytail: hover-revealed overflow menu (matches the prior lightbulb's
-          reveal model). Single item for now — "Ask about this" opens the
-          section Explainer, same as the old lightbulb. Room to add per-section
-          actions (Listen from here, etc.) without touching row layout.
+          ponytail: hover-revealed overflow menu. "Ask about this" opens the
+          section explainer as a thread in the sidebar's bulb tool — same UI as
+          passage explainers. Room to add per-section actions later without
+          touching row layout.
         */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -81,22 +77,15 @@ function TocEntry({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setExplainerOpen(true)}>
+            <DropdownMenuItem
+              onClick={() => onAskAboutSection?.(item.href, item.label)}
+            >
               <Lightbulb className="h-4 w-4 text-lav" />
               Ask about this
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ExplainerPanel
-        open={explainerOpen}
-        onOpenChange={setExplainerOpen}
-        bookId={bookId}
-        type="section"
-        sectionHref={item.href}
-        sectionTitle={item.label}
-        initialLanguage={initialLanguage}
-      />
       {item.subitems && item.subitems.length > 0 && (
         <div>
           {item.subitems.map((child) => (
@@ -106,8 +95,7 @@ function TocEntry({
               onNavigate={onNavigate}
               level={level + 1}
               currentHref={currentHref}
-              bookId={bookId}
-              initialLanguage={initialLanguage}
+              onAskAboutSection={onAskAboutSection}
             />
           ))}
         </div>
@@ -127,6 +115,8 @@ export interface ReaderPanelProps {
   onNavigate: (href: string) => void;
   initialLanguage: string;
   onListenFromHere: () => void;
+  onAskAboutSection?: (href: string, label: string) => void;
+  onAskAboutBook?: () => void;
   isAdmin?: boolean;
   bookCreatedAt?: string;
   /** When true, the cover is hidden (held empty) so a forward fly clone can land
@@ -144,12 +134,12 @@ export function ReaderPanel({
   onNavigate,
   initialLanguage,
   onListenFromHere,
+  onAskAboutSection,
+  onAskAboutBook,
   isAdmin,
   bookCreatedAt,
   coverHidden,
 }: ReaderPanelProps) {
-  const [bookExplainerOpen, setBookExplainerOpen] = useState(false);
-
   return (
     <div className="flex flex-col gap-9">
       {/* Book details card */}
@@ -215,19 +205,12 @@ export function ReaderPanel({
         <Button
           variant="outline"
           className="w-full gap-2"
-          onClick={() => setBookExplainerOpen(true)}
+          onClick={onAskAboutBook}
         >
           <Lightbulb />
           Ask the book
         </Button>
       </div>
-      <ExplainerPanel
-        open={bookExplainerOpen}
-        onOpenChange={setBookExplainerOpen}
-        bookId={bookId}
-        type="book"
-        initialLanguage={initialLanguage}
-      />
 
       {/* Table of contents */}
       {toc.length > 0 && (
@@ -240,8 +223,7 @@ export function ReaderPanel({
                 onNavigate={onNavigate}
                 level={0}
                 currentHref={currentHref}
-                bookId={bookId}
-                initialLanguage={initialLanguage}
+                onAskAboutSection={onAskAboutSection}
               />
             ))}
           </div>

@@ -40,12 +40,22 @@ export async function createExplainer(data: ExplainerCreateInput) {
 export function computeContentHash(
   sourceText: string,
   promptVersion: number,
-  promptType: string
+  promptType: string,
+  bookMd5?: string
 ): string {
+  // ponytail: bookMd5 added so that the same section/passage text in two
+  // different books gets distinct cache rows. Without it, a public-domain
+  // Bible chapter quoted in two books would share an explainer — wrong, since
+  // 'connections to other parts' should differ. Book type omits it (sourceText
+  // IS the book, so already unique per book).
   const hash = crypto.createHash("sha256");
   hash.update(promptType);
   hash.update("\x00");
   hash.update(sourceText);
+  if (bookMd5) {
+    hash.update("\x00");
+    hash.update(bookMd5);
+  }
   hash.update("\x00");
   hash.update(String(promptVersion));
   return hash.digest("hex");
@@ -85,6 +95,8 @@ export async function* generateExplainer(
   let promptData: {
     prompt: string;
     sourceText: string;
+    bookText: string;
+    bookMd5: string;
     promptVersion: number;
   };
   const { buildBookPrompt, buildSectionPrompt } = await getPromptBuilder();
@@ -105,15 +117,19 @@ export async function* generateExplainer(
     promptData = {
       prompt: sectionData.prompt,
       sourceText: sectionData.sourceText,
+      bookText: sectionData.bookText,
+      bookMd5: sectionData.bookMd5,
       promptVersion: sectionData.promptVersion,
     };
   }
 
-  // Compute content hash for cache lookup
+  // Compute content hash for cache lookup. Include bookMd5 for section/passage
+  // so the same snippet in two different books doesn't share a cache row.
   const contentHash = computeContentHash(
     promptData.sourceText,
     promptData.promptVersion,
-    type
+    type,
+    type === "section" || type === "passage" ? promptData.bookMd5 : undefined
   );
 
   // Check cache
@@ -135,12 +151,18 @@ export async function* generateExplainer(
   if (!apiKey) throw new OpenRouterError("OpenRouter API key not configured", 500);
   const maxTokens = type === "book" ? 4096 : 2048;
 
-  // Guard against books that exceed context window
+  // Size guard: combined source + book text against the ~900K-token ceiling.
+  // ponytail: book type has sourceText === bookText, so the sum double-counts —
+  // use just sourceText for that case. For section/passage, both contribute.
   const APPROX_CHARS_PER_TOKEN = 4;
-  const maxChars = 900_000 * APPROX_CHARS_PER_TOKEN; // ~900K tokens for Gemini Flash
-  if (promptData.sourceText.length > maxChars) {
+  const maxChars = 900_000 * APPROX_CHARS_PER_TOKEN;
+  const combinedChars =
+    type === "book"
+      ? promptData.sourceText.length
+      : promptData.sourceText.length + promptData.bookText.length;
+  if (combinedChars > maxChars) {
     throw new OpenRouterError(
-      `This ${type === "book" ? "book" : type === "section" ? "section" : "passage"} is too large for an AI explainer.`,
+      `This ${type === "book" ? "book" : type === "section" ? "section" : "passage"} is too large to explain with full-book context.`,
       400
     );
   }

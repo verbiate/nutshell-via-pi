@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Library, FileText, ScrollText, Key, FlaskConical } from "lucide-react";
+import { Users, Library, FileText, ScrollText, Key, FlaskConical, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { label: "Audit Log", icon: ScrollText, href: "/admin/audit" },
   { label: "API Keys & Models", icon: Key, href: "/admin/config" },
   { label: "Playground", icon: FlaskConical, href: "/admin/playground" },
+  { label: "Errors", icon: AlertTriangle, href: "/admin/errors" },
 ];
 
 export function AdminSidebar() {

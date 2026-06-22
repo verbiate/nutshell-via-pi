@@ -28,7 +28,7 @@ import {
   SANS_STACK,
   type BookSettings,
 } from "./book-settings-panel";
-import { ExplainerPanel } from "@/components/explainer/explainer-panel";
+import { ExplainerThreadsPanel, type PendingExplainerRequest } from "@/components/explainer/explainer-threads-panel";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
@@ -144,7 +144,11 @@ export function ReaderClient({
   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
   const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState("");
-  const [passageExplainerOpen, setPassageExplainerOpen] = useState(false);
+  // ponytail: pendingRequest communicates any "ask about" click (floating
+  // toolbar passage, ToC dropdown section, "Ask the book" button) from the
+  // reader to the ExplainerThreadsPanel in the sidebar. The panel consumes
+  // it (fires the create-thread API) and calls onConsumed to clear it.
+  const [pendingRequest, setPendingRequest] = useState<PendingExplainerRequest | null>(null);
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
   const [sidebarAnimating, setSidebarAnimating] = useState(false);
@@ -488,8 +492,24 @@ export function ReaderClient({
   );
 
   const handleExplainPassage = useCallback(() => {
+    // ponytail: floating toolbar → passage thread. Set the pending request,
+    // open the bulb tool, dismiss the toolbar. The panel picks it up via effect.
+    if (!selectedText.trim()) return;
+    setPendingRequest({ type: "passage", text: selectedText, cfi: selectedCfi });
+    setActiveTool("bulb");
     setToolbarVisible(false);
-    setPassageExplainerOpen(true);
+  }, [selectedText, selectedCfi]);
+
+  const handleAskAboutSection = useCallback((href: string, _label: string) => {
+    // ponytail: ToC ⋯ menu → section thread. _label reserved for future
+    // UI affordance (e.g. toast "Asking about <chapter>"); not currently used.
+    setPendingRequest({ type: "section", sectionHref: href, sectionTitle: _label });
+    setActiveTool("bulb");
+  }, []);
+
+  const handleAskAboutBook = useCallback(() => {
+    setPendingRequest({ type: "book" });
+    setActiveTool("bulb");
   }, []);
 
   // ─── Search navigation ────────────────────────────────────────────────────────
@@ -862,16 +882,10 @@ export function ReaderClient({
         onDismiss={handleSelectionCleared}
       />
 
-      {/* Passage-level Explainer */}
-      <ExplainerPanel
-        open={passageExplainerOpen}
-        onOpenChange={setPassageExplainerOpen}
-        bookId={bookId}
-        type="passage"
-        sectionTitle="Selected Passage"
-        initialLanguage={initialLanguage}
-        passageText={selectedText}
-      />
+      {/* ponytail: all three "ask about" entry points (passage via floating
+          toolbar, section via ToC dropdown, book via button) now flow into
+          the sidebar's bulb tool as threads. The old Sheet-based ExplainerPanel
+          is gone; the ExplainerThreadsPanel handles every case. */}
 
       {/* Reader chrome + reading progress — only shown once loaded and no error */}
       {isLoaded && !error && (
@@ -938,6 +952,8 @@ export function ReaderClient({
                 isAdmin={isAdmin}
                 bookCreatedAt={bookCreatedAt}
                 coverHidden={forwardFlyActive}
+                onAskAboutSection={handleAskAboutSection}
+                onAskAboutBook={handleAskAboutBook}
               />
             ),
             bookmark: (
@@ -957,15 +973,11 @@ export function ReaderClient({
               />
             ),
             bulb: (
-              <div className="px-12 py-8 text-center">
-                <p className="text-sm font-medium text-foreground">
-                  No explainers yet
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Ask about the book, a section, or a passage to create
-                  explainers. You can find past explainers here.
-                </p>
-              </div>
+              <ExplainerThreadsPanel
+                bookId={bookId}
+                pendingRequest={pendingRequest}
+                onConsumed={() => setPendingRequest(null)}
+              />
             ),
             type: (
               <BookSettingsPanel

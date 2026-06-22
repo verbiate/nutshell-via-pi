@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
-import { processAndUploadBook, validateEpub } from "@/server/services/epub-processor";
+import {
+  processAndUploadBook,
+  validateEpub,
+  UploadBlockedError,
+} from "@/server/services/epub-processor";
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +22,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    const result = await processAndUploadBook(file, user.id);
+    const result = await processAndUploadBook(file, user.id, user.role);
 
     return NextResponse.json({
       book: {
@@ -33,6 +37,11 @@ export async function POST(request: Request) {
   } catch (error: any) {
     if (error.statusCode === 401) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    // ponytail: UploadBlockedError carries statusCode 413; surface its friendly
+    // message verbatim (no token jargon).
+    if (error instanceof UploadBlockedError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     console.error("Upload error:", error);
     return NextResponse.json(

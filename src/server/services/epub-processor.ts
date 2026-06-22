@@ -2,6 +2,20 @@ import crypto from "crypto";
 import { storage } from "@/server/storage/local";
 import { db } from "@/server/db";
 import { detectLanguage } from "@/lib/language";
+import { countTokens } from "@/server/services/tokens";
+import { getTierBookTokenLimit } from "@/server/services/model-info";
+import { recordError } from "@/server/services/errors";
+
+// ponytail: custom error so the upload route can return 413 (not 500) when
+// the user's tier can't accommodate the book. Message is intentionally
+// token-jargon-free per the user's UX direction.
+export class UploadBlockedError extends Error {
+  statusCode = 413;
+  constructor() {
+    super("This book is too large for your current tier.");
+    this.name = "UploadBlockedError";
+  }
+}
 
 export interface ParsedEpub {
   title: string;
@@ -311,7 +325,8 @@ function coverExtension(mediaType: string | null): string {
  */
 export async function processAndUploadBook(
   file: File,
-  userId: string
+  userId: string,
+  userRole: string = "regular"
 ): Promise<{ book: any; isNew: boolean }> {
   // Validate
   const validationError = validateEpub(file);
@@ -341,6 +356,33 @@ export async function processAndUploadBook(
   // Detect language from text sample
   const language = detectLanguage(parsed.text.substring(0, 5000));
 
+  // Tokenize plaintext (cl100k_base) for context-window accounting in the
+  // admin playground. Computed once at upload; expensive for very large books
+  // (~100ms for 1MB) but a one-time cost.
+  const txtTokens = countTokens(parsed.text);
+
+  // ponytail: tier-aware size check BEFORE storing anything. Resolves the
+  // limit via the chain: admin override → model context_length → 128K fallback.
+  // Throws UploadBlockedError if exceeded; the route returns 413 with a
+  // friendly (token-jargon-free) message. Records a SystemError so admins see
+  // the block. Existing books (dedup hits) bypass this check — already in.
+  const tierLimit = await getTierBookTokenLimit(userRole);
+  if (txtTokens > tierLimit) {
+    await recordError({
+      category: "upload_blocked",
+      message: `Upload blocked: book token count (${txtTokens}) exceeds tier limit (${tierLimit})`,
+      userId,
+      context: {
+        tier: userRole,
+        txtTokens,
+        tierLimit,
+        fileSize: file.size,
+        title: parsed.title,
+      },
+    });
+    throw new UploadBlockedError();
+  }
+
   // Store files
   const epubPath = await storage.write(
     `epubs/${md5}.epub`,
@@ -367,6 +409,7 @@ export async function processAndUploadBook(
       coverPath,
       epubPath,
       txtPath,
+      txtTokens,
       tocJson: JSON.stringify(parsed.toc),
       fileSize: file.size,
       totalParagraphs,

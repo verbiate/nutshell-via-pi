@@ -17,7 +17,7 @@ const TIERS = [
 ] as const;
 
 const CATEGORIES = [
-  { key: "openrouter", label: "OpenRouter", fields: ["apiKey", "model"] as const },
+  { key: "openrouter", label: "OpenRouter", fields: ["apiKey", "model", "maxContextTokens"] as const },
   { key: "elevenlabs", label: "ElevenLabs", fields: ["apiKey", "model", "voiceId"] as const },
   { key: "fal", label: "fal.ai", fields: ["apiKey", "model", "voiceId"] as const },
 ] as const;
@@ -72,10 +72,15 @@ function ConfigRow({
           ...Object.fromEntries(
             fields.map((f) => [
               f,
-              // ponytail: untouched/empty apiKey = "skip" (don't wipe a stored key
-              // by accident — empty password field is the default, not a clear intent);
-              // empty model/voiceId = "clear" (send null, server sets to null).
-              f === "apiKey" ? edits[f] || undefined : displayValue(f) || null,
+              // ponytail: per-field encoding rules:
+              //   apiKey: empty = "skip" (don't wipe stored key)
+              //   maxContextTokens: empty = null (clear override); non-empty = Number(...)
+              //   everything else: empty = null (clear)
+              f === "apiKey"
+                ? edits[f] || undefined
+                : f === "maxContextTokens"
+                ? (displayValue(f) ? Number(displayValue(f)) : null)
+                : displayValue(f) || null,
             ])
           ),
         }),
@@ -107,23 +112,47 @@ function ConfigRow({
         </Badge>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {fields.map((field) => (
-          <div key={field} className="space-y-2">
-            <Label className="text-xs text-muted-foreground capitalize">{field}</Label>
-            <Input
-              type={field === "apiKey" ? "password" : "text"}
-              value={displayValue(field)}
-              onChange={(e) =>
-                setEdits((prev) => ({ ...prev, [field]: e.target.value }))
-              }
-              placeholder={field === "apiKey" ? "Enter new key" : field === "model" ? "Model ID" : "Voice ID"}
-              className="text-sm"
-            />
-            {field === "apiKey" && existing[field] && (
-              <p className="text-xs text-muted-foreground">Current: {existing[field]}</p>
-            )}
-          </div>
-        ))}
+        {fields.map((field) => {
+          // ponytail: maxContextTokens is a number input with custom placeholder.
+          // Display existing numeric value as string; empty = cleared override.
+          const isNumeric = field === "maxContextTokens";
+          const numericValue =
+            isNumeric && existing[field] != null
+              ? String(existing[field])
+              : "";
+          return (
+            <div key={field} className="space-y-2">
+              <Label className="text-xs text-muted-foreground capitalize">
+                {field === "maxContextTokens" ? "Max context tokens (override)" : field}
+              </Label>
+              <Input
+                type={field === "apiKey" ? "password" : isNumeric ? "number" : "text"}
+                value={field in edits ? edits[field] : (isNumeric ? numericValue : displayValue(field))}
+                onChange={(e) =>
+                  setEdits((prev) => ({ ...prev, [field]: e.target.value }))
+                }
+                placeholder={
+                  field === "apiKey"
+                    ? "Enter new key"
+                    : field === "model"
+                    ? "Model ID"
+                    : field === "maxContextTokens"
+                    ? "Empty = use model limit"
+                    : "Voice ID"
+                }
+                className="text-sm"
+              />
+              {field === "apiKey" && existing[field] && (
+                <p className="text-xs text-muted-foreground">Current: {existing[field]}</p>
+              )}
+              {isNumeric && (
+                <p className="text-[10px] text-muted-foreground">
+                  Empty = model context length lookup, else 128K fallback.
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="mt-4 flex justify-end">
         <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending}>

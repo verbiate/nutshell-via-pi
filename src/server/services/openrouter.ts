@@ -11,14 +11,13 @@ export interface StreamExplainerOptions {
 }
 
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
 export interface StreamChatOptions {
   apiKey: string;
   model: string;
-  systemPrompt?: string;
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
@@ -127,22 +126,14 @@ export async function* streamExplainer(
 
 /**
  * Stream a generic chat completion from OpenRouter. Used by the admin
- * Playground. Unlike streamExplainer, the caller controls the full message
- * array and the system prompt (omitted from the request body when empty).
+ * Playground. Caller builds the full messages array (including any system
+ * messages). Order is preserved as given.
  */
 export async function* streamChat(
   options: StreamChatOptions
 ): AsyncGenerator<string, void, unknown> {
   if (!options.apiKey) {
     throw new OpenRouterError("OPENROUTER_API_KEY is not configured", 500);
-  }
-
-  const messages: { role: string; content: string }[] = [];
-  if (options.systemPrompt && options.systemPrompt.trim()) {
-    messages.push({ role: "system", content: options.systemPrompt });
-  }
-  for (const m of options.messages) {
-    messages.push({ role: m.role, content: m.content });
   }
 
   const response = await fetch(OPENROUTER_URL, {
@@ -155,7 +146,7 @@ export async function* streamChat(
     },
     body: JSON.stringify({
       model: options.model,
-      messages,
+      messages: options.messages,
       stream: true,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 4096,

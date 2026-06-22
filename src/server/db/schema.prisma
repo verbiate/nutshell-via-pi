@@ -31,6 +31,7 @@ model User {
   bookmarks      Bookmark[]
   highlights     Highlight[]
   explainerRequests ExplainerRequest[]
+  explainerThreads  ExplainerThread[]
 }
 
 model Explainer {
@@ -51,6 +52,7 @@ model Explainer {
   @@index([createdAt])
 
   requests ExplainerRequest[]
+  threads  ExplainerThread[]
 }
 
 model Session {
@@ -102,6 +104,7 @@ model EpubFile {
   coverPath    String?
   epubPath     String
   txtPath      String
+  txtTokens    Int?
   tocJson      String?
   fileSize     Int
   totalParagraphs Int?
@@ -115,6 +118,7 @@ model EpubFile {
   bookmarks     Bookmark[]
   highlights    Highlight[]
   explainerRequests ExplainerRequest[]
+  explainerThreads  ExplainerThread[]
 }
 
 model UserBookAccess {
@@ -260,11 +264,12 @@ model TtsProviderConfig {
 }
 
 model OpenRouterConfig {
-  id        String   @id @default(cuid())
-  userType  String   @unique
-  apiKey    String?
-  model     String?
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  userType          String   @unique
+  apiKey            String?
+  model             String?
+  maxContextTokens  Int?
+  updatedAt         DateTime @updatedAt
 }
 
 // ponytail: KV table for global admin-tunable settings (e.g. globalSystemPrompt).
@@ -273,4 +278,62 @@ model AppSetting {
   key       String   @id
   value     String?
   updatedAt DateTime @updatedAt
+}
+
+// ponytail: per-user multi-turn explainer threads. Initial response lives in
+// the cached `Explainer` row (globally shared); only follow-up turns are
+// stored as `ExplainerMessage`. One thread per (userId, explainerId) — same
+// passage selected twice reopens the same thread.
+model ExplainerThread {
+  id           String   @id @default(cuid())
+  userId       String
+  bookId       String
+  explainerId  String
+  type         String   // "passage" | "section" | "book"
+  passageCfi   String?
+  passageText  String?  // full passage text — re-sent as context on follow-ups
+  sectionHref  String?
+  language     String
+  tier         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book         EpubFile  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  explainer    Explainer @relation(fields: [explainerId], references: [id], onDelete: Cascade)
+  messages     ExplainerMessage[]
+
+  @@unique([userId, explainerId])
+  @@index([userId, bookId])
+}
+
+model ExplainerMessage {
+  id         String   @id @default(cuid())
+  threadId   String
+  role       String   // "user" | "assistant"
+  content    String
+  modelId    String?
+  createdAt  DateTime @default(now())
+
+  thread     ExplainerThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+// ponytail: admin-visible error log. Populated by explainer pipeline failures
+// (size, missing key, OpenRouter errors) and upload-time blocks. Generic shape
+// so future failure sources can record here without schema change.
+model SystemError {
+  id         String   @id @default(cuid())
+  category   String   // "explainer_too_large" | "missing_api_key" | "openrouter_error" | "upload_blocked" | ...
+  message    String
+  userId     String?
+  bookId     String?
+  threadId   String?
+  context    String?  // JSON string: { tier, model, tokenCount, limit, ... }
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([category, resolved])
 }

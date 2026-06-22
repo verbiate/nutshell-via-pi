@@ -1,10 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ReaderPanel } from "../reader-panel";
-
-vi.mock("@/components/explainer/explainer-panel", () => ({
-  ExplainerPanel: () => null,
-}));
 
 function render(el: React.ReactElement) {
   return renderToStaticMarkup(el);

@@ -2,15 +2,41 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { countTokens as _countTokens } from "gpt-tokenizer/encoding/cl100k_base";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Send, Square, Trash2, Save, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Send, Square, Trash2, Save, RotateCcw, ChevronDown, ChevronUp,
+  BookPlus, X, Search,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ponytail: same encoding as the server (src/server/services/tokens.ts). cl100k_base
+// is the de-facto approximation across GPT/Claude/Llama/Gemini English.
+function countTokens(text: string): number {
+  if (!text) return 0;
+  return _countTokens(text);
+}
+
+// ponytail: strip OpenRouter variant suffixes (:nitro, :thinking, etc.) —
+// matches the server-side model-info lookup. Mirrors route logic so local
+// table hits and remote fetches agree.
+function stripVariant(slug: string): string {
+  const colonIdx = slug.indexOf(":");
+  return colonIdx > 0 ? slug.slice(0, colonIdx) : slug;
+}
 
 type Tier = "regular" | "pro" | "admin";
 
@@ -26,6 +52,40 @@ type OpenRouterConfig = {
   userType: string;
   model: string | null;
 };
+
+type SelectedBook = {
+  id: string;
+  title: string;
+  author: string | null;
+  txtTokens: number | null; // null = not yet computed (lazy backfill pending)
+};
+
+// ponytail: instant local lookup for common models; misses hit /api/admin/playground/model-info
+// which proxies OpenRouter with a 24h server cache. Add entries here as needed.
+const CONTEXT_WINDOWS: Record<string, number> = {
+  "google/gemini-2.0-flash-001": 1_048_576,
+  "google/gemini-2.5-flash": 1_048_576,
+  "google/gemini-flash-1.5": 1_000_000,
+  "anthropic/claude-sonnet-4.6": 200_000,
+  "anthropic/claude-sonnet-4.5": 200_000,
+  "anthropic/claude-3.5-sonnet": 200_000,
+  "anthropic/claude-3-5-sonnet": 200_000,
+  "anthropic/claude-3-opus": 200_000,
+  "anthropic/claude-haiku-4.5": 200_000,
+  "openai/gpt-4o": 128_000,
+  "openai/gpt-4o-mini": 128_000,
+  "openai/gpt-4-turbo": 128_000,
+  "openai/gpt-4": 8_192,
+  "meta-llama/llama-3.1-405b-instruct": 128_000,
+};
+
+const FALLBACK_CONTEXT_WINDOW = 120_000;
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1000)}K`;
+  return String(n);
+}
 
 export default function PlaygroundPage() {
   const queryClient = useQueryClient();
@@ -99,9 +159,64 @@ export default function PlaygroundPage() {
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // --- Selected books (context) ---
+  const [selectedBooks, setSelectedBooks] = useState<SelectedBook[]>([]);
+  const [bookModalOpen, setBookModalOpen] = useState(false);
+
+  const activeModel = customModel.trim() || modelForTier(tier) || null;
+  const activeModelLabel = activeModel ?? "(not configured)";
+
+  // --- Context window for the active model ---
+  // ponytail: local lookup is computed during render (pure). Remote fetch is
+  // done in an effect that only calls setState from async callbacks, never
+  // synchronously — avoids cascading renders.
+  const localLookup = activeModel
+    ? CONTEXT_WINDOWS[stripVariant(activeModel)]
+    : undefined;
+  const [remote, setRemote] = useState<{
+    model: string;
+    window: number;
+    source: "cache" | "fetch" | "fallback";
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeModel || localLookup) return;
+    let cancelled = false;
+    fetch(
+      `/api/admin/playground/model-info?model=${encodeURIComponent(activeModel)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setRemote({
+          model: activeModel,
+          window: data.contextLength,
+          source: data.source ?? "fetch",
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRemote({
+          model: activeModel,
+          window: FALLBACK_CONTEXT_WINDOW,
+          source: "fallback",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeModel, localLookup]);
+
+  const contextWindow =
+    localLookup ??
+    (remote?.model === activeModel ? remote.window : FALLBACK_CONTEXT_WINDOW);
+  const contextSource: "lookup" | "cache" | "fetch" | "fallback" | "loading" =
+    localLookup ? "lookup" : remote?.model === activeModel ? remote.source : "loading";
+
   // ponytail: switching tier or customModel invalidates the conversation — the
   // prior turns were against a different model/context, so keeping them would
-  // mislead. Cleared in the change handlers directly.
+  // mislead. Cleared in the change handlers directly. Books persist across
+  // tier/model changes (they're an admin-level selection, model-independent).
   function changeTier(t: Tier) {
     if (t === tier) return;
     setTier(t);
@@ -113,19 +228,80 @@ export default function PlaygroundPage() {
     setMessages([]);
   }
 
+  // Adding/removing books invalidates the conversation for the same reason.
+  function addBooks(books: SelectedBook[]) {
+    if (books.length === 0) return;
+    setSelectedBooks((prev) => {
+      const existing = new Set(prev.map((b) => b.id));
+      return [...prev, ...books.filter((b) => !existing.has(b.id))];
+    });
+    setMessages([]);
+
+    // ponytail: lazy backfill — fire-and-forget POST for any book without a
+    // stored token count. Updates the chip's count in-place when resolved.
+    // Surface errors so a failed backfill isn't a silent mystery.
+    for (const book of books) {
+      if (book.txtTokens === null) {
+        toast.info(`Computing tokens for "${book.title}"…`);
+        fetch(`/api/admin/books/${book.id}/tokenize`, { method: "POST" })
+          .then(async (r) => {
+            if (!r.ok) {
+              const err = await r.json().catch(() => ({}));
+              throw new Error(err.error || `Backfill failed (${r.status})`);
+            }
+            return r.json();
+          })
+          .then((data) => {
+            if (typeof data.txtTokens === "number") {
+              setSelectedBooks((prev) =>
+                prev.map((b) =>
+                  b.id === book.id ? { ...b, txtTokens: data.txtTokens } : b
+                )
+              );
+              toast.success(`"${book.title}": ~${formatTokens(data.txtTokens)} tokens`);
+            }
+          })
+          .catch((err) => {
+            toast.error(`Tokenizing "${book.title}" failed: ${err.message}`);
+          });
+      }
+    }
+  }
+  function removeBook(id: string) {
+    setSelectedBooks((prev) => prev.filter((b) => b.id !== id));
+    setMessages([]);
+  }
+
+  // Token estimates for the indicator.
+  // Books: real BPE count from DB (cl100k_base), computed at upload or
+  // lazy-backfilled on first selection. Null = still computing.
+  // Chat: client-side BPE on systemPrompt + every message + the input draft.
+  // ponytail: per-piece encode (not joined) — matches how the API actually
+  // counts message boundaries; ~4 tokens of per-message overhead ignored.
+  const bookTokens = selectedBooks.reduce(
+    (s, b) => s + (b.txtTokens ?? 0),
+    0
+  );
+  const booksLoading = selectedBooks.some((b) => b.txtTokens === null);
+  const chatTokens =
+    countTokens(systemPrompt) +
+    messages.reduce((s, m) => s + countTokens(m.content), 0) +
+    countTokens(input);
+  const usedTokens = bookTokens + chatTokens;
+  const window = contextWindow ?? FALLBACK_CONTEXT_WINDOW;
+  const pct = window > 0 ? Math.min(100, (usedTokens / window) * 100) : 0;
+  const overBudget = usedTokens > window * 0.9;
+
   // Auto-scroll on new content
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  const activeModelLabel =
-    customModel.trim() || modelForTier(tier) || "(not configured)";
-
   async function send() {
     const text = input.trim();
     if (!text || streaming) return;
-    if (!customModel.trim() && !modelForTier(tier)) {
+    if (!activeModel) {
       toast.error(`No model configured for ${tier} tier`);
       return;
     }
@@ -152,6 +328,7 @@ export default function PlaygroundPage() {
           tier,
           model: customModel.trim() || undefined,
           systemPrompt: systemPrompt.trim() || undefined,
+          bookIds: selectedBooks.length > 0 ? selectedBooks.map((b) => b.id) : undefined,
           // ponytail: don't send the empty assistant placeholder — OpenRouter
           // only wants the prior turns + the new user message.
           messages: nextMessages,
@@ -189,6 +366,11 @@ export default function PlaygroundPage() {
               setMessages((prev) =>
                 prev.filter((_, i) => i !== assistantIndex)
               );
+              // Auto-remove a book that's been deleted from the library
+              const notFoundMatch = parsed.error.match(/Book not found: (.+)/);
+              if (notFoundMatch) {
+                setSelectedBooks((prev) => prev.filter((b) => b.id !== notFoundMatch[1]));
+              }
               return;
             }
             if (parsed.chunk) {
@@ -269,6 +451,73 @@ export default function PlaygroundPage() {
               placeholder="e.g. openai/gpt-4o"
               className="text-sm"
               disabled={streaming}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Book context bar */}
+      <Card className="mt-3 p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">
+            Books in context ({selectedBooks.length})
+          </Label>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setBookModalOpen(true)}
+            disabled={streaming}
+          >
+            <BookPlus className="h-3.5 w-3.5 mr-1" />
+            Add book
+          </Button>
+        </div>
+        {selectedBooks.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedBooks.map((b) => (
+              <Badge
+                key={b.id}
+                variant="secondary"
+                className="pr-1 pl-2 py-1 gap-1"
+              >
+                <span className="truncate max-w-[180px]">{b.title}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {b.txtTokens === null
+                    ? "…"
+                    : `~${formatTokens(b.txtTokens)}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeBook(b.id)}
+                  className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                  title="Remove"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+        {/* Context-window indicator: always visible */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>
+              Context: ~{formatTokens(usedTokens)}
+              {booksLoading && " + pending"}
+              {" / "}
+              {formatTokens(window)}
+              {contextSource === "loading" && " (loading)"}
+              {contextSource === "fallback" && " (assumed)"}
+            </span>
+            <span>{Math.round(pct)}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "h-full transition-all",
+                overBudget ? "bg-destructive" : "bg-primary"
+              )}
+              style={{ width: `${pct}%` }}
             />
           </div>
         </div>
@@ -394,6 +643,198 @@ export default function PlaygroundPage() {
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
+
+      <BookPickerModal
+        open={bookModalOpen}
+        onOpenChange={setBookModalOpen}
+        existingIds={selectedBooks.map((b) => b.id)}
+        onAdd={addBooks}
+      />
     </div>
+  );
+}
+
+// ponytail: modal in same file. Two components with shared types is fine —
+// extracting to its own file is premature until this grows.
+type AdminBook = {
+  id: string;
+  title: string;
+  author: string | null;
+  txtTokens: number | null;
+  language?: string;
+};
+
+function BookPickerModal({
+  open,
+  onOpenChange,
+  existingIds,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  existingIds: string[];
+  onAdd: (books: SelectedBook[]) => void;
+}) {
+  const [loaded, setLoaded] = useState<AdminBook[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+
+  // Reset + load first page whenever the modal opens.
+  // ponytail: setState-in-effect is intentional here — we want fresh state each
+  // time the dialog opens. Remounting via key would require restructuring the
+  // Dialog's open/close animation. The dep is `open` (parent state), not any of
+  // the state being set, so this can't actually cascade.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!open) return;
+    setLoaded([]);
+    setPage(1);
+    setHasMore(true);
+    setSearch("");
+    setPending(new Set());
+    loadPage(1);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [open]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  async function loadPage(p: number) {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/books?page=${p}`);
+      if (!res.ok) throw new Error("Failed to load books");
+      const data = await res.json();
+      const books: AdminBook[] = (data.books ?? []).map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author ?? null,
+        txtTokens: b.txtTokens ?? null,
+        language: b.language,
+      }));
+      setLoaded((prev) => (p === 1 ? books : [...prev, ...books]));
+      setHasMore(books.length > 0 && loaded.length + books.length < (data.total ?? Infinity));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load books");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggle(id: string) {
+    setPending((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function commit() {
+    const toAdd = loaded.filter(
+      (b) => pending.has(b.id) && !existingIds.includes(b.id)
+    );
+    onAdd(toAdd);
+    onOpenChange(false);
+  }
+
+  const filtered = search.trim()
+    ? loaded.filter((b) => {
+        const q = search.toLowerCase();
+        return (
+          b.title.toLowerCase().includes(q) ||
+          (b.author?.toLowerCase().includes(q) ?? false)
+        );
+      })
+    : loaded;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add books to context</DialogTitle>
+        </DialogHeader>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title or author…"
+            className="pl-8 text-sm"
+          />
+        </div>
+        <div className="max-h-[400px] overflow-y-auto rounded-md border border-border">
+          {filtered.length === 0 && !loading && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {loaded.length === 0 ? "No books found." : "No matches."}
+            </p>
+          )}
+          {filtered.map((b) => {
+            const already = existingIds.includes(b.id);
+            const checked = already || pending.has(b.id);
+            return (
+              <label
+                key={b.id}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 border-b border-border last:border-b-0 cursor-pointer",
+                  checked ? "bg-muted/50" : "hover:bg-muted/30",
+                  already && "opacity-60 cursor-not-allowed"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={already}
+                  onChange={() => toggle(b.id)}
+                  className="h-4 w-4"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{b.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {b.author || "Unknown author"}
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {b.txtTokens === null
+                    ? "not tokenized"
+                    : `~${formatTokens(b.txtTokens)}`}
+                  {already && " · added"}
+                </span>
+              </label>
+            );
+          })}
+          {loading && (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              Loading…
+            </p>
+          )}
+        </div>
+        {hasMore && !search && (
+          <div className="flex justify-center">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const next = page + 1;
+                setPage(next);
+                loadPage(next);
+              }}
+              disabled={loading}
+            >
+              Load more
+            </Button>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={commit} disabled={pending.size === 0}>
+            Add {pending.size > 0 ? `(${pending.size})` : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
