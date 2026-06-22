@@ -52,6 +52,7 @@ export interface ReaderClientProps {
   bookAuthor?: string | null;
   bookCoverPath?: string | null;
   bookLanguage?: string;
+  bookDescription?: string | null;
   epubUrl: string;
   isAdmin?: boolean;
   bookCreatedAt?: string;
@@ -76,6 +77,7 @@ export function ReaderClient({
   bookAuthor,
   bookCoverPath,
   bookLanguage,
+  bookDescription,
   epubUrl,
   isAdmin,
   bookCreatedAt,
@@ -153,6 +155,12 @@ export function ReaderClient({
   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
   const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState("");
+  // ponytail: auto-hide chrome (top bar + progress) when the sidebar is closed
+  // and the pointer is idle. pointermove covers mouse + touch + pen. Ceiling: a
+  // touch tap with no drag won't re-show (no pointermove fires); upgrade path is
+  // also listening for pointerdown. TtsPlayer and FloatingToolbar stay visible.
+  const [pointerActive, setPointerActive] = useState(true);
+  const pointerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ponytail: pendingRequest communicates any "ask about" click (floating
   // toolbar passage, ToC dropdown section, "Ask the book" button) from the
   // reader to the ExplainerThreadsPanel in the sidebar. The panel consumes
@@ -161,6 +169,18 @@ export function ReaderClient({
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
   const [sidebarAnimating, setSidebarAnimating] = useState(false);
+
+  // ─── Book description (LLM-extracted, may load after first paint) ────────────
+  // ponytail: initial value comes from the server (already-extracted row).
+  // When null, the reader-side ensure-metadata endpoint runs the extraction
+  // (idempotent — short-circuits server-side if the upload's background
+  // trigger already finished). The spinner appears only if this takes >1s.
+  const [description, setDescription] = useState<string | null>(
+    bookDescription ?? null
+  );
+  const [descriptionLoading, setDescriptionLoading] = useState(
+    !bookDescription
+  );
 
   // ─── Position state ────────────────────────────────────────────────────────────
   const [savedPosition, setSavedPosition] = useState<SavedPosition | null>(null);
@@ -566,6 +586,45 @@ export function ReaderClient({
     [bookId, savedPosition, currentHref]
   );
 
+  // ─── Auto-hide chrome when sidebar is closed and pointer is idle ────────────
+  const scheduleHideChrome = useCallback(() => {
+    if (pointerTimeoutRef.current) clearTimeout(pointerTimeoutRef.current);
+    pointerTimeoutRef.current = setTimeout(() => setPointerActive(false), 1500);
+  }, []);
+
+  const handlePointerActivity = useCallback(() => {
+    setPointerActive(true);
+    scheduleHideChrome();
+  }, [scheduleHideChrome]);
+
+  // ponytail: window-level pointermove covers the chrome + book wrapper outside
+  // the epub iframe. The iframe's contentDocument listener (wired in
+  // handleRenditionReady) covers movement inside the book content, since iframe
+  // events don't bubble to the parent window.
+  useEffect(() => {
+    window.addEventListener("pointermove", handlePointerActivity);
+    return () => window.removeEventListener("pointermove", handlePointerActivity);
+  }, [handlePointerActivity]);
+
+  // ponytail: when the sidebar closes, kick the hide countdown so chrome fades
+  // even if the pointer never moves. When it opens, cancel the countdown and
+  // force the chrome visible.
+  useEffect(() => {
+    if (activeTool === null && isLoaded) {
+      scheduleHideChrome();
+    } else if (pointerTimeoutRef.current) {
+      clearTimeout(pointerTimeoutRef.current);
+      pointerTimeoutRef.current = null;
+      setPointerActive(true);
+    }
+    return () => {
+      if (pointerTimeoutRef.current) {
+        clearTimeout(pointerTimeoutRef.current);
+        pointerTimeoutRef.current = null;
+      }
+    };
+  }, [activeTool, isLoaded, scheduleHideChrome]);
+
   // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore when typing in an input/textarea/contenteditable
@@ -601,13 +660,14 @@ export function ReaderClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  // Clean up the iframe keydown listener on unmount
+  // Clean up the iframe keydown/pointermove listener on unmount
   useEffect(() => {
     return () => {
       iframeDocRef.current?.removeEventListener("keydown", handleKeyDown);
+      iframeDocRef.current?.removeEventListener("pointermove", handlePointerActivity);
       iframeDocRef.current = null;
     };
-  }, [handleKeyDown]);
+  }, [handleKeyDown, handlePointerActivity]);
 
   // ─── Render highlights when rendition is ready ─────────────────────────────────
   const handleRenditionReady = useCallback(
@@ -620,7 +680,9 @@ export function ReaderClient({
       const attachToDoc = (doc: Document | null | undefined) => {
         if (!doc) return;
         iframeDocRef.current?.removeEventListener("keydown", handleKeyDown);
+        iframeDocRef.current?.removeEventListener("pointermove", handlePointerActivity);
         doc.addEventListener("keydown", handleKeyDown);
+        doc.addEventListener("pointermove", handlePointerActivity);
         iframeDocRef.current = doc;
       };
       const r = rendition as any;
@@ -638,7 +700,7 @@ export function ReaderClient({
         );
       }
     },
-    [highlightsData, handleKeyDown]
+    [highlightsData, handleKeyDown, handlePointerActivity]
   );
 
   const handleError = useCallback((err: Error) => {
@@ -676,6 +738,38 @@ export function ReaderClient({
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [flushPendingSave]);
+
+  // ─── Lazy book-description fetch (stray books + just-uploaded) ──────────────
+  // ponytail: skip when the server already had a description row. Otherwise
+  // fire POST /api/reader/ensure-metadata, which short-circuits server-side
+  // if a row already exists by the time it lands (e.g. upload's background
+  // extraction just finished). No toast on error — failures land in the admin
+  // Errors page; the reader just shows no description. descriptionLoading is
+  // seeded true when bookDescription is null, so no need to toggle it here.
+  useEffect(() => {
+    if (bookDescription) return;
+    if (!bookId) return;
+    let cancelled = false;
+    fetch("/api/reader/ensure-metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookId }),
+    })
+      .then(async (r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setDescription(data?.metadata?.description ?? null);
+        setDescriptionLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDescriptionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, bookDescription]);
+
   // ─── TTS Playback ──────────────────────────────────────────────────────────
   const handleTtsNavigate = useCallback((href: string) => {
     setCurrentHref(href);
@@ -902,6 +996,7 @@ export function ReaderClient({
           <ReaderChrome
             onBack={handleBack}
             sidebarOpen={activeTool !== null}
+            hidden={activeTool === null && !pointerActive}
             onHideControls={() => setActiveTool(null)}
             searchTrigger={
               <SearchPanel
@@ -928,7 +1023,11 @@ export function ReaderClient({
               /* eslint-enable react-hooks/refs */
             }
           />
-          <ReadingProgress percentage={percentage} sidebarOpen={activeTool !== null} />
+          <ReadingProgress
+            percentage={percentage}
+            sidebarOpen={activeTool !== null}
+            hidden={activeTool === null && !pointerActive}
+          />
         </>
       )}
 
@@ -953,6 +1052,8 @@ export function ReaderClient({
                 author={bookAuthor}
                 coverPath={bookCoverPath}
                 language={bookLanguage}
+                description={description}
+                descriptionLoading={descriptionLoading}
                 toc={toc}
                 currentHref={currentHref}
                 onNavigate={handleTocNavigate}
@@ -986,6 +1087,8 @@ export function ReaderClient({
                 bookId={bookId}
                 pendingRequest={pendingRequest}
                 onConsumed={() => setPendingRequest(null)}
+                onCloseSidebar={() => setActiveTool(null)}
+                onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
                 contextWindow={contextWindow}
               />

@@ -107,6 +107,7 @@ export async function* generateExplainer(
     bookText: string;
     bookMd5: string;
     promptVersion: number;
+    metadataVersion?: string;
   };
   const { buildBookPrompt, buildSectionPrompt } = await getPromptBuilder();
 
@@ -134,11 +135,17 @@ export async function* generateExplainer(
 
   // Compute content hash for cache lookup. Include bookMd5 for section/passage
   // so the same snippet in two different books doesn't share a cache row.
+  // metadataSalt: when BookMetadata exists, its updatedAt invalidates cache on
+  // re-extraction (the {{expanded_metadata}} block in the prompt may now differ).
+  const metadataSalt = promptData.metadataVersion
+    ? `meta:${promptData.metadataVersion}`
+    : undefined;
   const contentHash = computeContentHash(
     promptData.sourceText,
     promptData.promptVersion,
     type,
-    type === "section" || type === "passage" ? promptData.bookMd5 : undefined
+    type === "section" || type === "passage" ? promptData.bookMd5 : undefined,
+    metadataSalt
   );
 
   // Check cache

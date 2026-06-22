@@ -28,6 +28,17 @@ export interface StreamChatOptions {
   maxTokens?: number;
 }
 
+export interface CompleteChatOptions {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  systemMessage?: string;
+  temperature?: number;
+  maxTokens?: number;
+  // ponytail: response_format json_object — caller checks the model supports it.
+  jsonMode?: boolean;
+}
+
 export class OpenRouterError extends Error {
   statusCode: number;
   constructor(message: string, statusCode: number) {
@@ -267,4 +278,62 @@ export async function* streamBookTwoPass(
   })) {
     yield { type: "chunk", chunk };
   }
+}
+
+/**
+ * One-shot (non-streaming) chat completion. Returns the full message content
+ * as a string. Caller parses (e.g. JSON.parse when jsonMode is set).
+ *
+ * ponytail: exists because metadata extraction wants a structured JSON reply,
+ * not streamed prose. Mirrors streamExplainer's request shape and error
+ * handling; only the body and parse path differ.
+ */
+export async function completeChat(
+  options: CompleteChatOptions
+): Promise<string> {
+  if (!options.apiKey) {
+    throw new OpenRouterError("OPENROUTER_API_KEY is not configured", 500);
+  }
+
+  const body: Record<string, unknown> = {
+    model: options.model,
+    messages: [
+      ...(options.systemMessage
+        ? [{ role: "system", content: options.systemMessage }]
+        : []),
+      { role: "user", content: options.prompt },
+    ],
+    stream: false,
+    temperature: options.temperature ?? 0,
+    max_tokens: options.maxTokens ?? 2048,
+  };
+  if (options.jsonMode) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.APP_URL || "http://localhost:3000",
+      "X-Title": "Nutshell",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new OpenRouterError(
+      `OpenRouter error ${response.status}: ${errorBody}`,
+      response.status
+    );
+  }
+
+  const json = await response.json();
+  const content: string = json.choices?.[0]?.message?.content ?? "";
+  if (!content) {
+    throw new OpenRouterError("OpenRouter returned empty content", 500);
+  }
+  return content;
 }

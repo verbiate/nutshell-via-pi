@@ -5,7 +5,27 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Send, Square, Lightbulb, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ArrowLeft,
+  Send,
+  Square,
+  Lightbulb,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   countTokens,
@@ -49,6 +69,15 @@ export interface ExplainerThreadsPanelProps {
   bookId: string;
   pendingRequest: PendingExplainerRequest | null;
   onConsumed: () => void;
+  // ponytail: fired when the panel pops a thread into the modal so the parent
+  // can close the sidebar (gives the modal full focus). The bulb panel stays
+  // mounted via reader-sidebar.tsx's lastTool pattern, so panel state
+  // (activeThreadId, streaming, poppedOut) is preserved while hidden.
+  onCloseSidebar?: () => void;
+  // ponytail: fired when the user "returns" the discussion from the modal
+  // back to the sidebar. Parent reopens the bulb tool; the panel was never
+  // unmounted (lastTool), so the active thread is still intact.
+  onReturnToSidebar?: () => void;
   // ponytail: token-budget inputs for the "X% full" indicator. Both come from
   // the reader server component (resolved via tier config + getContextWindow).
   // Optional so the panel doesn't crash if a future caller omits them — the
@@ -61,12 +90,19 @@ export function ExplainerThreadsPanel({
   bookId,
   pendingRequest,
   onConsumed,
+  onCloseSidebar,
+  onReturnToSidebar,
   bookTxtTokens,
   contextWindow,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  // ponytail: pop-out modal state. When true, the same panel view (thread or
+  // list) renders inside a Dialog at max-w-2xl h-[80vh] for "elbow room".
+  // Sidebar keeps rendering behind the dimmed/blurred overlay (Radix blocks
+  // pointer events), so closing the modal returns focus with state intact.
+  const [poppedOut, setPoppedOut] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: StrictMode double-fire guard for the pendingRequest effect below.
   // Holds the last-processed request reference; the effect bails if the
@@ -254,6 +290,26 @@ export function ExplainerThreadsPanel({
     setLocalMessages([]);
   }
 
+  // ponytail: pop a thread into the modal. Called from ThreadView's header
+  // expand button (no id — keep the current thread) or ListView's per-row ⋯
+  // menu (id given — select first, then open). Selecting from the list only
+  // happens when no thread is active, so selectThread's `if (streaming) return`
+  // guard can't fire here. Closes the sidebar so the modal gets full focus —
+  // the bulb panel stays mounted (reader-sidebar lastTool), preserving state.
+  function popOutThread(id?: string) {
+    if (id) selectThread(id);
+    setPoppedOut(true);
+    onCloseSidebar?.();
+  }
+
+  // ponytail: inverse of popOutThread — close the modal and reopen the
+  // sidebar. The active thread survives because the bulb panel never
+  // unmounted (reader-sidebar lastTool keeps it alive while hidden).
+  function returnToSidebar() {
+    setPoppedOut(false);
+    onReturnToSidebar?.();
+  }
+
   // ─── Follow-up composer ─────────────────────────────────────────────────
   const [input, setInput] = useState("");
 
@@ -356,34 +412,63 @@ export function ExplainerThreadsPanel({
     (pendingRequest?.type === "passage" ? pendingRequest.text : null) ??
     null;
 
-  if (activeThreadId || streamingInitial) {
+  // ponytail: single render fn feeds both the sidebar slot and the pop-out
+  // Dialog. State lives in this panel, so both views stay in sync by
+  // construction. `inModal` flips the header's expand button off (redundant
+  // inside the modal) and reserves room for the Dialog's X close button.
+  // Plain function (not useCallback) — closes over fresh state every render,
+  // and no memoized child needs a stable reference.
+  function renderPanelContent(inModal: boolean) {
+    if (activeThreadId || streamingInitial) {
+      return (
+        <ThreadView
+          initialContent={initialContent}
+          streamingInitial={streamingInitial}
+          phase={phase}
+          messages={localMessages}
+          input={input}
+          setInput={setInput}
+          streaming={streaming}
+          onSend={sendFollowup}
+          onStop={stop}
+          onBack={backToList}
+          threadType={threadType}
+          threadPassageText={threadPassageText}
+          bookTxtTokens={bookTxtTokens}
+          contextWindow={contextWindow}
+          inModal={inModal}
+          onPopOut={() => popOutThread()}
+          onReturnToSidebar={returnToSidebar}
+        />
+      );
+    }
     return (
-      <ThreadView
-        initialContent={initialContent}
-        streamingInitial={streamingInitial}
-        phase={phase}
-        messages={localMessages}
-        input={input}
-        setInput={setInput}
-        streaming={streaming}
-        onSend={sendFollowup}
-        onStop={stop}
-        onBack={backToList}
-        threadType={threadType}
-        threadPassageText={threadPassageText}
-        bookTxtTokens={bookTxtTokens}
-        contextWindow={contextWindow}
+      <ListView
+        threads={threads}
+        loading={listLoading}
+        onSelect={selectThread}
+        onPopOut={popOutThread}
+        emptyHint="Select text in the book and click 'Explain this' to start a discussion."
       />
     );
   }
 
   return (
-    <ListView
-      threads={threads}
-      loading={listLoading}
-      onSelect={selectThread}
-      emptyHint="Select text in the book and click 'Explain this' to start a discussion."
-    />
+    <>
+      {renderPanelContent(false)}
+      <Dialog open={poppedOut} onOpenChange={setPoppedOut}>
+        <DialogContent className="flex h-[80vh] max-h-[80vh] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          {/*
+            ponytail: Radix requires a DialogTitle for SR announcement. The
+            visible header inside ThreadView already says "Discussion"; this
+            sr-only title satisfies the a11y requirement without duplicating
+            visible text.
+          */}
+          <DialogTitle className="sr-only">Discussion</DialogTitle>
+          {renderPanelContent(true)}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -393,11 +478,13 @@ function ListView({
   threads,
   loading,
   onSelect,
+  onPopOut,
   emptyHint,
 }: {
   threads: ThreadPreview[];
   loading: boolean;
   onSelect: (id: string) => void;
+  onPopOut: (id: string) => void;
   emptyHint: string;
 }) {
   if (loading) {
@@ -428,33 +515,65 @@ function ListView({
       <ul className="space-y-1">
         {threads.map((t) => (
           <li key={t.id}>
-            <button
-              type="button"
+            {/*
+              ponytail: row is a div role=button (not a <button>) so the
+              nested DropdownMenuTrigger can render its own <button> legally —
+              nested <button>s are invalid HTML. onKeyDown handles Enter/Space
+              for a11y; onClick covers mouse. pr-6 on inner content reserves
+              room for the absolutely-positioned ⋯ at top-right.
+            */}
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(t.id)}
-              className="w-full text-left px-4 py-2 hover:bg-muted/50 rounded-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(t.id);
+                }
+              }}
+              className="group relative w-full cursor-pointer rounded-none px-4 py-2 text-left hover:bg-muted/50"
             >
-              <div className="flex items-center gap-2 mb-0.5">
-                <Lightbulb className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs text-muted-foreground capitalize">
+              <div className="mb-0.5 flex items-center gap-2 pr-6">
+                <Lightbulb className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                <span className="text-xs capitalize text-muted-foreground">
                   {t.type}
                 </span>
                 {t._count.messages > 0 && (
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                     {t._count.messages}
                   </Badge>
                 )}
-                <span className="ml-auto text-[10px] text-muted-foreground">
+                <span className="ml-auto text-[10px] text-muted-foreground transition-opacity group-hover:opacity-0 focus-within:opacity-0">
                   {formatRelative(t.updatedAt)}
                 </span>
               </div>
-              <p className="text-xs text-foreground line-clamp-2">
+              <p className="line-clamp-2 pr-6 text-xs text-foreground">
                 {t.passageText
                   ? t.passageText.slice(0, 120)
                   : t.sectionHref
                   ? t.sectionHref
                   : "Whole book"}
               </p>
-            </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Discussion actions"
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onPopOut(t.id)}>
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    Pop out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </li>
         ))}
       </ul>
@@ -477,6 +596,9 @@ function ThreadView({
   threadPassageText,
   bookTxtTokens,
   contextWindow,
+  inModal,
+  onPopOut,
+  onReturnToSidebar,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -492,12 +614,25 @@ function ThreadView({
   threadPassageText: string | null;
   bookTxtTokens?: number | null;
   contextWindow?: number;
+  inModal?: boolean;
+  onPopOut: () => void;
+  onReturnToSidebar: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [initialContent, messages]);
+
+  // ponytail: autofocus the composer when rendered in the pop-out modal.
+  // Covers both cases: modal opens while idle (focus immediately), and modal
+  // opens during streaming (effect re-fires when streaming ends → focus then).
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (inModal && !streaming && !streamingInitial) {
+      inputRef.current?.focus();
+    }
+  }, [inModal, streaming, streamingInitial]);
 
   // ponytail: phase label only matters while the user is staring at an empty
   // (or growing) bubble. "Explaining" = hidden pass 1 running, nothing shown
@@ -531,8 +666,17 @@ function ThreadView({
   const fullLabel = indicator?.label ?? "";
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-2 py-2 border-b border-border flex items-center gap-2">
+    <div className={cn("flex flex-col", inModal ? "min-h-0 flex-1 overflow-hidden" : "h-full")}>
+      <div
+        className={cn(
+          "flex items-center gap-2 border-b border-border px-2 py-2",
+          // ponytail: reserve room for the Dialog's absolute top-2 right-2 X
+          // when rendered inside the modal so it doesn't overlap the indicator
+          // or the Minimize2 return button. pr-12 (48px) gives the return
+          // button breathing room from the X (X spans ~8–36px from the edge).
+          inModal && "pr-12"
+        )}
+      >
         <Button
           size="sm"
           variant="ghost"
@@ -544,14 +688,43 @@ function ThreadView({
           Back
         </Button>
         <span className="text-xs text-muted-foreground">Discussion</span>
-        {pct !== null && (
-          <span
-            className="ml-auto text-[11px] tabular-nums text-muted-foreground"
-            title={fullLabel}
-          >
-            {Math.round(pct)}% full
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {pct !== null && (
+            <span
+              className="text-[11px] tabular-nums text-muted-foreground"
+              title={fullLabel}
+            >
+              {Math.round(pct)}% full
+            </span>
+          )}
+          {/*
+            ponytail: Maximize2 pops the thread into the modal (sidebar only);
+            Minimize2 returns it to the sidebar (modal only). Symmetric icons
+            convey the inverse actions. size="icon-sm" is h-7 w-7, matching
+            the Back button's height.
+          */}
+          {!inModal ? (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onPopOut}
+              title="Pop out"
+              aria-label="Pop out"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onReturnToSidebar}
+              title="Return to sidebar"
+              aria-label="Return to sidebar"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
       {pct !== null && (
         <div
@@ -568,7 +741,7 @@ function ThreadView({
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {/* Initial explainer response */}
         {streamingInitial && phaseLabel && !initialContent && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -595,6 +768,7 @@ function ThreadView({
 
       <div className="border-t border-border p-2 flex items-end gap-2">
         <Textarea
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a follow-up…"

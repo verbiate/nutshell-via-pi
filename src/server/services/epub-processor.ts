@@ -5,6 +5,7 @@ import { detectLanguage } from "@/lib/language";
 import { countTokens } from "@/server/services/tokens";
 import { getTierBookTokenLimit } from "@/server/services/model-info";
 import { recordError } from "@/server/services/errors";
+import { extractBookMetadata } from "@/server/services/book-metadata";
 
 // ponytail: custom error so the upload route can return 413 (not 500) when
 // the user's tier can't accommodate the book. Message is intentionally
@@ -346,6 +347,10 @@ export async function processAndUploadBook(
       create: { userId, bookId: existing.id },
       update: {},
     });
+    // ponytail: stray-book path. The original upload may predate auto-extract;
+    // if metadata is missing, fire-and-forget now. Short-circuits inside the
+    // service if a row already exists (e.g. upload race with another reader).
+    triggerMetadataExtraction(existing.id, userId);
     return { book: existing, isNew: false };
   }
 
@@ -422,5 +427,25 @@ export async function processAndUploadBook(
     data: { userId, bookId: book.id },
   });
 
+  // ponytail: fire-and-forget background extraction. Never blocks the upload
+  // response; failures land in the admin Errors log via recordError. The
+  // reader-side ensure-metadata endpoint also triggers as a fallback if the
+  // user opens the book before this completes (the service short-circuits
+  // when a row already exists, so duplicate work is bounded).
+  triggerMetadataExtraction(book.id, userId);
+
   return { book, isNew: true };
+}
+
+// ponytail: detached promise wrapper. Keeps processAndUploadBook readable and
+// guarantees a single .catch() path that records to SystemError.
+function triggerMetadataExtraction(bookId: string, userId: string): void {
+  void extractBookMetadata(bookId, userId).catch(async (err: unknown) => {
+    await recordError({
+      category: "metadata_extraction_failed",
+      message: err instanceof Error ? err.message : String(err),
+      userId,
+      bookId,
+    });
+  });
 }

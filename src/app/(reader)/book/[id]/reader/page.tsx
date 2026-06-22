@@ -57,6 +57,7 @@ export default async function ReaderPage({
       bookAuthor={book.author}
       bookCoverPath={book.coverPath}
       bookLanguage={book.language}
+      bookDescription={book.bookMetadata?.description ?? null}
       epubUrl={epubUrl}
       isAdmin={session.role === "admin"}
       bookCreatedAt={book.createdAt.toISOString()}

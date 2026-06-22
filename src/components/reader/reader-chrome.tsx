@@ -10,6 +10,7 @@ export interface ReaderChromeProps {
   searchTrigger?: ReactNode;
   ttsTrigger?: ReactNode;
   sidebarOpen?: boolean;
+  hidden?: boolean;
   onHideControls?: () => void;
 }
 
@@ -18,6 +19,7 @@ export function ReaderChrome({
   searchTrigger,
   ttsTrigger,
   sidebarOpen = false,
+  hidden = false,
   onHideControls,
 }: ReaderChromeProps) {
   return (
@@ -25,17 +27,20 @@ export function ReaderChrome({
       className={cn(
         // ponytail: full viewport width when closed (right-0) so the right group sits 48px from the
         // viewport edge; pointer-events-none on the header keeps the rail below clickable.
-        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right] duration-[var(--reader-dur)] ease-reader",
+        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right] duration-[var(--reader-dur)] ease-reader transition-opacity",
         sidebarOpen
           ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
           : "",
+        hidden && "opacity-0",
       )}
       role="banner"
+      aria-hidden={hidden}
     >
-      <div className="flex items-center pointer-events-auto">
+      <div className={cn("flex items-center", hidden ? "pointer-events-none" : "pointer-events-auto")}>
         <Button
           onClick={onBack}
           aria-label="Back to bookshelf"
+          tabIndex={hidden ? -1 : 0}
           className="h-[46px] bg-transparent text-foreground"
         >
           <ChevronLeft className="mr-2 h-4 w-4" />
@@ -44,7 +49,7 @@ export function ReaderChrome({
       </div>
 
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
-      <div className="flex items-center gap-1 shrink-0 pointer-events-auto">
+      <div className={cn("flex items-center gap-1 shrink-0", hidden ? "pointer-events-none" : "pointer-events-auto")}>
         {searchTrigger}
         {ttsTrigger}
         <div
@@ -57,7 +62,7 @@ export function ReaderChrome({
           <div className="overflow-hidden">
             <Button
               onClick={onHideControls}
-              tabIndex={sidebarOpen ? 0 : -1}
+              tabIndex={sidebarOpen && !hidden ? 0 : -1}
               aria-label="Hide controls"
               className="h-[46px] bg-transparent text-foreground"
             >

@@ -1,0 +1,458 @@
+"use client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { RotateCcw, Sparkles, Loader2 } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+
+interface BookListItem {
+  id: string;
+  title: string;
+  author: string | null;
+  language: string;
+  md5: string;
+}
+
+interface MetadataView {
+  epub: { title: string; author: string | null; language: string };
+  metadata: {
+    id: string;
+    title: string;
+    subtitle: string | null;
+    description: string | null;
+    author: string | null;
+    authorGender: string | null;
+    isNarrative: boolean | null;
+    language: string | null;
+    promptVersion: number;
+    model: string | null;
+    extractedAt: string;
+    updatedAt: string;
+  } | null;
+}
+
+export default function BookMetadataPage() {
+  const queryClient = useQueryClient();
+  const [selectedBookId, setSelectedBookId] = useState<string>("");
+
+  // ponytail: library is small (~tens of books); fetch all and filter
+  // client-side via cmdk. Switch to server-side search if the universal
+  // library ever grows past a few hundred rows.
+  const { data: booksData } = useQuery({
+    queryKey: ["admin-books", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/books?pageSize=1000");
+      return res.json();
+    },
+  });
+  const books: BookListItem[] = booksData?.books ?? [];
+
+  const metadataQuery = useQuery({
+    queryKey: ["admin-book-metadata", selectedBookId],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/books/${selectedBookId}/metadata`);
+      if (!res.ok) throw new Error("Failed to load metadata");
+      return res.json() as Promise<MetadataView>;
+    },
+    enabled: !!selectedBookId,
+  });
+
+  const extractMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/admin/books/${selectedBookId}/extract-metadata`,
+        { method: "POST" }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Extraction failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Metadata extracted");
+      queryClient.invalidateQueries({
+        queryKey: ["admin-book-metadata", selectedBookId],
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: async (field: "title" | "author" | "language") => {
+      const res = await fetch(`/api/admin/books/${selectedBookId}/metadata`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Revert failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Reverted to original");
+      queryClient.invalidateQueries({
+        queryKey: ["admin-book-metadata", selectedBookId],
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const view = metadataQuery.data;
+  const md = view?.metadata ?? null;
+  const selectedBook = books.find((b) => b.id === selectedBookId);
+
+  return (
+    <div>
+      <h1 className="text-[20px] font-semibold text-foreground">
+        Book Metadata
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Extract title, subtitle, author, author gender, narrative type, and
+        language from a book via the admin-tier LLM.
+      </p>
+
+      <ModelSettingRow />
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[400px_1fr]">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-foreground">
+              {selectedBook ? "Selected" : "Pick a book"}
+            </h2>
+            {selectedBook && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setSelectedBookId("")}
+              >
+                Change
+              </Button>
+            )}
+          </div>
+
+          {selectedBook ? (
+            <div className="flex flex-col gap-1 rounded-md border bg-white p-3">
+              <span className="line-clamp-2 text-sm font-medium text-foreground">
+                {selectedBook.title}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {selectedBook.author || "Unknown author"}
+              </span>
+              {selectedBook.language && selectedBook.language !== "und" && (
+                <Badge variant="outline" className="mt-1 w-fit text-[10px]">
+                  {selectedBook.language.toUpperCase()}
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <Command className="rounded-md border">
+              <CommandInput placeholder="Search by title or author…" />
+              <CommandList className="max-h-[420px]">
+                <CommandEmpty>No books found.</CommandEmpty>
+                <CommandGroup>
+                  {books.map((b) => (
+                    <CommandItem
+                      key={b.id}
+                      value={`${b.title} ${b.author ?? ""}`}
+                      onSelect={() => setSelectedBookId(b.id)}
+                      className="flex flex-col items-start gap-0.5 py-2"
+                    >
+                      <span className="line-clamp-1 w-full text-sm font-medium">
+                        {b.title}
+                      </span>
+                      <span className="line-clamp-1 w-full text-xs text-muted-foreground">
+                        {b.author || "Unknown author"}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          )}
+        </div>
+
+        {selectedBookId && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Metadata</CardTitle>
+              <Button
+                size="sm"
+                onClick={() => extractMutation.mutate()}
+                disabled={extractMutation.isPending}
+              >
+                {extractMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {md ? "Re-extract" : "Extract Metadata"}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {metadataQuery.isPending ? (
+                <div className="h-24 animate-pulse rounded bg-muted" />
+              ) : md ? (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[140px]">Field</TableHead>
+                        <TableHead>EPUB original</TableHead>
+                        <TableHead>LLM-extracted</TableHead>
+                        <TableHead className="w-[80px]" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <MetadataRow
+                        label="Title"
+                        epubValue={view?.epub.title ?? ""}
+                        mdValue={md.title}
+                        isRevertable
+                        onRevert={() => revertMutation.mutate("title")}
+                        revertPending={
+                          revertMutation.isPending &&
+                          revertMutation.variables === "title"
+                        }
+                      />
+                      <MetadataRow
+                        label="Subtitle"
+                        epubValue="—"
+                        mdValue={md.subtitle}
+                      />
+                      <MetadataRow
+                        label="Description"
+                        epubValue="—"
+                        mdValue={md.description}
+                      />
+                      <MetadataRow
+                        label="Author"
+                        epubValue={view?.epub.author ?? "—"}
+                        mdValue={md.author}
+                        isRevertable
+                        onRevert={() => revertMutation.mutate("author")}
+                        revertPending={
+                          revertMutation.isPending &&
+                          revertMutation.variables === "author"
+                        }
+                      />
+                      <MetadataRow
+                        label="Author gender"
+                        epubValue="—"
+                        mdValue={md.authorGender}
+                      />
+                      <MetadataRow
+                        label="Narrative"
+                        epubValue="—"
+                        mdValue={
+                          md.isNarrative === null
+                            ? "undetermined"
+                            : md.isNarrative
+                              ? "narrative"
+                              : "non-narrative"
+                        }
+                      />
+                      <MetadataRow
+                        label="Language"
+                        epubValue={view?.epub.language ?? "—"}
+                        mdValue={md.language}
+                        isRevertable
+                        onRevert={() => revertMutation.mutate("language")}
+                        revertPending={
+                          revertMutation.isPending &&
+                          revertMutation.variables === "language"
+                        }
+                      />
+                    </TableBody>
+                  </Table>
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary">v{md.promptVersion}</Badge>
+                    {md.model && <Badge variant="outline">{md.model}</Badge>}
+                    <span>
+                      Extracted {new Date(md.extractedAt).toLocaleString()}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No metadata extracted yet. Click{" "}
+                  <strong>Extract Metadata</strong> to run the LLM.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetadataRow({
+  label,
+  epubValue,
+  mdValue,
+  isRevertable = false,
+  onRevert,
+  revertPending = false,
+}: {
+  label: string;
+  epubValue: string;
+  mdValue: string | null;
+  isRevertable?: boolean;
+  onRevert?: () => void;
+  revertPending?: boolean;
+}) {
+  const differs =
+    isRevertable &&
+    mdValue !== null &&
+    String(mdValue) !== String(epubValue);
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{label}</TableCell>
+      <TableCell className="text-muted-foreground">{epubValue || "—"}</TableCell>
+      <TableCell>
+        {mdValue === null || mdValue === "" ? (
+          <span className="text-muted-foreground italic">not determined</span>
+        ) : (
+          mdValue
+        )}
+      </TableCell>
+      <TableCell>
+        {isRevertable && differs && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2"
+            disabled={revertPending}
+            onClick={onRevert}
+            title="Revert to EPUB original"
+          >
+            {revertPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+// Model override for extraction. Persisted in AppSetting `bookMetadataModel`.
+// When empty, the service falls back to the admin-tier model from the API
+// Keys & Models page (the `fallback` field returned by the GET endpoint).
+// ponytail: hydrate-once via seededRef so a background refetch doesn't
+// clobber in-flight edits. Same pattern as SystemPromptEditor on the prompts
+// page (see prompts/page.tsx:298-304).
+function ModelSettingRow() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin-book-metadata-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/book-metadata-settings");
+      if (!res.ok) throw new Error("Failed to load model setting");
+      return res.json() as Promise<{ model: string | null; fallback: string }>;
+    },
+  });
+
+  const savedModel: string | null = data?.model ?? null;
+  const fallback: string = data?.fallback ?? "";
+  const [value, setValue] = useState("");
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!seededRef.current && data) {
+      setValue(savedModel ?? "");
+      seededRef.current = true;
+    }
+  }, [data, savedModel]);
+
+  const dirty = value !== (savedModel ?? "");
+
+  const saveMutation = useMutation({
+    mutationFn: async (next: string) => {
+      const res = await fetch("/api/admin/book-metadata-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: next || null }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Save failed");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin-book-metadata-settings"],
+      });
+      toast.success("Model updated");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border bg-white p-3">
+      <label
+        htmlFor="book-metadata-model"
+        className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      >
+        Model
+      </label>
+      <Input
+        id="book-metadata-model"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={fallback || "e.g. anthropic/claude-sonnet-4.6"}
+        className="h-8 max-w-md font-mono text-xs"
+      />
+      <Button
+        size="sm"
+        className="h-8"
+        disabled={!dirty || saveMutation.isPending}
+        onClick={() => saveMutation.mutate(value)}
+      >
+        {saveMutation.isPending ? (
+          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+        ) : null}
+        Save
+      </Button>
+      <p className="w-full text-[11px] text-muted-foreground">
+        {dirty ? (
+          <>Unsaved — save to apply to future extractions.</>
+        ) : savedModel ? (
+          <>Override in use. Clear and save to fall back.</>
+        ) : (
+          <>
+            Using admin-tier default
+            {fallback ? (
+              <>
+                {" "}
+                (<span className="font-mono">{fallback}</span>)
+              </>
+            ) : null}
+            .
+          </>
+        )}
+      </p>
+    </div>
+  );
+}

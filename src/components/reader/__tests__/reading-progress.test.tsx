@@ -30,3 +30,21 @@ describe("ReadingProgress: pill slides with fill", () => {
     expect(pill!).toContain("duration-300");
   });
 });
+
+describe("ReadingProgress: hidden prop fades the bar", () => {
+  it("root has opacity-0, pointer-events-none and aria-hidden when hidden=true", () => {
+    const html = render(<ReadingProgress percentage={42} hidden />);
+    const root = html.match(/<div[^>]*role="progressbar"[^>]*>/)?.[0] ?? "";
+    expect(root).toContain("opacity-0");
+    expect(root).toContain("pointer-events-none");
+    expect(root).toContain('aria-hidden="true"');
+  });
+
+  it("root has no fade classes and no aria-hidden when hidden is omitted", () => {
+    const html = render(<ReadingProgress percentage={42} />);
+    const root = html.match(/<div[^>]*role="progressbar"[^>]*>/)?.[0] ?? "";
+    expect(root).not.toContain("opacity-0");
+    expect(root).not.toContain("pointer-events-none");
+    expect(root).not.toContain('aria-hidden="true"');
+  });
+});

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Library, FileText, ScrollText, Key, FlaskConical, AlertTriangle } from "lucide-react";
+import { Users, Library, FileText, ScrollText, Key, FlaskConical, AlertTriangle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Users", icon: Users, href: "/admin/users" },
   { label: "Universal Library", icon: Library, href: "/admin/books" },
+  { label: "Book Metadata", icon: Sparkles, href: "/admin/book-metadata" },
   { label: "Prompt Templates", icon: FileText, href: "/admin/prompts" },
   { label: "Audit Log", icon: ScrollText, href: "/admin/audit" },
   { label: "API Keys & Models", icon: Key, href: "/admin/config" },

@@ -5,22 +5,25 @@ import { cn } from "@/lib/utils";
 export interface ReadingProgressProps {
   percentage: number;
   sidebarOpen?: boolean;
+  hidden?: boolean;
 }
 
-export function ReadingProgress({ percentage, sidebarOpen = false }: ReadingProgressProps) {
+export function ReadingProgress({ percentage, sidebarOpen = false, hidden = false }: ReadingProgressProps) {
   const clamped = Math.max(0, Math.min(100, percentage));
   const label = `${Math.round(clamped)}%`;
 
   return (
     <div
       className={cn(
-        "absolute bottom-0 z-50 flex h-10 max-w-[600px] -translate-x-1/2 items-center transition-[left] duration-[var(--reader-dur)] ease-reader",
+        "absolute bottom-0 z-50 flex h-10 max-w-[600px] -translate-x-1/2 items-center transition-[left] duration-[var(--reader-dur)] ease-reader transition-opacity",
         sidebarOpen
           ? "left-[calc(50%-(var(--reader-sidebar-w)+var(--reader-rail-w))/2)]"
           : "left-1/2",
+        hidden && "opacity-0 pointer-events-none",
       )}
       style={{ width: "50vw" }}
       role="progressbar"
+      aria-hidden={hidden}
       aria-valuenow={Math.round(clamped)}
       aria-valuemin={0}
       aria-valuemax={100}

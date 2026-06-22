@@ -23,6 +23,9 @@ export default function PromptTemplatesPage() {
   const bookTemplate = templates.find((t: any) => t.type === "book");
   const sectionTemplate = templates.find((t: any) => t.type === "section");
   const bookPass2Template = templates.find((t: any) => t.type === "book_pass2");
+  const bookMetadataTemplate = templates.find(
+    (t: any) => t.type === "book_metadata"
+  );
   const twoPassEnabled: boolean = data?.twoPassEnabled === true;
 
   return (
@@ -44,6 +47,7 @@ export default function PromptTemplatesPage() {
           <TabsList>
             <TabsTrigger value="book">Book-Level</TabsTrigger>
             <TabsTrigger value="section">Section-Level</TabsTrigger>
+            <TabsTrigger value="metadata">Metadata</TabsTrigger>
             <TabsTrigger value="system">System Prompt</TabsTrigger>
           </TabsList>
           <TabsContent value="book">
@@ -69,6 +73,23 @@ export default function PromptTemplatesPage() {
               type="section"
               initialContent={sectionTemplate?.content || ""}
               version={sectionTemplate?.version || 1}
+            />
+          </TabsContent>
+          <TabsContent value="metadata">
+            {/* ponytail: LLM book-metadata extraction prompt. Returns strict
+                JSON via response_format json_object. Only {{book_text}} is
+                substituted — the whole point is to derive the other fields
+                (title/author/etc) rather than feed them in. Bumping version
+                invalidates nothing automatic (no cache row), but admins
+                running re-extract after a prompt change get the new behavior. */}
+            <div className="mt-4 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Returns strict JSON. Only <code className="font-mono">{"{{book_text}}"}</code> is substituted.
+              Used by the <strong>Book Metadata</strong> admin page.
+            </div>
+            <PromptEditor
+              type="book_metadata"
+              initialContent={bookMetadataTemplate?.content || ""}
+              version={bookMetadataTemplate?.version || 1}
             />
           </TabsContent>
           <TabsContent value="system">

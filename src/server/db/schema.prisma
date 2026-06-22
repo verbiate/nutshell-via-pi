@@ -119,6 +119,29 @@ model EpubFile {
   highlights    Highlight[]
   explainerRequests ExplainerRequest[]
   explainerThreads  ExplainerThread[]
+  bookMetadata     BookMetadata?
+}
+
+// ponytail: LLM-extracted metadata; canonical display source. EpubFile keeps
+// the OPF-derived originals so admins can revert any field. 1:1 with EpubFile.
+// Null fields (subtitle/authorGender/isNarrative) on an existing row mean the
+// LLM ran but couldn't determine that value; no row at all means never extracted.
+model BookMetadata {
+  id            String   @id @default(cuid())
+  bookId        String   @unique
+  title         String
+  subtitle      String?
+  description   String?
+  author        String?
+  authorGender  String?  // null = LLM couldn't tell / undeclared; otherwise free-form ("male"/"female"/"nonbinary"/self-description)
+  isNarrative   Boolean? // null = LLM couldn't tell
+  language      String?
+  promptVersion Int
+  model         String?
+  extractedAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
 }
 
 model UserBookAccess {

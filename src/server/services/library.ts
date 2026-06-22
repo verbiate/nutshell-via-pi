@@ -75,7 +75,15 @@ export async function getUniversalLibrary(page = 1, pageSize = 20) {
 export async function getBookForUser(bookId: string, userId: string) {
   const access = await db.userBookAccess.findUnique({
     where: { userId_bookId: { userId, bookId } },
-    include: { book: true },
+    include: {
+      book: {
+        include: {
+          // ponytail: 1:1 relation — bookMetadata only exists after admin
+          // extraction. Selecting just `description` keeps the row cheap.
+          bookMetadata: { select: { description: true } },
+        },
+      },
+    },
   });
   return access?.book || null;
 }

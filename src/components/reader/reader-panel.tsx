@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { Lightbulb, MoreHorizontal, Play } from "lucide-react";
+import { Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -110,6 +110,8 @@ export interface ReaderPanelProps {
   author?: string | null;
   coverPath?: string | null;
   language?: string;
+  description?: string | null;
+  descriptionLoading?: boolean;
   toc: NavItem[];
   currentHref: string;
   onNavigate: (href: string) => void;
@@ -129,6 +131,8 @@ export function ReaderPanel({
   bookTitle,
   author,
   coverPath,
+  description,
+  descriptionLoading,
   toc,
   currentHref,
   onNavigate,
@@ -140,6 +144,18 @@ export function ReaderPanel({
   bookCreatedAt,
   coverHidden,
 }: ReaderPanelProps) {
+  // ponytail: 1s grace before showing the extraction spinner. Avoids flashing
+  // a loader on fast hits (cache row exists, or LLM returns within a second).
+  // We never need to reset showSpinner to false explicitly — the render below
+  // gates on `descriptionLoading && showSpinner`, so once loading completes
+  // (loading=false) the spinner is hidden regardless of showSpinner's value.
+  const [showSpinner, setShowSpinner] = useState(false);
+  useEffect(() => {
+    if (!descriptionLoading) return;
+    const t = setTimeout(() => setShowSpinner(true), 1000);
+    return () => clearTimeout(t);
+  }, [descriptionLoading]);
+
   return (
     <div className="flex flex-col gap-9">
       {/* Book details card */}
@@ -192,6 +208,26 @@ export function ReaderPanel({
           )}
         </div>
       </div>
+
+      {/* Description: LLM-generated single-sentence explainer from
+          BookMetadata. Three states — present (show), loading past 1s
+          (show spinner), or absent/loading under 1s (render nothing to
+          avoid flashing the slot). */}
+      {description ? (
+        <p
+          className="px-12 font-sans text-[13px] leading-[1.5] text-foreground/70"
+          style={{ hangingPunctuation: "first last" }}
+        >
+          {description}
+        </p>
+      ) : showSpinner && descriptionLoading ? (
+        <div className="flex items-center gap-2 px-12">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          <span className="text-[13px] text-muted-foreground">
+            Extracting description…
+          </span>
+        </div>
+      ) : null}
 
       {/* Action row */}
       <div className="flex flex-col gap-3 px-12">

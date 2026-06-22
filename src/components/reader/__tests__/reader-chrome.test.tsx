@@ -97,4 +97,37 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
       expect(btn).not.toMatch(/[\s"]bg-white[\s"]/);
     }
   });
+
+  describe("hidden prop fades chrome and disables interaction", () => {
+    it("header has opacity-0 and aria-hidden when hidden=true", () => {
+      const html = render(<ReaderChrome {...baseProps} hidden />);
+      const header = html.match(/<header[^>]*>/)?.[0] ?? "";
+      expect(header).toContain("opacity-0");
+      expect(header).toContain('aria-hidden="true"');
+    });
+
+    it("header has neither opacity-0 nor aria-hidden when hidden=false", () => {
+      const html = render(<ReaderChrome {...baseProps} />);
+      const header = html.match(/<header[^>]*>/)?.[0] ?? "";
+      expect(header).not.toContain("opacity-0");
+      expect(header).not.toContain('aria-hidden="true"');
+    });
+
+    it("interactive groups lose pointer-events-auto when hidden=true", () => {
+      const visible = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
+      const hiddenHtml = render(<ReaderChrome {...baseProps} sidebarOpen hidden onHideControls={() => {}} />);
+      // Visible: both groups carry pointer-events-auto.
+      const visibleAuto = (visible.match(/pointer-events-auto/g) || []).length;
+      expect(visibleAuto).toBeGreaterThanOrEqual(2);
+      // Hidden: no group carries pointer-events-auto.
+      expect(hiddenHtml).not.toContain("pointer-events-auto");
+    });
+
+    it("Bookshelf button is removed from tab order when hidden=true", () => {
+      const hiddenHtml = render(<ReaderChrome {...baseProps} hidden />);
+      const tagMatch = hiddenHtml.match(/<button[^>]*aria-label="Back to bookshelf"[^>]*>/);
+      expect(tagMatch, "Bookshelf button should be present").toBeTruthy();
+      expect(tagMatch![0]).toMatch(/tabindex="-1"/);
+    });
+  });
 });

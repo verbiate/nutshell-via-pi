@@ -67,6 +67,48 @@ async function main() {
     create: { key: "bookTwoPassEnabled", value: "false" },
   });
 
+  // ponytail: LLM book-metadata extraction prompt. Returns strict JSON so the
+  // service can parse via response_format json_object. update:{} is
+  // intentionally NON-empty: re-running the seed overwrites any prior admin
+  // edits so the description field (added in v2) migrates forward
+  // automatically. Mirror of the book_pass2 convention below.
+  await prisma.promptTemplate.upsert({
+    where: { type: "book_metadata" },
+    update: {
+      content:
+        "Here is the full text of a book. Your job is to extract a set of metadata. Read the provided book text and return ONLY valid JSON (no prose, no code fences) with these keys:\n\n" +
+        '{\n' +
+        '  "title": "string — the book\'s primary title as stated in the book itself, without publisher or series qualifiers",\n' +
+        '  "subtitle": "string | null — the subtitle, typically declared on the title page or cover, or after a colon (`:`) in full title; null if absent",\n' +
+        '  "author": "string | null — the author\'s name as the book declares it (prefer the most formal form shown on the title page; null if genuinely undeterminable)",\n' +
+        '  "authorGender": "string | null — the author\'s declared gender ONLY if the author states or unambiguously indicates their own gender in the book (e.g. an \'About the Author\' bio that says \'she lives in...\'). Use \'male\', \'female\', \'nonbinary\', or a self-described term. null if the book does not declare it — never guess from name, photo, or content.",\n' +
+        '  "isNarrative": "boolean | null — true if the book is primarily a narrative (fiction, memoir, narrative nonfiction that tells a story); false if primarily non-narrative (textbook, manual, essay collection, reference, philosophical argument without story structure). null only if you genuinely cannot tell from the text.",\n' +
+        '  "language": "string — the book\'s primary language as a 2-letter ISO 639-1 code (e.g. \'en\', \'es\', \'fr\', \'de\'). Infer from the body text, not just metadata.",\n' +
+        '  "description": "string — a single-sentence explainer (roughly 15–25 words) that captures what the book is about. Plain prose, no quotation marks, no marketing tone."\n' +
+        '}\n\n' +
+        "Below is the full text of the book:\n---\n{{book_text}}\n---\n\n" +
+        "Return the JSON object now.",
+      version: 2,
+    },
+    create: {
+      type: "book_metadata",
+      content:
+        "Here is the full text of a book. Your job is to extract a set of metadata. Read the provided book text and return ONLY valid JSON (no prose, no code fences) with these keys:\n\n" +
+        '{\n' +
+        '  "title": "string — the book\'s primary title as stated in the book itself, without publisher or series qualifiers",\n' +
+        '  "subtitle": "string | null — the subtitle, typically declared on the title page or cover, or after a colon (`:`) in full title; null if absent",\n' +
+        '  "author": "string | null — the author\'s name as the book declares it (prefer the most formal form shown on the title page; null if genuinely undeterminable)",\n' +
+        '  "authorGender": "string | null — the author\'s declared gender ONLY if the author states or unambiguously indicates their own gender in the book (e.g. an \'About the Author\' bio that says \'she lives in...\'). Use \'male\', \'female\', \'nonbinary\', or a self-described term. null if the book does not declare it — never guess from name, photo, or content.",\n' +
+        '  "isNarrative": "boolean | null — true if the book is primarily a narrative (fiction, memoir, narrative nonfiction that tells a story); false if primarily non-narrative (textbook, manual, essay collection, reference, philosophical argument without story structure). null only if you genuinely cannot tell from the text.",\n' +
+        '  "language": "string — the book\'s primary language as a 2-letter ISO 639-1 code (e.g. \'en\', \'es\', \'fr\', \'de\'). Infer from the body text, not just metadata.",\n' +
+        '  "description": "string — a single-sentence explainer (roughly 15–25 words) that captures what the book is about. Plain prose, no quotation marks, no marketing tone."\n' +
+        '}\n\n' +
+        "Below is the full text of the book:\n---\n{{book_text}}\n---\n\n" +
+        "Return the JSON object now.",
+      version: 2,
+    },
+  });
+
   // OpenRouterConfig: seed default model assignments per user type (EXP-09)
   // apiKey falls back to env var at runtime via getOpenRouterConfig()
   for (const userType of ["regular", "pro", "admin"] as const) {

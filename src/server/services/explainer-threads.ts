@@ -66,14 +66,21 @@ export async function* streamInitialThreadResponse(
     pass2Version = (await loadBookPass2Template()).version;
   }
 
+  // ponytail: combined salt — two-pass discriminator + metadata version. Both
+  // are optional; when neither applies the salt is undefined (matches legacy
+  // one-pass-no-metadata behavior). Order is deterministic so the hash is
+  // stable across requests for the same inputs.
+  const parts: string[] = [];
+  if (twoPass) parts.push(`twoPass:${pass2Version}`);
+  if (promptData.metadataVersion) parts.push(`meta:${promptData.metadataVersion}`);
+  const extraSalt = parts.length > 0 ? parts.join("|") : undefined;
+
   const contentHash = computeContentHash(
     promptData.sourceText,
     promptData.promptVersion,
     type,
     type === "section" || type === "passage" ? promptData.bookMd5 : undefined,
-    // ponytail: salt the hash so two-pass rows never collide with one-pass book
-    // rows, and editing the pass-2 template invalidates independently.
-    twoPass ? `twoPass:${pass2Version}` : undefined
+    extraSalt
   );
 
   // Check cache (shared across all users)
@@ -267,6 +274,7 @@ async function buildPromptData(params: CreateThreadParams): Promise<{
   bookText: string;
   bookMd5: string;
   promptVersion: number;
+  metadataVersion?: string;
 }> {
   const { type } = params;
   if (type === "passage") {

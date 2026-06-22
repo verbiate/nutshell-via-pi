@@ -11,12 +11,16 @@ export function fillTemplate(
 
 // ponytail: shared result shape so callers (explainer.ts, explainer-threads.ts)
 // can hash, size-guard, and rebuild prompts without type drift between cases.
+// metadataVersion: updatedAt of the BookMetadata row (or undefined when no row).
+// Threaded into computeContentHash so re-extracting metadata invalidates
+// cached explainers — the prompt's {{expanded_metadata}} block may now differ.
 export interface BuiltPrompt {
   prompt: string;
   sourceText: string;     // the chosen snippet (book/section/passage)
   bookText: string;       // the full book plaintext (== sourceText for book type)
   bookMd5: string;        // unique book identifier for cache keying
   promptVersion: number;
+  metadataVersion?: string;
 }
 
 async function loadBookText(txtPath: string): Promise<string> {
@@ -24,11 +28,50 @@ async function loadBookText(txtPath: string): Promise<string> {
   return txtBuffer.toString("utf-8");
 }
 
+// ponytail: formats the LLM-extracted BookMetadata row as a labeled block for
+// {{expanded_metadata}} substitution. Returns empty string when no row exists
+// (stray books, or extraction failed) so prompts that reference the token
+// don't break — fillTemplate's ?? "" fallback would also catch undefined, but
+// being explicit avoids emitting the literal "{{expanded_metadata}}" string.
+type BookMetadataRow = {
+  title: string;
+  subtitle: string | null;
+  author: string | null;
+  authorGender: string | null;
+  isNarrative: boolean | null;
+  language: string | null;
+  description: string | null;
+};
+
+export function formatExpandedMetadata(m: BookMetadataRow | null): string {
+  if (!m) return "";
+  const lines = [
+    "Expanded metadata:",
+    `Title: ${m.title}`,
+    `Subtitle: ${m.subtitle ?? "none"}`,
+    `Author: ${m.author ?? "Unknown"}`,
+    `Author gender: ${m.authorGender ?? "undeclared"}`,
+    `Narrative: ${
+      m.isNarrative === null
+        ? "unknown"
+        : m.isNarrative
+          ? "narrative"
+          : "non-narrative"
+    }`,
+    `Language: ${m.language ?? "unknown"}`,
+    `Description: ${m.description ?? "none"}`,
+  ];
+  return lines.join("\n");
+}
+
 export async function buildBookPrompt(
   bookId: string,
   language: string
 ): Promise<BuiltPrompt> {
-  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+  const book = await db.epubFile.findUnique({
+    where: { id: bookId },
+    include: { bookMetadata: true },
+  });
   if (!book) throw new Error("Book not found");
 
   const template = await db.promptTemplate.findUnique({ where: { type: "book" } });
@@ -45,6 +88,7 @@ export async function buildBookPrompt(
     // {{text}} → source too, in case an admin references it for backwards compat.
     book_text: sourceText,
     text: sourceText,
+    expanded_metadata: formatExpandedMetadata(book.bookMetadata),
   });
 
   return {
@@ -53,6 +97,7 @@ export async function buildBookPrompt(
     bookText: sourceText,
     bookMd5: book.md5,
     promptVersion: template.version,
+    metadataVersion: book.bookMetadata?.updatedAt.toISOString(),
   };
 }
 
@@ -61,7 +106,10 @@ export async function buildSectionPrompt(
   sectionHref: string,
   language: string
 ): Promise<BuiltPrompt & { sectionTitle: string }> {
-  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+  const book = await db.epubFile.findUnique({
+    where: { id: bookId },
+    include: { bookMetadata: true },
+  });
   if (!book) throw new Error("Book not found");
 
   const template = await db.promptTemplate.findUnique({ where: { type: "section" } });
@@ -99,6 +147,7 @@ export async function buildSectionPrompt(
     target_language: language,
     chosen_text: sectionText,
     book_text: bookText,
+    expanded_metadata: formatExpandedMetadata(book.bookMetadata),
   });
 
   return {
@@ -107,6 +156,7 @@ export async function buildSectionPrompt(
     bookText,
     bookMd5: book.md5,
     promptVersion: template.version,
+    metadataVersion: book.bookMetadata?.updatedAt.toISOString(),
     sectionTitle,
   };
 }
@@ -116,7 +166,10 @@ export async function buildPassagePrompt(
   passageText: string,
   language: string
 ): Promise<BuiltPrompt> {
-  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+  const book = await db.epubFile.findUnique({
+    where: { id: bookId },
+    include: { bookMetadata: true },
+  });
   if (!book) throw new Error("Book not found");
 
   const template = await db.promptTemplate.findUnique({ where: { type: "passage" } });
@@ -131,6 +184,7 @@ export async function buildPassagePrompt(
     target_language: language,
     chosen_text: passageText,
     book_text: bookText,
+    expanded_metadata: formatExpandedMetadata(book.bookMetadata),
   });
 
   return {
@@ -139,6 +193,7 @@ export async function buildPassagePrompt(
     bookText,
     bookMd5: book.md5,
     promptVersion: template.version,
+    metadataVersion: book.bookMetadata?.updatedAt.toISOString(),
   };
 }
 
@@ -165,8 +220,11 @@ export async function buildBookPass2Prompt(
   language: string,
   previousResponse: string,
   bookText: string
-): Promise<{ prompt: string; promptVersion: number }> {
-  const book = await db.epubFile.findUnique({ where: { id: bookId } });
+): Promise<{ prompt: string; promptVersion: number; metadataVersion?: string }> {
+  const book = await db.epubFile.findUnique({
+    where: { id: bookId },
+    include: { bookMetadata: true },
+  });
   if (!book) throw new Error("Book not found");
 
   const { content, version } = await loadBookPass2Template();
@@ -178,7 +236,12 @@ export async function buildBookPass2Prompt(
     target_language: language,
     book_text: bookText,
     previous_response: previousResponse,
+    expanded_metadata: formatExpandedMetadata(book.bookMetadata),
   });
 
-  return { prompt, promptVersion: version };
+  return {
+    prompt,
+    promptVersion: version,
+    metadataVersion: book.bookMetadata?.updatedAt.toISOString(),
+  };
 }

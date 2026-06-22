@@ -7,7 +7,8 @@ export async function GET(request: Request) {
     await requireAdmin();
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get("page") || "1");
-    return NextResponse.json(await getUniversalLibrary(page));
+    const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+    return NextResponse.json(await getUniversalLibrary(page, pageSize));
   } catch (error: any) {
     if (error.statusCode === 401) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
