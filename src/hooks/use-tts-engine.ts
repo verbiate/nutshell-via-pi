@@ -176,11 +176,22 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       await viewerRef.current?.highlightChunk(chunksRef.current[index]);
 
       try {
-        const result = await engine.synthesize(chunksRef.current[index], {
-          voiceId,
-          lang: bookLanguage,
-          speed,
-        });
+        // ponytail: wrap synthesis in a timeout — if the engine hangs (e.g.
+        // kokoro-js phonemizer deadlock), we don't block playback forever.
+        const SYNTHESIS_TIMEOUT_MS = 15_000;
+        const result = await Promise.race([
+          engine.synthesize(chunksRef.current[index], {
+            voiceId,
+            lang: bookLanguage,
+            speed,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Synthesis timed out after ${SYNTHESIS_TIMEOUT_MS / 1000}s`)),
+              SYNTHESIS_TIMEOUT_MS,
+            ),
+          ),
+        ]);
 
         if (!runningRef.current || abortRef.current) return;
 
@@ -216,17 +227,36 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
         source.start();
       } catch (err) {
-        if (!abortRef.current) {
-          console.error("[TTS] Synthesis failed:", err);
-          setState((s) => ({
-            ...s,
-            phase: "IDLE",
-            error: err instanceof Error ? err.message : String(err),
-          }));
+        if (abortRef.current) return;
+
+        // ponytail: if the engine fails mid-synthesis (e.g. Kokoro's phonemizer
+        // breaks), fall back to browser speech for the rest of the session —
+        // same pattern as resolveEngine's load-time fallback.
+        if (engineIdRef.current !== "browser") {
+          console.warn("[TTS] Synthesis failed, falling back to browser:", err);
+          toast("Switching to built-in voice");
+          engineIdRef.current = "browser";
+          setEffectiveEngineId("browser");
+          try {
+            const fallback = await getEngine("browser");
+            await fallback.ensureLoaded();
+            engineRef.current = fallback;
+            await playChunk(fallback, index);
+            return;
+          } catch (fallbackErr) {
+            console.error("[TTS] Browser fallback also failed:", fallbackErr);
+          }
         }
+
+        console.error("[TTS] Synthesis failed:", err);
+        setState((s) => ({
+          ...s,
+          phase: "IDLE",
+          error: err instanceof Error ? err.message : String(err),
+        }));
       }
     },
-    [bookLanguage, onSectionComplete, speed, voiceId],
+    [bookLanguage, onSectionComplete, speed, voiceId, viewerRef],
   );
 
   // ponytail: try the requested engine; if its model load fails (no WebGPU,

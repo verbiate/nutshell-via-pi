@@ -73,8 +73,17 @@ export const kokoroEngine: TtsEngine = (() => {
       }));
     },
     supportsLanguage: (lang) => KOKORO_LANGUAGES.has(lang),
-    ensureLoaded(onProgress) {
-      return getTts(onProgress).then(() => undefined);
+    async ensureLoaded(onProgress) {
+      const tts = await getTts(onProgress);
+      // ponytail: validate the full pipeline (phonemizer + model) with a tiny
+      // test synthesis. kokoro-js's phonemizer crashes in some browser
+      // environments (Turbopack/Next.js); without this check, the engine
+      // "loads" successfully but silently produces no audio on every call.
+      // A throw here triggers resolveEngine's browser fallback.
+      const result = await tts.generate("test", { voice: "af_bella" });
+      if (!isKokoroAudio(result) || result.audio.length === 0) {
+        throw new Error("Kokoro test synthesis produced no audio (phonemizer may be broken)");
+      }
     },
     async synthesize(text: string, opts: SynthesizeOpts): Promise<TtsSynthesisResult> {
       const tts = await getTts();
