@@ -38,6 +38,12 @@ export interface UseTtsCloudOptions {
   onQuotaExhausted?: () => void;
   /** Initial quota so the badge paints before the first fetch resolves. */
   initialQuota?: CloudQuota | null;
+  /**
+   * When false, skips the mount-time usage-check fetch. Set to false for
+   * users who can't access cloud (regular tier) so the reader doesn't pay
+   * for a round-trip whose result is never shown.
+   */
+  enabled?: boolean;
 }
 
 export interface UseTtsCloudReturn {
@@ -68,13 +74,17 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
     audioRef,
     onQuotaExhausted,
     initialQuota = null,
+    enabled = true,
   } = options;
 
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: latch the 80% warning per period so we don't toast on every
   // generation once crossed. Resets when the periodKey changes.
   const warnedPeriodRef = useRef<string | null>(null);
-  const exhaustedRef = useRef(false);
+  // ponytail: latch the 100% exhaustion per period — mirrors warnedPeriodRef.
+  // When periodKey rolls over (new month), the next limit hit fires the toast
+  // and onQuotaExhausted again instead of being silently suppressed.
+  const exhaustedPeriodRef = useRef<string | null>(null);
   // ponytail: latest quota in a ref so the startSection closure (memoized on
   // bookId/toc only) sees fresh values without re-creating per fetch.
   const quotaRef = useRef<CloudQuota | null>(initialQuota);
@@ -153,14 +163,16 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
   // eslint flags the call site anyway; one-shot hydration, same pattern as
   // the loadTtsPref effect in reader-client.
   useEffect(() => {
+    if (!enabled) return;
     if (initialQuota) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshQuota();
-  }, [initialQuota, refreshQuota]);
+  }, [enabled, initialQuota, refreshQuota]);
 
   const triggerExhausted = useCallback(() => {
-    if (exhaustedRef.current) return;
-    exhaustedRef.current = true;
+    const periodKey = quotaRef.current?.periodKey ?? "";
+    if (exhaustedPeriodRef.current === periodKey) return;
+    exhaustedPeriodRef.current = periodKey;
     toast.error(
       "Monthly Premium TTS limit reached. Switched to Free (Kokoro).",
     );
@@ -269,17 +281,6 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
           applyQuota({ ...prev, used: prev.used + 1 });
         }
         void refreshQuota();
-
-        // 4) Pre-buffer next section (fire-and-forget). Don't pre-flight this
-        // one — if the limit hits, the next startSection call will handle it.
-        const next = getNextSection(href);
-        if (next) {
-          fetch("/api/tts/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookId, sectionHref: next.href }),
-          }).catch(() => {});
-        }
       } catch (err: unknown) {
         const e = err as { name?: string };
         if (e?.name === "AbortError") {
@@ -291,13 +292,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
         }
       }
     },
-    [
-      bookId,
-      getNextSection,
-      applyQuota,
-      refreshQuota,
-      triggerExhausted,
-    ],
+    [bookId, applyQuota, refreshQuota, triggerExhausted],
   );
 
   const togglePlayPause = useCallback(() => {

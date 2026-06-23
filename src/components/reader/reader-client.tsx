@@ -875,6 +875,8 @@ export function ReaderClient({
     audioRef: cloudAudioRef,
     onNavigateToSection: handleTocNavigate,
     onQuotaExhausted: useCallback(() => setEnginePref("kokoro"), []),
+    // ponytail: regular tier can't use cloud — skip the mount-time quota fetch.
+    enabled: userRole !== "regular",
   });
 
   // ponytail: dispatcher — cloud is gated by tier (regular → forced to browser).

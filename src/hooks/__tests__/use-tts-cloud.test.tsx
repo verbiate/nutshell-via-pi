@@ -100,22 +100,14 @@ const fetchMock = vi.fn(async (url: string) => {
     }
     return new FakeResponse(entry);
   }
-  // ponytail: fire-and-forget fetches (pre-buffer generate, post-generate
-  // refresh) hit the queue after the awaited fetches are done. Return a
-  // benign default that mirrors the server's latest known state so the
-  // client's optimistic bump isn't clobbered.
+  // ponytail: fire-and-forget post-generate refresh hits the queue after the
+  // awaited fetches are done. Return a benign default that mirrors the
+  // server's latest known state so the client's optimistic bump isn't clobbered.
   if (path.includes("/api/tts/usage-check")) {
     return new FakeResponse({
       url: path,
       status: 200,
       json: { allowed: serverQuota.used < serverQuota.limit, ...serverQuota },
-    });
-  }
-  if (path.includes("/api/tts/generate")) {
-    return new FakeResponse({
-      url: path,
-      status: 200,
-      json: { url: "https://cdn/warmup.mp3", audioId: "warmup", cached: true },
     });
   }
   throw new Error(`[test] unexpected fetch: ${path}`);
@@ -217,12 +209,6 @@ function generate(url: string, audioId: string): FetchEntry {
     json: { url, audioId, cached: false },
   };
 }
-
-// ponytail: the hook fire-and-forgets a next-section warmup generate after each
-// successful startSection (`.catch(() => {})` swallows the rejection). When the
-// mock throws "unexpected fetch" for the warmup, it's silently dropped — tests
-// only need to declare the slots the hook actually awaits (usage-check, the
-// primary generate).
 
 describe("useTtsCloud", () => {
   beforeEach(() => {
@@ -370,6 +356,51 @@ describe("useTtsCloud", () => {
     await vi.waitFor(() => expect(getApi().state.state).toBe("READY"));
     expect(toast.warning).toHaveBeenCalledTimes(1); // still 1
 
+    unmount();
+  });
+
+  it("resets the 100% exhaustion latch when periodKey rolls over", async () => {
+    const onQuotaExhausted = vi.fn();
+    // June: at limit. Short-circuit path fires exhausted.
+    setResponses([]);
+    const { getApi, unmount } = renderHook(
+      baseProps({
+        initialQuota: { used: 50, limit: 50, periodKey: "2026-06" },
+        onQuotaExhausted,
+      }),
+    );
+
+    await act(async () => {
+      getApi().startSection("ch1.xhtml", "Chapter 1");
+    });
+    expect(onQuotaExhausted).toHaveBeenCalledTimes(1);
+
+    // July rollover via refreshQuota — server reports a fresh quota.
+    setResponses([
+      {
+        url: "/api/tts/usage-check",
+        status: 200,
+        json: { allowed: true, used: 0, limit: 50, periodKey: "2026-07" },
+      },
+    ]);
+    await act(async () => {
+      await getApi().refreshQuota();
+    });
+    expect(getApi().quota?.periodKey).toBe("2026-07");
+
+    // Hit the limit again in July via the pre-flight path.
+    setResponses([
+      {
+        url: "/api/tts/usage-check",
+        status: 200,
+        json: { allowed: false, used: 50, limit: 50, periodKey: "2026-07" },
+      },
+    ]);
+    await act(async () => {
+      getApi().startSection("ch1.xhtml", "Chapter 1");
+    });
+    // Latch reset across periods → exhaustion fires AGAIN in the new month.
+    await vi.waitFor(() => expect(onQuotaExhausted).toHaveBeenCalledTimes(2));
     unmount();
   });
 

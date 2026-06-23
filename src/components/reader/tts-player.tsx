@@ -110,7 +110,7 @@ export function TtsPlayer({
   const quotaBadge = (() => {
     if (!isCloud || !quota) return null;
     if (quota.limit <= 0) return "Premium: upgrade to Pro";
-    return `${quota.used} / ${quota.limit} this month`;
+    return `${quota.used} / ${quota.limit} generations this month`;
   })();
 
   return (
@@ -201,7 +201,7 @@ export function TtsPlayer({
       )}
 
       {/* Voice picker */}
-      <Select value={voicePref} onValueChange={onVoiceChange}>
+      <Select value={isCloud ? "default" : voicePref} onValueChange={onVoiceChange}>
         <SelectTrigger
           size="sm"
           className="hidden sm:flex w-[150px] shrink-0"
