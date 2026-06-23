@@ -1,38 +1,40 @@
 import type { TtsEngine, TtsVoice, SynthesizeOpts, TtsSynthesisResult } from "../types";
 import { KOKORO_VOICES } from "../voices/kokoro";
 import { KOKORO_LANGUAGES } from "../languages";
+import { phonemize } from "../phonemizer-cdn";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
-interface KokoroTts {
-  generate(text: string, options: { voice: string }): Promise<unknown>;
+// ponytail: we only use tokenizer + generate_from_ids, bypassing kokoro-js's
+// generate() which internally imports phonemizer (broken under Turbopack).
+interface KokoroTtsInstance {
+  tokenizer: (text: string, opts: { truncation: boolean }) => { input_ids: { dims: number[] } };
+  generate_from_ids(
+    inputIds: unknown,
+    opts: { voice: string; speed?: number },
+  ): Promise<{ audio: Float32Array; sampling_rate: number }>;
 }
 
-interface KokoroAudio {
-  audio: Float32Array;
-  sampling_rate: number;
-}
-
-function isKokoroAudio(value: unknown): value is KokoroAudio {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "audio" in value &&
-    value.audio instanceof Float32Array &&
-    "sampling_rate" in value &&
-    typeof value.sampling_rate === "number"
-  );
-}
-
-async function rawAudioToAudioBuffer(raw: KokoroAudio): Promise<AudioBuffer> {
-  const ctx = new AudioContext({ sampleRate: raw.sampling_rate });
-  const buffer = ctx.createBuffer(1, raw.audio.length, raw.sampling_rate);
-  buffer.getChannelData(0).set(raw.audio);
+async function rawAudioToAudioBuffer(
+  audio: Float32Array,
+  samplingRate: number,
+): Promise<AudioBuffer> {
+  const ctx = new AudioContext({ sampleRate: samplingRate });
+  const buffer = ctx.createBuffer(1, audio.length, samplingRate);
+  buffer.getChannelData(0).set(audio);
   return buffer;
 }
 
 export const kokoroEngine: TtsEngine = (() => {
-  let ttsPromise: Promise<KokoroTts> | null = null;
+  let ttsPromise: Promise<KokoroTtsInstance> | null = null;
+  let phonemizerReady: Promise<void> | null = null;
+
+  async function ensurePhonemizer() {
+    if (!phonemizerReady) {
+      phonemizerReady = phonemize("test", "en-us").then(() => undefined);
+    }
+    return phonemizerReady;
+  }
 
   async function getTts(onProgress?: (pct: number) => void) {
     if (!ttsPromise) {
@@ -48,11 +50,8 @@ export const kokoroEngine: TtsEngine = (() => {
                 }
               }
             : undefined,
-        }) as Promise<KokoroTts>;
+        }) as Promise<KokoroTtsInstance>;
       })();
-      // ponytail: reset ttsPromise on rejection so a failed load (e.g. no
-      // WebGPU) doesn't permanently poison the cache. Without this, once Kokoro
-      // fails it can never retry for the rest of the session.
       ttsPromise.catch(() => {
         ttsPromise = null;
       });
@@ -74,41 +73,46 @@ export const kokoroEngine: TtsEngine = (() => {
     },
     supportsLanguage: (lang) => KOKORO_LANGUAGES.has(lang),
     async ensureLoaded(onProgress) {
+      // Load model and CDN phonemizer in parallel, then validate the full
+      // pipeline with a tiny test synthesis. The CDN phonemizer bypasses
+      // Turbopack's broken Emscripten transform (see phonemizer-cdn.ts).
       const tts = await getTts(onProgress);
-      // ponytail: validate the full pipeline (phonemizer + model) with a tiny
-      // test synthesis. kokoro-js's phonemizer crashes in some browser
-      // environments (Turbopack/Next.js); without this check, the engine
-      // "loads" successfully but silently produces no audio on every call.
-      // A throw here triggers resolveEngine's browser fallback.
-      //
-      // The test synthesis has a 10s timeout — on a working system it completes
-      // in <2s. If the phonemizer hangs (broken module), the timeout fires and
-      // we fall back instead of blocking forever.
-      const TEST_TIMEOUT_MS = 5_000;
+      await ensurePhonemizer();
+      const phonemes = (await phonemize("test", "en-us")).join(" ");
+      const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
+      const TEST_TIMEOUT_MS = 15_000;
       const result = await Promise.race([
-        tts.generate("test", { voice: "af_bella" }) as Promise<unknown>,
+        tts.generate_from_ids(input_ids, { voice: "af_bella" }),
         new Promise<never>((_, reject) =>
           setTimeout(
-            () => reject(new Error("Kokoro test synthesis timed out (phonemizer may be broken)")),
+            () => reject(new Error("Kokoro test synthesis timed out")),
             TEST_TIMEOUT_MS,
           ),
         ),
       ]);
-      if (!isKokoroAudio(result) || result.audio.length === 0) {
-        throw new Error("Kokoro test synthesis produced no audio (phonemizer may be broken)");
+      if (!result?.audio?.length) {
+        throw new Error("Kokoro test synthesis produced no audio");
       }
     },
     async synthesize(text: string, opts: SynthesizeOpts): Promise<TtsSynthesisResult> {
       const tts = await getTts();
-      const result = await tts.generate(text, { voice: opts.voiceId });
-      if (!isKokoroAudio(result)) {
-        throw new Error('Unexpected Kokoro output shape');
+      await ensurePhonemizer();
+      const lang = opts.lang === "en" ? "en-us" : opts.lang;
+      const phonemes = (await phonemize(text, lang)).join(" ");
+      const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
+      const result = await tts.generate_from_ids(input_ids, {
+        voice: opts.voiceId,
+        speed: opts.speed ?? 1,
+      });
+      if (!result?.audio?.length) {
+        throw new Error("Kokoro synthesis produced no audio");
       }
-      const buffer = await rawAudioToAudioBuffer(result);
+      const buffer = await rawAudioToAudioBuffer(result.audio, result.sampling_rate);
       return { kind: "audioBuffer", buffer };
     },
     dispose() {
       ttsPromise = null;
+      phonemizerReady = null;
     },
   };
 })();
