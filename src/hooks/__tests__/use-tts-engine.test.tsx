@@ -214,6 +214,8 @@ describe("useTtsEngine", () => {
       voiceId: "af_bella",
     });
     expect(getApi().state.phase).toBe("IDLE");
+    // Without a fallback, effectiveEngineId mirrors the requested engine.
+    expect(getApi().effectiveEngineId).toBe("kokoro");
     unmount();
   });
 
@@ -509,6 +511,9 @@ describe("useTtsEngine", () => {
     expect(primaryEngine.ensureLoaded).toHaveBeenCalledTimes(1);
     expect(browserEngine.ensureLoaded).toHaveBeenCalledTimes(1);
     expect(getApi().state.error).toBeUndefined();
+    // ponytail: fix for review finding — the fallback swap must be visible to
+    // consumers so the voice picker can refresh to browser voices.
+    expect(getApi().effectiveEngineId).toBe("browser");
 
     unmount();
   });

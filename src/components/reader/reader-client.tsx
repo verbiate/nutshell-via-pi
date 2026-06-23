@@ -804,21 +804,6 @@ export function ReaderClient({
       setVoicePref(saved.voiceId);
     }
   }, [ttsLang]);
-
-  // ponytail: when the engine or language changes, the current voice is likely
-  // invalid for the new voice list — snap to the first available. Also guards
-  // the case where the saved voice id isn't in the active engine's catalog.
-  useEffect(() => {
-    const engine = ENGINES[enginePref];
-    const voices = engine?.getVoices(ttsLang) ?? [];
-    if (voices.length === 0) {
-      if (voicePref !== "") setVoicePref("");
-      return;
-    }
-    if (!voices.some((v) => v.id === voicePref)) {
-      setVoicePref(voices[0].id);
-    }
-  }, [enginePref, ttsLang, voicePref]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ponytail: persist resolved prefs (waits for voice to settle so we don't
@@ -863,6 +848,24 @@ export function ReaderClient({
       }
     },
   });
+
+  // ponytail: snap voicePref to the active engine's voice catalog. Uses the
+  // hook's effectiveEngineId (not enginePref) so a WebGPU→browser fallback
+  // refreshes the picker to browser voices instead of leaving a stale list
+  // pinned to the failed engine's catalog.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const engine = ENGINES[browserTts.effectiveEngineId];
+    const voices = engine?.getVoices(ttsLang) ?? [];
+    if (voices.length === 0) {
+      if (voicePref !== "") setVoicePref("");
+      return;
+    }
+    if (!voices.some((v) => v.id === voicePref)) {
+      setVoicePref(voices[0].id);
+    }
+  }, [browserTts.effectiveEngineId, ttsLang, voicePref]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ponytail: cloud path (Task 7). Always mounted so the audio element ref is
   // stable; reader-client decides which hook drives the UI via `isCloud`.
@@ -1285,6 +1288,7 @@ export function ReaderClient({
         onClose={handleTtsClose}
         bookLanguage={ttsLang}
         enginePref={enginePref}
+        effectiveEngineId={browserTts.effectiveEngineId}
         onEngineChange={setEnginePref}
         voicePref={voicePref}
         onVoiceChange={setVoicePref}

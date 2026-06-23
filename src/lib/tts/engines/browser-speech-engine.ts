@@ -7,8 +7,9 @@ import type {
 
 // ponytail: speechSynthesis lives on window in browsers and is missing in
 // SSR/Node. Read it lazily via globalThis so the module can be imported
-// anywhere without crashing (window === globalThis in browsers).
-function getSpeechSynthesis(): SpeechSynthesis | null {
+// anywhere without crashing (window === globalThis in browsers). Exported so
+// the hook can share one accessor instead of duplicating it.
+export function getSpeechSynthesis(): SpeechSynthesis | null {
   const env = globalThis as unknown as { speechSynthesis?: SpeechSynthesis };
   return env.speechSynthesis ?? null;
 }

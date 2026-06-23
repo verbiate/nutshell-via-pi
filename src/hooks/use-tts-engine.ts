@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { EpubViewerHandle } from "@/components/reader/epub-viewer";
 import { chunkText, CHUNK_LIMITS } from "@/lib/tts/chunk";
 import { getEngine } from "@/lib/tts/engines";
+import { getSpeechSynthesis } from "@/lib/tts/engines/browser-speech-engine";
 import type { EngineId } from "@/lib/tts/languages";
 import type { TtsEngine, TtsSynthesisResult } from "@/lib/tts/types";
 
@@ -28,6 +29,8 @@ export interface UseTtsEngineOptions {
 
 export interface UseTtsEngineReturn {
   state: TtsEngineState;
+  /** Engine actually in use after any runtime fallback (e.g. WebGPU → browser). */
+  effectiveEngineId: EngineId;
   startSection: (href: string, title: string) => void;
   pause: () => void;
   resume: () => void;
@@ -49,11 +52,6 @@ function isAudioBufferResult(
 
 function isBrowserEngine(engine: TtsEngine): boolean {
   return engine.id === "browser";
-}
-
-function getSpeechSynthesis(): SpeechSynthesis | null {
-  const env = globalThis as unknown as { speechSynthesis?: SpeechSynthesis };
-  return env.speechSynthesis ?? null;
 }
 
 function pauseBrowserSpeech(): void {
@@ -116,6 +114,17 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   useEffect(() => {
     engineIdRef.current = engineId;
   }, [engineId]);
+
+  // ponytail: effectiveEngineId mirrors engineIdRef but as state, so consumers
+  // (voice picker) re-render when a WebGPU fallback swaps us to "browser".
+  // Render-time prop-change guard resets it alongside the ref without a
+  // setState-in-effect (idiomatic "adjusting state when a prop changes").
+  const [effectiveEngineId, setEffectiveEngineId] = useState<EngineId>(engineId);
+  const [prevEngineId, setPrevEngineId] = useState<EngineId>(engineId);
+  if (engineId !== prevEngineId) {
+    setPrevEngineId(engineId);
+    setEffectiveEngineId(engineId);
+  }
 
   const cleanupSource = useCallback(() => {
     if (sourceNodeRef.current) {
@@ -227,6 +236,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       if (engineIdRef.current === "browser") throw primaryErr;
       toast("Switching to built-in voice");
       engineIdRef.current = "browser";
+      setEffectiveEngineId("browser");
       const fallback = await getEngine("browser");
       await fallback.ensureLoaded();
       engineRef.current = fallback;
@@ -334,5 +344,5 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     };
   }, [cleanupSource]);
 
-  return { state, startSection, pause, resume, close };
+  return { state, effectiveEngineId, startSection, pause, resume, close };
 }

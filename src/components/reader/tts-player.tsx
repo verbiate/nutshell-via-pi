@@ -43,6 +43,12 @@ export interface TtsPlayerProps {
   onClose: () => void;
   bookLanguage: string;
   enginePref: EngineId;
+  /**
+   * Engine actually driving playback after any runtime fallback (e.g. WebGPU →
+   * browser). When provided, the voice catalog is pulled from this engine so
+   * the picker refreshes after a fallback. Defaults to enginePref.
+   */
+  effectiveEngineId?: EngineId;
   onEngineChange: (id: EngineId) => void;
   voicePref: string;
   onVoiceChange: (id: string) => void;
@@ -72,6 +78,7 @@ export function TtsPlayer({
   onClose,
   bookLanguage,
   enginePref,
+  effectiveEngineId,
   onEngineChange,
   voicePref,
   onVoiceChange,
@@ -83,10 +90,11 @@ export function TtsPlayer({
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
 
-  // ponytail: pull voices synchronously from the registry. cloud has no
-  // client-side catalog (server picks the voice per tier) — render a single
-  // "Default voice" placeholder. browser is unused (no ENGINES entry).
-  const activeEngine = ENGINES[enginePref];
+  // ponytail: voice catalog follows the *effective* engine so a WebGPU→browser
+  // fallback refreshes the picker to browser voices. The engine radio + cloud
+  // flag still track enginePref — browser isn't a selectable radio option and
+  // cloud never falls back through this hook.
+  const activeEngine = ENGINES[effectiveEngineId ?? enginePref];
   const voices: TtsVoice[] = activeEngine?.getVoices(bookLanguage) ?? [];
   const isCloud = enginePref === "cloud";
 
