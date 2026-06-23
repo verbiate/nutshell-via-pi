@@ -121,6 +121,8 @@ function demo(): void {
   }
 }
 
-if (process.env.NODE_ENV !== "production") {
+// ponytail: opt-in self-check so test runs (and every non-prod import) don't
+// spam the console. Enable with TTS_CHUNK_DEMO=1.
+if (process.env.TTS_CHUNK_DEMO) {
   demo();
 }
