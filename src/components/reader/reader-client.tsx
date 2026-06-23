@@ -36,10 +36,12 @@ import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import { useTtsEngine } from "@/hooks/use-tts-engine";
-import { defaultEngineForLanguage, type EngineId } from "@/lib/tts/languages";
+import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
+import { ENGINES } from "@/lib/tts/engines";
+import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
 import { cn } from "@/lib/utils";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
-import type { LibraryBook } from "@/types/book";
+import type { LibraryBook, UserRole } from "@/types/book";
 
 interface SavedPosition {
   paragraphIndex: number;
@@ -773,10 +775,57 @@ export function ReaderClient({
   }, [bookId, bookDescription]);
 
   // ─── TTS Playback ──────────────────────────────────────────────────────────
+  // ponytail: role drives the "Premium" gate; fall back to regular when the
+  // session is still loading so nothing premium flashes for anon users.
+  const userRole: UserRole =
+    ((user as any)?.role as UserRole) ?? "regular";
+  const ttsLang = bookLanguage ?? "en";
   const [enginePref, setEnginePref] = useState<EngineId>(() =>
-    defaultEngineForLanguage(bookLanguage ?? "en"),
+    defaultEngineForLanguage(ttsLang),
   );
   const [voicePref, setVoicePref] = useState<string>("");
+
+  // ponytail: load saved engine/voice once per book language. If the saved
+  // engine no longer supports this language (language map changed), drop it
+  // and keep the default. Runs on language change, not every render.
+  // setState-in-effect is intentional here (one-shot pref hydration); same
+  // pattern as the sidebar/entry effects below.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const saved = loadTtsPref(ttsLang);
+    if (
+      saved.engineId &&
+      engineSupportsLanguage(saved.engineId, ttsLang)
+    ) {
+      setEnginePref(saved.engineId);
+    }
+    if (saved.voiceId) {
+      setVoicePref(saved.voiceId);
+    }
+  }, [ttsLang]);
+
+  // ponytail: when the engine or language changes, the current voice is likely
+  // invalid for the new voice list — snap to the first available. Also guards
+  // the case where the saved voice id isn't in the active engine's catalog.
+  useEffect(() => {
+    const engine = ENGINES[enginePref];
+    const voices = engine?.getVoices(ttsLang) ?? [];
+    if (voices.length === 0) {
+      if (voicePref !== "") setVoicePref("");
+      return;
+    }
+    if (!voices.some((v) => v.id === voicePref)) {
+      setVoicePref(voices[0].id);
+    }
+  }, [enginePref, ttsLang, voicePref]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // ponytail: persist resolved prefs (waits for voice to settle so we don't
+  // save the transient "" before the reset effect picks a default).
+  useEffect(() => {
+    if (!voicePref) return;
+    saveTtsPref(ttsLang, { engineId: enginePref, voiceId: voicePref });
+  }, [ttsLang, enginePref, voicePref]);
 
   const flatToc = useCallback(() => {
     const items: Array<{ label: string; href: string }> = [];
@@ -1176,11 +1225,18 @@ export function ReaderClient({
       {/* TTS audio player — outside the isLoaded check so it persists independently */}
       <TtsPlayer
         state={ttsPlaybackState}
+        loadPct={browserTts.state.loadPct}
         onPlayPause={handleTtsPlayPause}
         onScrub={() => {
           // scrub not supported for browser TTS in v1
         }}
         onClose={handleTtsClose}
+        bookLanguage={ttsLang}
+        enginePref={enginePref}
+        onEngineChange={setEnginePref}
+        voicePref={voicePref}
+        onVoiceChange={setVoicePref}
+        userRole={userRole}
       />
     </div>
   );
