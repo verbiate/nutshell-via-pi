@@ -44,6 +44,7 @@ export interface EpubViewerHandle {
   addHighlight: (cfi: string, color: string) => void;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
+  getSectionText: () => string;
 }
 
 // ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
@@ -193,6 +194,13 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             /* rendition internals not ready; epub.js re-measures via its observers */
           }
         }
+      },
+      getSectionText: () => {
+        const doc = (renditionRef.current as any)?.contents?.document;
+        if (!doc?.body) return "";
+        const clone = doc.body.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll("script,style,head").forEach((n) => n.remove());
+        return clone.textContent?.replace(/\s+\n/g, "\n").trim() ?? "";
       },
     }));
 
