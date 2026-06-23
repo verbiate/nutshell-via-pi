@@ -55,6 +55,8 @@ export interface TtsPlayerProps {
   userRole: UserRole;
   /** Cloud-only quota snapshot; rendered as a small badge next to the engines. */
   quota?: CloudQuota | null;
+  /** Keep the bar visible even when state is IDLE (e.g. after engine switch). */
+  forceVisible?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -84,8 +86,9 @@ export function TtsPlayer({
   onVoiceChange,
   userRole,
   quota = null,
+  forceVisible = false,
 }: TtsPlayerProps) {
-  const visible = state.state !== "IDLE";
+  const visible = forceVisible || state.state !== "IDLE";
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";

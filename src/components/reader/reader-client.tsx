@@ -898,9 +898,16 @@ export function ReaderClient({
   const cloudState = cloudTts.state.state;
   const browserPhase = browserTts.state.phase;
 
+  // ponytail: keep the player bar visible once activated until the user
+  // explicitly closes it. Without this, switching to an engine whose state
+  // is IDLE (e.g. cloud before first play) hides the bar — and the engine
+  // switcher inside it — leaving the user stuck.
+  const [ttsBarVisible, setTtsBarVisible] = useState(false);
+
   // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
   // point. Dispatches on isCloud so either engine can be started from here.
   const handleListenFromHere = useCallback(() => {
+    setTtsBarVisible(true);
     if (isCloud) {
       const cs = cloudTts.state.state;
       if (cs === "IDLE" || cs === "ENDED") {
@@ -963,6 +970,7 @@ export function ReaderClient({
   }, [browserTts, cloudTts, isCloud]);
 
   const handleTtsClose = useCallback(() => {
+    setTtsBarVisible(false);
     if (isCloud) {
       cloudTts.close();
       return;
@@ -972,6 +980,15 @@ export function ReaderClient({
 
   // ponytail: active quota for the player badge — null when not on cloud.
   const activeQuota: CloudQuota | null = isCloud ? cloudTts.quota : null;
+
+  // ponytail: when switching engines, stop the old engine's playback so audio
+  // doesn't bleed across engines and the state source cleanly transitions.
+  const handleEngineChange = useCallback((next: EngineId) => {
+    if (isCloud) cloudTts.close();
+    else browserTts.close();
+    setEnginePref(next);
+    setTtsBarVisible(true);
+  }, [isCloud, browserTts, cloudTts]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
   // effect only fires on actual change. Publisher font = omit font-family so the
@@ -1299,11 +1316,12 @@ export function ReaderClient({
         bookLanguage={ttsLang}
         enginePref={enginePref}
         effectiveEngineId={browserTts.effectiveEngineId}
-        onEngineChange={setEnginePref}
+        onEngineChange={handleEngineChange}
         voicePref={voicePref}
         onVoiceChange={setVoicePref}
         userRole={userRole}
         quota={activeQuota}
+        forceVisible={ttsBarVisible}
       />
     </div>
   );
