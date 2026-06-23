@@ -48,10 +48,18 @@ interface OrtTensorCtor {
 }
 interface OrtSession {
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
+  release(): Promise<void>;
 }
 interface OrtSessionOptions {
   executionProviders?: string[];
   graphOptimizationLevel?: string;
+}
+interface OrtWasmEnv {
+  wasmPaths: string;
+  proxy?: boolean;
+}
+interface OrtEnv {
+  wasm: OrtWasmEnv;
 }
 interface OrtModule {
   Tensor: OrtTensorCtor;
@@ -61,16 +69,30 @@ interface OrtModule {
       options?: OrtSessionOptions,
     ): Promise<OrtSession>;
   };
+  env: OrtEnv;
 }
+
+// ponytail: pinned to package.json's onnxruntime-web version. Must stay in
+// sync — bump package.json, bump this. Reads package.json at runtime in a
+// browser bundle isn't worth the indirection for a value that changes rarely.
+const ORT_VERSION = "1.27.0";
 
 let ortPromise: Promise<OrtModule> | null = null;
 function getOrt(): Promise<OrtModule> {
   // ponytail: lazy-load so importing this module (incl. in tests/SSR) never
   // pulls onnxruntime-web or its wasm assets.
   if (!ortPromise) {
-    ortPromise = import("onnxruntime-web").then(
-      (m) => m as unknown as OrtModule,
-    );
+    ortPromise = import("onnxruntime-web").then((m) => {
+      const ort = m as unknown as OrtModule;
+      // ponytail: Next.js doesn't serve onnxruntime-web's .wasm binaries, so
+      // point at the jsdelivr CDN matching the installed version. Without
+      // this, InferenceSession.create throws at runtime and synthesize
+      // silently falls back to browser speech — the exact failure mode we
+      // just fixed. The demo doesn't set this because Vite serves the wasm
+      // from node_modules; we have no such dev-server pipeline.
+      ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+      return ort;
+    });
   }
   return ortPromise;
 }
@@ -166,7 +188,7 @@ class UnicodeProcessor {
       "@": " at ", "e.g.,": "for example, ", "i.e.,": "that is, ",
     };
     for (const [k, v] of Object.entries(expr)) text = text.replaceAll(k, v);
-    text = text.replace(/ ([,.!;:'])/g, "$1");
+    text = text.replace(/ ([,.!?;:'])/g, "$1");
     while (text.includes('""')) text = text.replace('""', '"');
     while (text.includes("''")) text = text.replace("''", "'");
     while (text.includes("``")) text = text.replace("``", "`");
@@ -439,6 +461,16 @@ export class SupertonicTts {
       return [row];
     });
   }
+
+  // ponytail: free wasm/GPU memory held by the 4 ONNX sessions. Fire-and-
+  // forget; release() returns a Promise we don't need to await in the sync
+  // dispose() path. Errors swallowed because ort's release can reject if the
+  // underlying session was already torn down.
+  release(): void {
+    for (const s of Object.values(this.sessions)) {
+      void s.release().catch(() => {});
+    }
+  }
 }
 
 interface VoiceStyleJson {
@@ -530,8 +562,22 @@ async function loadSupertonic(
   return { tts, cfgs };
 }
 
+// ponytail: browsers cap concurrent AudioContexts (~6 in Chrome). Creating
+// one per synthesize() call blows the cap after a handful of paragraphs and
+// breaks playback. Hoist a single lazily-created context and reuse it; the
+// model always runs at cfgs.ae.sample_rate (44.1kHz) so the fixed rate is
+// fine. AudioBuffers are independent of the context once created, so reusing
+// the context is safe.
+let sharedAudioContext: AudioContext | null = null;
+function getAudioContext(sampleRate: number): AudioContext {
+  if (!sharedAudioContext) {
+    sharedAudioContext = new AudioContext({ sampleRate });
+  }
+  return sharedAudioContext;
+}
+
 function wavToAudioBuffer(wav: number[], sampleRate: number): AudioBuffer {
-  const ctx = new AudioContext({ sampleRate });
+  const ctx = getAudioContext(sampleRate);
   const buffer = ctx.createBuffer(1, wav.length, sampleRate);
   buffer.getChannelData(0).set(new Float32Array(wav));
   return buffer;
@@ -588,8 +634,21 @@ export const supertonicEngine: TtsEngine = (() => {
       return { kind: "audioBuffer", buffer };
     },
     dispose() {
+      // ponytail: capture the in-flight load before nulling so we can release
+      // the ONNX sessions it resolved with. Fire-and-forget — dispose() is
+      // sync per the TtsEngine contract.
+      const p = loadPromise;
       loadPromise = null;
       styleCache.clear();
+      if (sharedAudioContext) {
+        void sharedAudioContext.close().catch(() => {});
+        sharedAudioContext = null;
+      }
+      if (p) {
+        void p
+          .then(({ tts }) => tts.release())
+          .catch(() => {});
+      }
     },
   };
 })();
