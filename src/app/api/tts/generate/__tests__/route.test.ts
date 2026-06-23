@@ -19,10 +19,25 @@ vi.mock("@/server/services/tts", () => ({
   generateTtsAudio: vi.fn(),
 }));
 
+vi.mock("@/server/services/tts-usage", () => ({
+  getCurrentUsage: vi.fn(),
+  incrementUsage: vi.fn(),
+}));
+
 import { POST } from "@/app/api/tts/generate/route";
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
 import { generateTtsAudio } from "@/server/services/tts";
+import { getCurrentUsage, incrementUsage } from "@/server/services/tts-usage";
+
+// Default under-quota snapshot so most tests don't need to re-mock it.
+function underLimit(used = 0, limit = 50) {
+  vi.mocked(getCurrentUsage).mockResolvedValue({
+    used,
+    limit,
+    periodKey: "2026-06",
+  });
+}
 
 describe("POST /api/tts/generate", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -80,6 +95,7 @@ describe("POST /api/tts/generate", () => {
       role: "regular",
     } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    underLimit();
     vi.mocked(generateTtsAudio).mockResolvedValue({
       cached: true,
       audioId: "a1",
@@ -110,6 +126,7 @@ describe("POST /api/tts/generate", () => {
       role: "pro",
     } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    underLimit();
     vi.mocked(generateTtsAudio).mockResolvedValue({
       cached: false,
       audioId: "a2",
@@ -141,6 +158,7 @@ describe("POST /api/tts/generate", () => {
       role: "regular",
     } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    underLimit();
     vi.mocked(generateTtsAudio).mockRejectedValue(
       Object.assign(
         new Error("TTS provider not configured for tier: regular"),
@@ -169,5 +187,76 @@ describe("POST /api/tts/generate", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
+  });
+
+  it("returns 429 when quota is exhausted and skips generation", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      id: "u1",
+      role: "pro",
+    } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    vi.mocked(getCurrentUsage).mockResolvedValue({
+      used: 50,
+      limit: 50,
+      periodKey: "2026-06",
+    });
+
+    const req = new Request("http://localhost/api/tts/generate", {
+      method: "POST",
+      body: JSON.stringify({ bookId: "b1", sectionHref: "/ch1" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.error).toContain("limit reached");
+    expect(body.used).toBe(50);
+    expect(body.limit).toBe(50);
+    expect(generateTtsAudio).not.toHaveBeenCalled();
+    expect(incrementUsage).not.toHaveBeenCalled();
+  });
+
+  it("increments usage once after a successful generation", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      id: "u1",
+      role: "pro",
+    } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    underLimit(10, 50);
+    vi.mocked(generateTtsAudio).mockResolvedValue({
+      cached: false,
+      audioId: "a2",
+      url: "/api/files/tts/newhash/voice_model.mp3",
+    });
+
+    const req = new Request("http://localhost/api/tts/generate", {
+      method: "POST",
+      body: JSON.stringify({ bookId: "b1", sectionHref: "/ch1" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(incrementUsage).toHaveBeenCalledTimes(1);
+    expect(incrementUsage).toHaveBeenCalledWith("u1");
+  });
+
+  it("does not increment usage when generation fails (provider not configured)", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      id: "u1",
+      role: "regular",
+    } as any);
+    vi.mocked(verifyBookAccess).mockResolvedValue(true);
+    underLimit();
+    vi.mocked(generateTtsAudio).mockRejectedValue(
+      Object.assign(
+        new Error("TTS provider not configured for tier: regular"),
+        { statusCode: 503 }
+      )
+    );
+
+    const req = new Request("http://localhost/api/tts/generate", {
+      method: "POST",
+      body: JSON.stringify({ bookId: "b1", sectionHref: "/ch1" }),
+    });
+    await POST(req);
+    expect(incrementUsage).not.toHaveBeenCalled();
   });
 });
