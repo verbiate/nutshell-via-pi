@@ -286,6 +286,22 @@ model TtsProviderConfig {
   @@unique([provider, userType])
 }
 
+// ponytail: per-user monthly quota counter for cloud TTS generations.
+// One /api/tts/generate call = 1 increment. periodKey is "YYYY-MM" so the
+// counter rolls over automatically each calendar month without a cron job.
+model TtsUsage {
+  id          String   @id @default(cuid())
+  userId      String
+  periodKey   String   // "YYYY-MM"
+  generations Int      @default(0)
+  lastResetAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, periodKey])
+  @@index([userId])
+}
+
 model OpenRouterConfig {
   id                String   @id @default(cuid())
   userType          String   @unique

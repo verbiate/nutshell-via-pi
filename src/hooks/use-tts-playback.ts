@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 
-export type TtsState = "IDLE" | "GENERATING" | "READY" | "PLAYING" | "ENDED";
+export type TtsState = "IDLE" | "LOADING" | "GENERATING" | "READY" | "PLAYING" | "ENDED";
 
 export interface TtsPlaybackState {
   state: TtsState;

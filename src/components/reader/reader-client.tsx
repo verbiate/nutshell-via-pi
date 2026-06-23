@@ -34,10 +34,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
 import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
-import { useTtsPlayback } from "@/hooks/use-tts-playback";
+import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
+import { useTtsEngine } from "@/hooks/use-tts-engine";
+import { useTtsCloud, type CloudQuota } from "@/hooks/use-tts-cloud";
+import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
+import { ENGINES } from "@/lib/tts/engines";
+import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
 import { cn } from "@/lib/utils";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
-import type { LibraryBook } from "@/types/book";
+import type { LibraryBook, UserRole } from "@/types/book";
 
 interface SavedPosition {
   paragraphIndex: number;
@@ -771,27 +776,192 @@ export function ReaderClient({
   }, [bookId, bookDescription]);
 
   // ─── TTS Playback ──────────────────────────────────────────────────────────
-  const handleTtsNavigate = useCallback((href: string) => {
-    setCurrentHref(href);
-    viewerRef.current?.navigateTo(href);
-  }, []);
+  // ponytail: role drives the "Premium" gate; fall back to regular when the
+  // session is still loading so nothing premium flashes for anon users.
+  const userRole: UserRole =
+    ((user as any)?.role as UserRole) ?? "regular";
+  const ttsLang = bookLanguage ?? "en";
+  const [enginePref, setEnginePref] = useState<EngineId>(() =>
+    defaultEngineForLanguage(ttsLang),
+  );
+  const [voicePref, setVoicePref] = useState<string>("");
 
-  const tts = useTtsPlayback({
+  // ponytail: load saved engine/voice once per book language. If the saved
+  // engine no longer supports this language (language map changed), drop it
+  // and keep the default. Runs on language change, not every render.
+  // setState-in-effect is intentional here (one-shot pref hydration); same
+  // pattern as the sidebar/entry effects below.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const saved = loadTtsPref(ttsLang);
+    if (
+      saved.engineId &&
+      engineSupportsLanguage(saved.engineId, ttsLang)
+    ) {
+      setEnginePref(saved.engineId);
+    }
+    if (saved.voiceId) {
+      setVoicePref(saved.voiceId);
+    }
+  }, [ttsLang]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // ponytail: persist resolved prefs (waits for voice to settle so we don't
+  // save the transient "" before the reset effect picks a default).
+  useEffect(() => {
+    if (!voicePref) return;
+    saveTtsPref(ttsLang, { engineId: enginePref, voiceId: voicePref });
+  }, [ttsLang, enginePref, voicePref]);
+
+  const flatToc = useCallback(() => {
+    const items: Array<{ label: string; href: string }> = [];
+    function walk(nodes: typeof toc) {
+      for (const node of nodes) {
+        items.push({ label: node.label, href: node.href });
+        if (node.subitems) walk(node.subitems);
+      }
+    }
+    walk(toc);
+    return items;
+  }, [toc]);
+
+  const getNextSection = useCallback(
+    (href: string) => {
+      const items = flatToc();
+      const idx = items.findIndex((i) => i.href === href);
+      return idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
+    },
+    [flatToc],
+  );
+
+  const browserTts = useTtsEngine({
+    bookId,
+    bookLanguage: bookLanguage ?? "en",
+    viewerRef,
+    engineId: enginePref,
+    voiceId: voicePref,
+    onSectionComplete: () => {
+      const next = getNextSection(browserTts.state.sectionHref);
+      if (next) {
+        setCurrentHref(next.href);
+        browserTts.startSection(next.href, next.label);
+      }
+    },
+  });
+
+  // ponytail: snap voicePref to the active engine's voice catalog. Uses the
+  // hook's effectiveEngineId (not enginePref) so a WebGPU→browser fallback
+  // refreshes the picker to browser voices instead of leaving a stale list
+  // pinned to the failed engine's catalog.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const engine = ENGINES[browserTts.effectiveEngineId];
+    const voices = engine?.getVoices(ttsLang) ?? [];
+    if (voices.length === 0) {
+      if (voicePref !== "") setVoicePref("");
+      return;
+    }
+    if (!voices.some((v) => v.id === voicePref)) {
+      setVoicePref(voices[0].id);
+    }
+  }, [browserTts.effectiveEngineId, ttsLang, voicePref]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // ponytail: cloud path (Task 7). Always mounted so the audio element ref is
+  // stable; reader-client decides which hook drives the UI via `isCloud`.
+  // onQuotaExhausted snaps the engine pref back to kokoro when the limit hits.
+  const cloudAudioRef = useRef<HTMLAudioElement | null>(null);
+  const cloudTts = useTtsCloud({
     bookId,
     toc,
     currentHref,
-    onNavigateToSection: handleTtsNavigate,
+    audioRef: cloudAudioRef,
+    onNavigateToSection: handleTocNavigate,
+    onQuotaExhausted: useCallback(() => setEnginePref("kokoro"), []),
+    // ponytail: regular tier can't use cloud — skip the mount-time quota fetch.
+    enabled: userRole !== "regular",
   });
 
-  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry point.
+  // ponytail: dispatcher — cloud is gated by tier (regular → forced to browser).
+  const isCloud = enginePref === "cloud" && userRole !== "regular";
+  // ponytail: pull state slices off the hook returns for cleaner JSX reads.
+  const cloudState = cloudTts.state.state;
+  const browserPhase = browserTts.state.phase;
+
+  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
+  // point. Dispatches on isCloud so either engine can be started from here.
   const handleListenFromHere = useCallback(() => {
-    if (tts.state.state === "IDLE") {
-      const section = toc.find((item) => item.href === currentHref);
-      tts.startSection(currentHref, section?.label || "Reading");
-    } else {
-      tts.togglePlayPause();
+    if (isCloud) {
+      const cs = cloudTts.state.state;
+      if (cs === "IDLE" || cs === "ENDED") {
+        const section = toc.find((item) => item.href === currentHref);
+        cloudTts.startSection(currentHref, section?.label || "Reading");
+      } else {
+        cloudTts.togglePlayPause();
+      }
+      return;
     }
-  }, [tts, toc, currentHref]);
+    if (
+      browserTts.state.phase === "IDLE" ||
+      browserTts.state.phase === "ENDED"
+    ) {
+      const section = toc.find((item) => item.href === currentHref);
+      browserTts.startSection(currentHref, section?.label || "Reading");
+    } else if (browserTts.state.phase === "PLAYING") {
+      browserTts.pause();
+    } else if (browserTts.state.phase === "PAUSED") {
+      browserTts.resume();
+    }
+  }, [browserTts, cloudTts, isCloud, toc, currentHref]);
+
+  const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
+    if (isCloud) return cloudTts.state;
+    const phase = browserTts.state.phase;
+    return {
+      state:
+        phase === "IDLE"
+          ? "IDLE"
+          : phase === "LOADING"
+            ? "LOADING"
+            : phase === "PLAYING"
+              ? "PLAYING"
+              : phase === "PAUSED"
+                ? "READY"
+                : "ENDED",
+      sectionTitle: browserTts.state.sectionTitle,
+      sectionHref: browserTts.state.sectionHref,
+      audioUrl: null,
+      audioId: null,
+      currentTime: 0,
+      duration: 0,
+    };
+  }, [browserTts.state, cloudTts.state, isCloud]);
+
+  const handleTtsPlayPause = useCallback(() => {
+    if (isCloud) {
+      cloudTts.togglePlayPause();
+      return;
+    }
+    if (browserTts.state.phase === "PLAYING") {
+      browserTts.pause();
+    } else if (
+      browserTts.state.phase === "PAUSED" ||
+      browserTts.state.phase === "ENDED"
+    ) {
+      browserTts.resume();
+    }
+  }, [browserTts, cloudTts, isCloud]);
+
+  const handleTtsClose = useCallback(() => {
+    if (isCloud) {
+      cloudTts.close();
+      return;
+    }
+    browserTts.close();
+  }, [browserTts, cloudTts, isCloud]);
+
+  // ponytail: active quota for the player badge — null when not on cloud.
+  const activeQuota: CloudQuota | null = isCloud ? cloudTts.quota : null;
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
   // effect only fires on actual change. Publisher font = omit font-family so the
@@ -809,16 +979,13 @@ export function ReaderClient({
   }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment, bookSettings.fontFamily]);
 
   // Apply TTS playback speed to the audio element whenever it changes or a new
-  // section loads. ponytail: audio.playbackRate is live-adjustable, no reload.
-  // ponytail: false positive — assigning to the DOM element the ref points to,
-  // not mutating the tts object. Rule can't tell ref-typed properties apart.
-  /* eslint-disable react-hooks/immutability */
+  // section loads. ponytail: only the cloud path uses an <audio> element;
+  // browser engines go through AudioContext (handled in use-tts-engine).
   useEffect(() => {
-    if (tts.audioRef.current) {
-      tts.audioRef.current.playbackRate = bookSettings.voiceSpeed;
+    if (cloudAudioRef.current) {
+      cloudAudioRef.current.playbackRate = bookSettings.voiceSpeed;
     }
-  }, [bookSettings.voiceSpeed, tts.audioRef, tts.state.state]);
-  /* eslint-enable react-hooks/immutability */
+  }, [bookSettings.voiceSpeed, cloudAudioRef, cloudState]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -875,7 +1042,10 @@ export function ReaderClient({
   return (
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
-      className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}
+      className={cn(
+        "relative h-full w-full",
+        (browserPhase !== "IDLE" || cloudState !== "IDLE") && "pb-16",
+      )}
       // ponytail: stage the sidebar open to finish with the 0.8s slide-in.
       // --reader-delay (300ms) holds the sidebar closed while the reader gets a
       // head start; --reader-dur (500ms) is the open itself. 300 + 500 = 800ms,
@@ -897,8 +1067,8 @@ export function ReaderClient({
         digestImage={libraryDigestImage}
       />
 
-      {/* Hidden audio element for TTS playback */}
-      <audio ref={tts.audioRef} className="hidden" />
+      {/* Hidden audio element for cloud TTS playback */}
+      <audio ref={cloudAudioRef} className="hidden" />
 
       {/* Error overlay */}
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
@@ -1005,22 +1175,23 @@ export function ReaderClient({
               />
             }
             ttsTrigger={
-              // ponytail: false positive — useTtsPlayback returns an object mixing a
-              // real ref (audioRef) with regular useState (state). The rule
-              // conservatively flags all property access on the object; tts.state
-              // is ordinary state, not a ref.
-              /* eslint-disable react-hooks/refs */
               <TtsTrigger
                 state={
-                  tts.state.state === "GENERATING"
-                    ? "generating"
-                    : tts.state.state === "IDLE"
-                    ? "idle"
-                    : "disabled"
+                  isCloud
+                    ? cloudState === "GENERATING" || cloudState === "LOADING"
+                      ? "loading"
+                      : cloudState === "IDLE" || cloudState === "ENDED"
+                        ? "idle"
+                        : "disabled"
+                    : browserPhase === "LOADING"
+                      ? "loading"
+                      : browserPhase === "IDLE" ||
+                          browserPhase === "ENDED"
+                        ? "idle"
+                        : "disabled"
                 }
                 onClick={handleListenFromHere}
               />
-              /* eslint-enable react-hooks/refs */
             }
           />
           <ReadingProgress
@@ -1106,15 +1277,24 @@ export function ReaderClient({
       )}
 
       {/* TTS audio player — outside the isLoaded check so it persists independently */}
-      {/* ponytail: false positive — see ttsTrigger comment above; tts mixes ref+state */}
-      {/* eslint-disable react-hooks/refs */}
       <TtsPlayer
-        state={tts.state}
-        onPlayPause={tts.togglePlayPause}
-        onScrub={tts.scrub}
-        onClose={tts.close}
+        state={ttsPlaybackState}
+        loadPct={browserTts.state.loadPct}
+        onPlayPause={handleTtsPlayPause}
+        onScrub={(t) => {
+          // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
+          if (isCloud) cloudTts.scrub(t);
+        }}
+        onClose={handleTtsClose}
+        bookLanguage={ttsLang}
+        enginePref={enginePref}
+        effectiveEngineId={browserTts.effectiveEngineId}
+        onEngineChange={setEnginePref}
+        voicePref={voicePref}
+        onVoiceChange={setVoicePref}
+        userRole={userRole}
+        quota={activeQuota}
       />
-      {/* eslint-enable react-hooks/refs */}
     </div>
   );
 }

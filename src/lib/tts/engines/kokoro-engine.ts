@@ -1,0 +1,86 @@
+import type { TtsEngine, TtsVoice, SynthesizeOpts, TtsSynthesisResult } from "../types";
+import { KOKORO_VOICES } from "../voices/kokoro";
+import { KOKORO_LANGUAGES } from "../languages";
+
+const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
+interface KokoroTts {
+  generate(text: string, options: { voice: string }): Promise<unknown>;
+}
+
+interface KokoroAudio {
+  audio: Float32Array;
+  sampling_rate: number;
+}
+
+function isKokoroAudio(value: unknown): value is KokoroAudio {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "audio" in value &&
+    value.audio instanceof Float32Array &&
+    "sampling_rate" in value &&
+    typeof value.sampling_rate === "number"
+  );
+}
+
+async function rawAudioToAudioBuffer(raw: KokoroAudio): Promise<AudioBuffer> {
+  const ctx = new AudioContext({ sampleRate: raw.sampling_rate });
+  const buffer = ctx.createBuffer(1, raw.audio.length, raw.sampling_rate);
+  buffer.getChannelData(0).set(raw.audio);
+  return buffer;
+}
+
+export const kokoroEngine: TtsEngine = (() => {
+  let ttsPromise: Promise<KokoroTts> | null = null;
+
+  async function getTts(onProgress?: (pct: number) => void) {
+    if (!ttsPromise) {
+      ttsPromise = (async () => {
+        const { KokoroTTS } = await import("kokoro-js");
+        return KokoroTTS.from_pretrained(MODEL_ID, {
+          dtype: "q8",
+          device: "webgpu",
+          progress_callback: onProgress
+            ? (progress: { status: string; file?: string; progress?: number }) => {
+                if (typeof progress.progress === "number") {
+                  onProgress(progress.progress);
+                }
+              }
+            : undefined,
+        }) as Promise<KokoroTts>;
+      })();
+    }
+    return ttsPromise;
+  }
+
+  return {
+    id: "kokoro",
+    label: "Free (Highest Quality)",
+    getVoices(lang: string): TtsVoice[] {
+      const voices = KOKORO_VOICES[lang] ?? KOKORO_VOICES.en ?? [];
+      return voices.map((v) => ({
+        id: v.id,
+        label: v.label,
+        gender: v.gender,
+        region: v.region,
+      }));
+    },
+    supportsLanguage: (lang) => KOKORO_LANGUAGES.has(lang),
+    ensureLoaded(onProgress) {
+      return getTts(onProgress).then(() => undefined);
+    },
+    async synthesize(text: string, opts: SynthesizeOpts): Promise<TtsSynthesisResult> {
+      const tts = await getTts();
+      const result = await tts.generate(text, { voice: opts.voiceId });
+      if (!isKokoroAudio(result)) {
+        throw new Error('Unexpected Kokoro output shape');
+      }
+      const buffer = await rawAudioToAudioBuffer(result);
+      return { kind: "audioBuffer", buffer };
+    },
+    dispose() {
+      ttsPromise = null;
+    },
+  };
+})();

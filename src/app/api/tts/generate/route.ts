@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
 import { generateTtsAudio } from "@/server/services/tts";
+import { getCurrentUsage, incrementUsage } from "@/server/services/tts-usage";
 
 /**
  * POST /api/tts/generate
@@ -41,6 +42,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // ponytail: quota gate. Spec: every successful /api/tts/generate call
+    // counts as 1 generation (cache hits included). If product later wants to
+    // reward caching, skip the increment when result.cached === true.
+    const { used, limit } = await getCurrentUsage(user.id, user.role);
+    if (used >= limit) {
+      return NextResponse.json(
+        {
+          error: "Monthly TTS generation limit reached",
+          used,
+          limit,
+        },
+        { status: 429 }
+      );
+    }
+
     // ponytail: respect user's actual tier (regular/pro/admin) — see threads/route.ts
     const tier = user.role as "regular" | "pro" | "admin";
 
@@ -51,6 +67,9 @@ export async function POST(request: Request) {
       tier,
       signal: request.signal,
     });
+
+    // Count after success so failed/503 generations don't burn quota.
+    await incrementUsage(user.id);
 
     return NextResponse.json({
       audioId: result.audioId,
