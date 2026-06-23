@@ -3,15 +3,24 @@
 // A.FS_createPath is undefined → TypeError). Loading phonemizer from CDN via
 // a runtime dynamic import bypasses Turbopack's module transform — the
 // browser's native module system handles the Emscripten code correctly.
-// The variable URL prevents Turbopack from resolving it at build time.
+//
+// Turbopack intercepts ALL dynamic import() calls and rewrites them into
+// __turbopack_context__.x(). Using `new Function` hides the import from
+// Turbopack's static analyzer so the browser's native import() handles the
+// CDN URL directly.
+
+const nativeImport = new Function(
+  "url",
+  "return import(url)",
+) as (url: string) => Promise<{ phonemize: (text: string, lang?: string) => Promise<string[]> }>;
 
 let cached: { phonemize: (text: string, lang?: string) => Promise<string[]> } | null = null;
 
 async function loadPhonemizer() {
   if (cached) return cached;
   const url = "https://cdn.jsdelivr.net/npm/phonemizer@1.2.1/dist/phonemizer.js";
-  const mod = await import(/* @vite-ignore */ url as string);
-  cached = mod as typeof cached;
+  const mod = await nativeImport(url);
+  cached = mod;
   return cached;
 }
 
