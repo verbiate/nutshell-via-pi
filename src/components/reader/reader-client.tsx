@@ -34,7 +34,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
 import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
-import { useTtsPlayback } from "@/hooks/use-tts-playback";
+import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
+import { useTtsEngine } from "@/hooks/use-tts-engine";
+import { defaultEngineForLanguage, type EngineId } from "@/lib/tts/languages";
 import { cn } from "@/lib/utils";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
 import type { LibraryBook } from "@/types/book";
@@ -771,27 +773,107 @@ export function ReaderClient({
   }, [bookId, bookDescription]);
 
   // ─── TTS Playback ──────────────────────────────────────────────────────────
+  const [enginePref, setEnginePref] = useState<EngineId>(() =>
+    defaultEngineForLanguage(bookLanguage ?? "en"),
+  );
+  const [voicePref, setVoicePref] = useState<string>("");
+
+  const flatToc = useCallback(() => {
+    const items: Array<{ label: string; href: string }> = [];
+    function walk(nodes: typeof toc) {
+      for (const node of nodes) {
+        items.push({ label: node.label, href: node.href });
+        if (node.subitems) walk(node.subitems);
+      }
+    }
+    walk(toc);
+    return items;
+  }, [toc]);
+
+  const getNextSection = useCallback(
+    (href: string) => {
+      const items = flatToc();
+      const idx = items.findIndex((i) => i.href === href);
+      return idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
+    },
+    [flatToc],
+  );
+
   const handleTtsNavigate = useCallback((href: string) => {
     setCurrentHref(href);
     viewerRef.current?.navigateTo(href);
   }, []);
 
-  const tts = useTtsPlayback({
+  const browserTts = useTtsEngine({
     bookId,
-    toc,
-    currentHref,
-    onNavigateToSection: handleTtsNavigate,
+    bookLanguage: bookLanguage ?? "en",
+    viewerRef,
+    engineId: enginePref,
+    voiceId: voicePref,
+    onSectionComplete: () => {
+      const next = getNextSection(browserTts.state.sectionHref);
+      if (next) {
+        handleTtsNavigate(next.href);
+        browserTts.startSection(next.href, next.label);
+      }
+    },
   });
+
+  // ponytail: cloud path added in Task 7; for now the local audio element is
+  // reserved for the upcoming cloud TTS implementation.
+  const cloudAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry point.
   const handleListenFromHere = useCallback(() => {
-    if (tts.state.state === "IDLE") {
+    if (
+      browserTts.state.phase === "IDLE" ||
+      browserTts.state.phase === "ENDED"
+    ) {
       const section = toc.find((item) => item.href === currentHref);
-      tts.startSection(currentHref, section?.label || "Reading");
-    } else {
-      tts.togglePlayPause();
+      browserTts.startSection(currentHref, section?.label || "Reading");
+    } else if (browserTts.state.phase === "PLAYING") {
+      browserTts.pause();
+    } else if (browserTts.state.phase === "PAUSED") {
+      browserTts.resume();
     }
-  }, [tts, toc, currentHref]);
+  }, [browserTts, toc, currentHref]);
+
+  const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
+    const phase = browserTts.state.phase;
+    return {
+      state:
+        phase === "IDLE"
+          ? "IDLE"
+          : phase === "LOADING"
+            ? "GENERATING"
+            : phase === "PLAYING"
+              ? "PLAYING"
+              : phase === "PAUSED"
+                ? "READY"
+                : "ENDED",
+      sectionTitle: browserTts.state.sectionTitle,
+      sectionHref: browserTts.state.sectionHref,
+      audioUrl: null,
+      audioId: null,
+      currentTime: 0,
+      duration: 0,
+    };
+  }, [browserTts.state]);
+
+  const handleTtsPlayPause = useCallback(() => {
+    if (browserTts.state.phase === "PLAYING") {
+      browserTts.pause();
+    } else if (
+      browserTts.state.phase === "PAUSED" ||
+      browserTts.state.phase === "ENDED"
+    ) {
+      browserTts.resume();
+    }
+  }, [browserTts]);
+
+  const handleTtsClose = useCallback(() => {
+    browserTts.close();
+  }, [browserTts]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
   // effect only fires on actual change. Publisher font = omit font-family so the
@@ -810,15 +892,11 @@ export function ReaderClient({
 
   // Apply TTS playback speed to the audio element whenever it changes or a new
   // section loads. ponytail: audio.playbackRate is live-adjustable, no reload.
-  // ponytail: false positive — assigning to the DOM element the ref points to,
-  // not mutating the tts object. Rule can't tell ref-typed properties apart.
-  /* eslint-disable react-hooks/immutability */
   useEffect(() => {
-    if (tts.audioRef.current) {
-      tts.audioRef.current.playbackRate = bookSettings.voiceSpeed;
+    if (cloudAudioRef.current) {
+      cloudAudioRef.current.playbackRate = bookSettings.voiceSpeed;
     }
-  }, [bookSettings.voiceSpeed, tts.audioRef, tts.state.state]);
-  /* eslint-enable react-hooks/immutability */
+  }, [bookSettings.voiceSpeed, cloudAudioRef, browserTts.state.phase]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -875,7 +953,7 @@ export function ReaderClient({
   return (
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
-      className={cn("relative h-full w-full", tts.state.state !== "IDLE" && "pb-16")}
+      className={cn("relative h-full w-full", browserTts.state.phase !== "IDLE" && "pb-16")}
       // ponytail: stage the sidebar open to finish with the 0.8s slide-in.
       // --reader-delay (300ms) holds the sidebar closed while the reader gets a
       // head start; --reader-dur (500ms) is the open itself. 300 + 500 = 800ms,
@@ -897,8 +975,8 @@ export function ReaderClient({
         digestImage={libraryDigestImage}
       />
 
-      {/* Hidden audio element for TTS playback */}
-      <audio ref={tts.audioRef} className="hidden" />
+      {/* Hidden audio element for cloud TTS playback (Task 7) */}
+      <audio ref={cloudAudioRef} className="hidden" />
 
       {/* Error overlay */}
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
@@ -1005,22 +1083,17 @@ export function ReaderClient({
               />
             }
             ttsTrigger={
-              // ponytail: false positive — useTtsPlayback returns an object mixing a
-              // real ref (audioRef) with regular useState (state). The rule
-              // conservatively flags all property access on the object; tts.state
-              // is ordinary state, not a ref.
-              /* eslint-disable react-hooks/refs */
               <TtsTrigger
                 state={
-                  tts.state.state === "GENERATING"
-                    ? "generating"
-                    : tts.state.state === "IDLE"
-                    ? "idle"
-                    : "disabled"
+                  browserTts.state.phase === "LOADING"
+                    ? "loading"
+                    : browserTts.state.phase === "IDLE" ||
+                        browserTts.state.phase === "ENDED"
+                      ? "idle"
+                      : "disabled"
                 }
                 onClick={handleListenFromHere}
               />
-              /* eslint-enable react-hooks/refs */
             }
           />
           <ReadingProgress
@@ -1106,15 +1179,14 @@ export function ReaderClient({
       )}
 
       {/* TTS audio player — outside the isLoaded check so it persists independently */}
-      {/* ponytail: false positive — see ttsTrigger comment above; tts mixes ref+state */}
-      {/* eslint-disable react-hooks/refs */}
       <TtsPlayer
-        state={tts.state}
-        onPlayPause={tts.togglePlayPause}
-        onScrub={tts.scrub}
-        onClose={tts.close}
+        state={ttsPlaybackState}
+        onPlayPause={handleTtsPlayPause}
+        onScrub={() => {
+          // scrub not supported for browser TTS in v1
+        }}
+        onClose={handleTtsClose}
       />
-      {/* eslint-enable react-hooks/refs */}
     </div>
   );
 }
