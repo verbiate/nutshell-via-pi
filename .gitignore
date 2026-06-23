@@ -9,3 +9,4 @@ node_modules/
 .understand-anything/
 pnpm-lock.yaml
 tsconfig.tsbuildinfo
+.worktrees/
