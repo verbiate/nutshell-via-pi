@@ -80,7 +80,20 @@ export const kokoroEngine: TtsEngine = (() => {
       // environments (Turbopack/Next.js); without this check, the engine
       // "loads" successfully but silently produces no audio on every call.
       // A throw here triggers resolveEngine's browser fallback.
-      const result = await tts.generate("test", { voice: "af_bella" });
+      //
+      // The test synthesis has a 10s timeout — on a working system it completes
+      // in <2s. If the phonemizer hangs (broken module), the timeout fires and
+      // we fall back instead of blocking forever.
+      const TEST_TIMEOUT_MS = 10_000;
+      const result = await Promise.race([
+        tts.generate("test", { voice: "af_bella" }) as Promise<unknown>,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Kokoro test synthesis timed out (phonemizer may be broken)")),
+            TEST_TIMEOUT_MS,
+          ),
+        ),
+      ]);
       if (!isKokoroAudio(result) || result.audio.length === 0) {
         throw new Error("Kokoro test synthesis produced no audio (phonemizer may be broken)");
       }
