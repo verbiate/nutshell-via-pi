@@ -36,6 +36,7 @@ import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import { useTtsEngine } from "@/hooks/use-tts-engine";
+import { useTtsCloud, type CloudQuota } from "@/hooks/use-tts-cloud";
 import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
 import { ENGINES } from "@/lib/tts/engines";
 import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
@@ -863,12 +864,38 @@ export function ReaderClient({
     },
   });
 
-  // ponytail: cloud path added in Task 7; for now the local audio element is
-  // reserved for the upcoming cloud TTS implementation.
+  // ponytail: cloud path (Task 7). Always mounted so the audio element ref is
+  // stable; reader-client decides which hook drives the UI via `isCloud`.
+  // onQuotaExhausted snaps the engine pref back to kokoro when the limit hits.
   const cloudAudioRef = useRef<HTMLAudioElement | null>(null);
+  const cloudTts = useTtsCloud({
+    bookId,
+    toc,
+    currentHref,
+    audioRef: cloudAudioRef,
+    onNavigateToSection: handleTocNavigate,
+    onQuotaExhausted: useCallback(() => setEnginePref("kokoro"), []),
+  });
 
-  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry point.
+  // ponytail: dispatcher — cloud is gated by tier (regular → forced to browser).
+  const isCloud = enginePref === "cloud" && userRole !== "regular";
+  // ponytail: pull state slices off the hook returns for cleaner JSX reads.
+  const cloudState = cloudTts.state.state;
+  const browserPhase = browserTts.state.phase;
+
+  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
+  // point. Dispatches on isCloud so either engine can be started from here.
   const handleListenFromHere = useCallback(() => {
+    if (isCloud) {
+      const cs = cloudTts.state.state;
+      if (cs === "IDLE" || cs === "ENDED") {
+        const section = toc.find((item) => item.href === currentHref);
+        cloudTts.startSection(currentHref, section?.label || "Reading");
+      } else {
+        cloudTts.togglePlayPause();
+      }
+      return;
+    }
     if (
       browserTts.state.phase === "IDLE" ||
       browserTts.state.phase === "ENDED"
@@ -880,9 +907,10 @@ export function ReaderClient({
     } else if (browserTts.state.phase === "PAUSED") {
       browserTts.resume();
     }
-  }, [browserTts, toc, currentHref]);
+  }, [browserTts, cloudTts, isCloud, toc, currentHref]);
 
   const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
+    if (isCloud) return cloudTts.state;
     const phase = browserTts.state.phase;
     return {
       state:
@@ -902,9 +930,13 @@ export function ReaderClient({
       currentTime: 0,
       duration: 0,
     };
-  }, [browserTts.state]);
+  }, [browserTts.state, cloudTts.state, isCloud]);
 
   const handleTtsPlayPause = useCallback(() => {
+    if (isCloud) {
+      cloudTts.togglePlayPause();
+      return;
+    }
     if (browserTts.state.phase === "PLAYING") {
       browserTts.pause();
     } else if (
@@ -913,11 +945,18 @@ export function ReaderClient({
     ) {
       browserTts.resume();
     }
-  }, [browserTts]);
+  }, [browserTts, cloudTts, isCloud]);
 
   const handleTtsClose = useCallback(() => {
+    if (isCloud) {
+      cloudTts.close();
+      return;
+    }
     browserTts.close();
-  }, [browserTts]);
+  }, [browserTts, cloudTts, isCloud]);
+
+  // ponytail: active quota for the player badge — null when not on cloud.
+  const activeQuota: CloudQuota | null = isCloud ? cloudTts.quota : null;
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
   // effect only fires on actual change. Publisher font = omit font-family so the
@@ -935,12 +974,13 @@ export function ReaderClient({
   }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment, bookSettings.fontFamily]);
 
   // Apply TTS playback speed to the audio element whenever it changes or a new
-  // section loads. ponytail: audio.playbackRate is live-adjustable, no reload.
+  // section loads. ponytail: only the cloud path uses an <audio> element;
+  // browser engines go through AudioContext (handled in use-tts-engine).
   useEffect(() => {
     if (cloudAudioRef.current) {
       cloudAudioRef.current.playbackRate = bookSettings.voiceSpeed;
     }
-  }, [bookSettings.voiceSpeed, cloudAudioRef, browserTts.state.phase]);
+  }, [bookSettings.voiceSpeed, cloudAudioRef, cloudState]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -997,7 +1037,10 @@ export function ReaderClient({
   return (
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
-      className={cn("relative h-full w-full", browserTts.state.phase !== "IDLE" && "pb-16")}
+      className={cn(
+        "relative h-full w-full",
+        (browserPhase !== "IDLE" || cloudState !== "IDLE") && "pb-16",
+      )}
       // ponytail: stage the sidebar open to finish with the 0.8s slide-in.
       // --reader-delay (300ms) holds the sidebar closed while the reader gets a
       // head start; --reader-dur (500ms) is the open itself. 300 + 500 = 800ms,
@@ -1019,7 +1062,7 @@ export function ReaderClient({
         digestImage={libraryDigestImage}
       />
 
-      {/* Hidden audio element for cloud TTS playback (Task 7) */}
+      {/* Hidden audio element for cloud TTS playback */}
       <audio ref={cloudAudioRef} className="hidden" />
 
       {/* Error overlay */}
@@ -1129,12 +1172,18 @@ export function ReaderClient({
             ttsTrigger={
               <TtsTrigger
                 state={
-                  browserTts.state.phase === "LOADING"
-                    ? "loading"
-                    : browserTts.state.phase === "IDLE" ||
-                        browserTts.state.phase === "ENDED"
-                      ? "idle"
-                      : "disabled"
+                  isCloud
+                    ? cloudState === "GENERATING" || cloudState === "LOADING"
+                      ? "loading"
+                      : cloudState === "IDLE" || cloudState === "ENDED"
+                        ? "idle"
+                        : "disabled"
+                    : browserPhase === "LOADING"
+                      ? "loading"
+                      : browserPhase === "IDLE" ||
+                          browserPhase === "ENDED"
+                        ? "idle"
+                        : "disabled"
                 }
                 onClick={handleListenFromHere}
               />
@@ -1227,8 +1276,9 @@ export function ReaderClient({
         state={ttsPlaybackState}
         loadPct={browserTts.state.loadPct}
         onPlayPause={handleTtsPlayPause}
-        onScrub={() => {
-          // scrub not supported for browser TTS in v1
+        onScrub={(t) => {
+          // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
+          if (isCloud) cloudTts.scrub(t);
         }}
         onClose={handleTtsClose}
         bookLanguage={ttsLang}
@@ -1237,6 +1287,7 @@ export function ReaderClient({
         voicePref={voicePref}
         onVoiceChange={setVoicePref}
         userRole={userRole}
+        quota={activeQuota}
       />
     </div>
   );

@@ -159,12 +159,13 @@ describe("TtsPlayer: voice picker", () => {
     expect(html).not.toContain("Male 1 (");
   });
 
-  it("falls back to the no-voices placeholder for an unimplemented engine", () => {
-    // cloud engine is null in the registry until Task 7.
+  it("renders the Default voice placeholder for the cloud engine", () => {
+    // cloud voices are picked server-side per tier — UI shows a single
+    // "Default voice" entry instead of the no-voices placeholder.
     const html = render(
       mkPlayer({ enginePref: "cloud", userRole: "pro" }),
     );
-    expect(html).toContain("No voices");
+    expect(html).toContain("Default voice");
   });
 });
 

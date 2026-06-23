@@ -24,6 +24,7 @@ import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
 import type { TtsVoice } from "@/lib/tts/types";
 import type { UserRole } from "@/types/book";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
+import type { CloudQuota } from "@/hooks/use-tts-cloud";
 
 // ponytail: the three user-facing engine choices. cloud/browser aren't pickable
 // here — cloud maps to "Premium", browser has no slot in the UI.
@@ -46,6 +47,8 @@ export interface TtsPlayerProps {
   voicePref: string;
   onVoiceChange: (id: string) => void;
   userRole: UserRole;
+  /** Cloud-only quota snapshot; rendered as a small badge next to the engines. */
+  quota?: CloudQuota | null;
 }
 
 function formatTime(seconds: number): string {
@@ -73,17 +76,19 @@ export function TtsPlayer({
   voicePref,
   onVoiceChange,
   userRole,
+  quota = null,
 }: TtsPlayerProps) {
   const visible = state.state !== "IDLE";
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
 
-  // ponytail: pull voices synchronously from the registry. cloud/browser are
-  // null in ENGINES (Task 7 wires cloud) → empty voice list, handled by the
-  // placeholder.
+  // ponytail: pull voices synchronously from the registry. cloud has no
+  // client-side catalog (server picks the voice per tier) — render a single
+  // "Default voice" placeholder. browser is unused (no ENGINES entry).
   const activeEngine = ENGINES[enginePref];
-  const voices = activeEngine?.getVoices(bookLanguage) ?? [];
+  const voices: TtsVoice[] = activeEngine?.getVoices(bookLanguage) ?? [];
+  const isCloud = enginePref === "cloud";
 
   function disabledReason(id: EngineId): string | null {
     if (!engineSupportsLanguage(id, bookLanguage)) {
@@ -92,8 +97,21 @@ export function TtsPlayer({
     if (id === "cloud" && userRole === "regular") {
       return "Upgrade to Pro";
     }
+    // ponytail: at-quota → same disabled surface as the role gate so users see
+    // a single "Premium is off" message instead of a second bespoke state.
+    if (id === "cloud" && quota && quota.limit > 0 && quota.used >= quota.limit) {
+      return "Monthly limit reached";
+    }
     return null;
   }
+
+  // ponytail: badge copy. limit=0 reads as "no cloud access" (regular tier) —
+  // surface the upgrade CTA rather than "0 / 0".
+  const quotaBadge = (() => {
+    if (!isCloud || !quota) return null;
+    if (quota.limit <= 0) return "Premium: upgrade to Pro";
+    return `${quota.used} / ${quota.limit} this month`;
+  })();
 
   return (
     <div
@@ -171,6 +189,17 @@ export function TtsPlayer({
         </RadioGroup>
       </TooltipProvider>
 
+      {/* ponytail: Premium-only quota badge. Hidden unless the cloud engine is
+          active and a quota snapshot has been fetched. */}
+      {quotaBadge && (
+        <span
+          className="hidden lg:inline text-[11px] tabular-nums text-muted-foreground shrink-0 px-1.5 py-0.5 rounded border border-border bg-muted/40"
+          title="Monthly Premium TTS generation quota"
+        >
+          {quotaBadge}
+        </span>
+      )}
+
       {/* Voice picker */}
       <Select value={voicePref} onValueChange={onVoiceChange}>
         <SelectTrigger
@@ -181,7 +210,11 @@ export function TtsPlayer({
           <SelectValue placeholder="Voice" />
         </SelectTrigger>
         <SelectContent>
-          {voices.length === 0 ? (
+          {/* ponytail: cloud voices are picked server-side per tier; show one
+              placeholder option so the dropdown isn't empty. */}
+          {isCloud ? (
+            <SelectItem value="default">Default voice</SelectItem>
+          ) : voices.length === 0 ? (
             <SelectItem value="__none" disabled>
               No voices
             </SelectItem>
