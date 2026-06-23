@@ -9,6 +9,16 @@ import { getSpeechSynthesis } from "@/lib/tts/engines/browser-speech-engine";
 import type { EngineId } from "@/lib/tts/languages";
 import type { TtsEngine, TtsSynthesisResult } from "@/lib/tts/types";
 
+// ponytail: once Kokoro fails in this session (phonemizer broken, no WebGPU,
+// etc.), skip it on all subsequent attempts. Survives component remounts so
+// navigating away and back doesn't re-trigger the multi-second timeout.
+let kokoroKnownBroken = false;
+
+// Exposed for test reset only.
+export function _resetKokoroKnownBroken() {
+  kokoroKnownBroken = false;
+}
+
 export interface TtsEngineState {
   phase: "IDLE" | "LOADING" | "PLAYING" | "PAUSED" | "ENDED";
   loadPct: number;
@@ -260,10 +270,21 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   );
 
   // ponytail: try the requested engine; if its model load fails (no WebGPU,
-  // OOM, network), fall back to the zero-download browser engine and toast.
+  // OOM, network, broken phonemizer), fall back to the zero-download browser
+  // engine and toast. kokoroKnownBroken caches the failure at module level so
+  // subsequent attempts skip the multi-second wait.
   const resolveEngine = useCallback(async (): Promise<TtsEngine> => {
+    const requestedId =
+      kokoroKnownBroken && engineIdRef.current === "kokoro"
+        ? "browser"
+        : engineIdRef.current;
+    if (requestedId !== engineIdRef.current) {
+      console.log("[TTS] Skipping kokoro (known broken in this session)");
+      engineIdRef.current = requestedId;
+      setEffectiveEngineId(requestedId);
+    }
     try {
-      const engine = await getEngine(engineIdRef.current);
+      const engine = await getEngine(requestedId);
       console.log("[TTS] Loading engine:", engine.id);
       await engine.ensureLoaded((pct) => {
         setState((s) => ({ ...s, loadPct: pct }));
@@ -273,6 +294,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       return engine;
     } catch (primaryErr) {
       console.warn("[TTS] Engine load failed, falling back:", primaryErr);
+      if (requestedId === "kokoro") kokoroKnownBroken = true;
       if (engineIdRef.current === "browser") throw primaryErr;
       toast("Switching to built-in voice");
       engineIdRef.current = "browser";

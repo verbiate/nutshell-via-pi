@@ -84,7 +84,7 @@ export const kokoroEngine: TtsEngine = (() => {
       // The test synthesis has a 10s timeout — on a working system it completes
       // in <2s. If the phonemizer hangs (broken module), the timeout fires and
       // we fall back instead of blocking forever.
-      const TEST_TIMEOUT_MS = 10_000;
+      const TEST_TIMEOUT_MS = 5_000;
       const result = await Promise.race([
         tts.generate("test", { voice: "af_bella" }) as Promise<unknown>,
         new Promise<never>((_, reject) =>

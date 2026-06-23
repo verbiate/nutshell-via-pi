@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
-import { useTtsEngine, type UseTtsEngineOptions } from "../use-tts-engine";
+import { useTtsEngine, _resetKokoroKnownBroken, type UseTtsEngineOptions } from "../use-tts-engine";
 
 vi.mock("@/lib/tts/engines", () => ({
   getEngine: vi.fn(),
@@ -192,6 +192,7 @@ describe("useTtsEngine", () => {
   let mockEngine: ReturnType<typeof createMockEngine>;
 
   beforeEach(() => {
+    _resetKokoroKnownBroken();
     mockEngine = createMockEngine();
     vi.mocked(getEngine).mockResolvedValue(mockEngine as any);
     vi.mocked(chunkText).mockReturnValue(["chunk one", "chunk two"]);
