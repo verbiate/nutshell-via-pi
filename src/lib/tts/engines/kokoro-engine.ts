@@ -7,6 +7,7 @@ const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
 // ponytail: we only use tokenizer + generate_from_ids, bypassing kokoro-js's
 // generate() which internally imports phonemizer (broken under Turbopack).
+// Phonemization is done server-side via /api/tts/phonemize.
 interface KokoroTtsInstance {
   tokenizer: (text: string, opts: { truncation: boolean }) => { input_ids: { dims: number[] } };
   generate_from_ids(
@@ -27,14 +28,6 @@ async function rawAudioToAudioBuffer(
 
 export const kokoroEngine: TtsEngine = (() => {
   let ttsPromise: Promise<KokoroTtsInstance> | null = null;
-  let phonemizerReady: Promise<void> | null = null;
-
-  async function ensurePhonemizer() {
-    if (!phonemizerReady) {
-      phonemizerReady = phonemize("test", "en-us").then(() => undefined);
-    }
-    return phonemizerReady;
-  }
 
   async function getTts(onProgress?: (pct: number) => void) {
     if (!ttsPromise) {
@@ -73,12 +66,9 @@ export const kokoroEngine: TtsEngine = (() => {
     },
     supportsLanguage: (lang) => KOKORO_LANGUAGES.has(lang),
     async ensureLoaded(onProgress) {
-      // Load model and CDN phonemizer in parallel, then validate the full
-      // pipeline with a tiny test synthesis. The CDN phonemizer bypasses
-      // Turbopack's broken Emscripten transform (see phonemizer-cdn.ts).
       const tts = await getTts(onProgress);
-      await ensurePhonemizer();
-      const phonemes = (await phonemize("test", "en-us")).join(" ");
+      // Validate the full pipeline: server phonemize → tokenize → model.
+      const phonemes = await phonemize("test", "af_bella");
       const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
       const TEST_TIMEOUT_MS = 15_000;
       const result = await Promise.race([
@@ -96,28 +86,7 @@ export const kokoroEngine: TtsEngine = (() => {
     },
     async synthesize(text: string, opts: SynthesizeOpts): Promise<TtsSynthesisResult> {
       const tts = await getTts();
-      await ensurePhonemizer();
-      const lang = opts.lang === "en" ? "en-us" : opts.lang;
-      const raw = (await phonemize(text, lang)).join(" ");
-
-      // ponytail: kokoro-js's generate() applies critical IPA post-processing
-      // that converts eSpeak NG output to the phoneme set Kokoro expects.
-      // Without these replacements (especially r→ɹ) the audio is garbled.
-      // Ported verbatim from kokoro-js's internal m() function.
-      let phonemes = raw
-        .replace(/kəkˈoːɹoʊ/g, "kˈoʊkəɹoʊ")
-        .replace(/kəkˈɔːɹəʊ/g, "kˈəʊkəɹoʊ")
-        .replace(/ʲ/g, "j")
-        .replace(/r/g, "ɹ")
-        .replace(/x/g, "k")
-        .replace(/ɬ/g, "l")
-        .replace(/(?<=[a-zɹː])(?=hˈʌndɹɪd)/g, " ")
-        .replace(/ z(?=[;:,.!?¡¿—…"«»"" ]|$)/g, "z");
-      if (lang === "en-us") {
-        phonemes = phonemes.replace(/(?<=nˈaɪn)ti(?!ː)/g, "di");
-      }
-      phonemes = phonemes.trim();
-
+      const phonemes = await phonemize(text, opts.voiceId);
       const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
       const result = await tts.generate_from_ids(input_ids, {
         voice: opts.voiceId,
@@ -131,7 +100,6 @@ export const kokoroEngine: TtsEngine = (() => {
     },
     dispose() {
       ttsPromise = null;
-      phonemizerReady = null;
     },
   };
 })();

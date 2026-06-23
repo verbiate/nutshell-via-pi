@@ -12,11 +12,7 @@ export const TTS_LANGUAGES = new Set([...KOKORO_LANGUAGES, ...SUPERTONIC_LANGUAG
 export type EngineId = "kokoro" | "supertonic" | "cloud" | "browser";
 
 export function defaultEngineForLanguage(lang: string): EngineId {
-  // ponytail: Supertonic handles phonemization inside the model (no external
-  // phonemizer dependency), so it works reliably in the browser. Kokoro
-  // requires a separate phonemizer whose text-normalization pipeline isn't
-  // fully ported yet — keep it as a selectable option, not the default.
-  return "supertonic";
+  return KOKORO_LANGUAGES.has(lang) ? "kokoro" : "supertonic";
 }
 
 export function engineSupportsLanguage(engine: EngineId, lang: string): boolean {

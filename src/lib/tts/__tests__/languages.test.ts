@@ -26,11 +26,9 @@ describe("TTS language sets", () => {
     expect(SUPERTONIC_LANGUAGES.has("zh")).toBe(false);
   });
 
-  it("default engine is supertonic (reliable browser phonemization)", () => {
-    // ponytail: Supertonic handles phonemization inside the model; Kokoro
-    // needs external phonemizer whose normalization pipeline isn't ported yet.
-    expect(defaultEngineForLanguage("en")).toBe("supertonic");
-    expect(defaultEngineForLanguage("zh")).toBe("supertonic");
+  it("default engine picks kokoro when available, otherwise supertonic", () => {
+    expect(defaultEngineForLanguage("en")).toBe("kokoro");
+    expect(defaultEngineForLanguage("zh")).toBe("kokoro");
     expect(defaultEngineForLanguage("ar")).toBe("supertonic");
     expect(defaultEngineForLanguage("uk")).toBe("supertonic");
   });
