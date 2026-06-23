@@ -1,4 +1,12 @@
-import { phonemize as espeakPhonemize } from "phonemizer";
+import { createRequire } from "module";
+
+// ponytail: Turbopack aliases "phonemizer" to a stub (next.config.ts) to
+// prevent the Emscripten crash in the browser. createRequire bypasses the
+// alias on the server, loading the real CJS build that works in Node.js.
+const require = createRequire(import.meta.url);
+const { phonemize: espeakPhonemize } = require("phonemizer") as {
+  phonemize: (text: string, lang?: string) => Promise<string[]>;
+};
 
 // ponytail: exact port of kokoro-js's internal m() function — the full
 // text → IPA pipeline that generate() runs before model inference. Without
