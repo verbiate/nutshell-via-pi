@@ -22,6 +22,7 @@ function formatTime(seconds: number): string {
 
 export function TtsPlayer({ state, onPlayPause, onScrub, onClose }: TtsPlayerProps) {
   const visible = state.state !== "IDLE";
+  const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
 
@@ -39,10 +40,10 @@ export function TtsPlayer({ state, onPlayPause, onScrub, onClose }: TtsPlayerPro
         variant="ghost"
         size="icon-sm"
         onClick={onPlayPause}
-        aria-label={isPlaying ? "Pause" : isGenerating ? "Cancel" : "Play"}
+        aria-label={isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Play"}
         className="shrink-0"
       >
-        {isGenerating ? (
+        {isLoading || isGenerating ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : isPlaying ? (
           <Pause className="h-4 w-4" />
@@ -53,7 +54,7 @@ export function TtsPlayer({ state, onPlayPause, onScrub, onClose }: TtsPlayerPro
 
       {/* Section label */}
       <span className="text-sm font-medium truncate max-w-[200px] sm:max-w-[300px] text-foreground shrink-0">
-        {isGenerating ? "Generating audio..." : state.sectionTitle}
+        {isLoading ? "Loading voice model…" : isGenerating ? "Generating audio..." : state.sectionTitle}
       </span>
 
       {/* Progress scrubber */}

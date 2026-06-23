@@ -15,6 +15,7 @@ vi.mock("@/lib/tts/chunk", () => ({
     kokoro: { softLimit: 400, hardLimit: 500 },
     supertonic: { softLimit: 400, hardLimit: 500 },
     cloud: { softLimit: 4500, hardLimit: 5000 },
+    browser: { softLimit: 400, hardLimit: 500 },
   },
 }));
 
@@ -404,6 +405,48 @@ describe("useTtsEngine", () => {
 
     expect(mockEngine.ensureLoaded).not.toHaveBeenCalled();
     expect(onSectionComplete).toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it("surfaces an error when ensureLoaded fails", async () => {
+    mockEngine.ensureLoaded.mockRejectedValue(new Error("Model failed to load"));
+
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      viewerRef: createViewerRef("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("IDLE"));
+
+    expect(getApi().state.error).toBe("Model failed to load");
+
+    unmount();
+  });
+
+  it("surfaces an error when synthesize fails", async () => {
+    mockEngine.synthesize.mockRejectedValue(new Error("Synthesis failed"));
+
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      viewerRef: createViewerRef("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("IDLE"));
+
+    expect(getApi().state.error).toBe("Synthesis failed");
 
     unmount();
   });

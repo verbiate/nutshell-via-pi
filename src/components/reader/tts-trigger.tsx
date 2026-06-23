@@ -34,7 +34,11 @@ export function TtsTrigger({ state, onClick }: TtsTriggerProps) {
             onClick={onClick}
             disabled={isDisabled}
             aria-label={
-              isGenerating ? "Cancel audio generation" : "Read aloud"
+              isLoading
+                ? "Loading voice model"
+                : isGenerating
+                  ? "Cancel audio generation"
+                  : "Read aloud"
             }
             className="h-[46px] w-[46px] shrink-0 bg-transparent text-foreground"
           >

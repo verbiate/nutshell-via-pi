@@ -182,7 +182,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 
         if (!runningRef.current || abortRef.current) return;
 
-        const limits = CHUNK_LIMITS[engineId as keyof typeof CHUNK_LIMITS];
+        const limits = CHUNK_LIMITS[engineId];
         if (!limits) {
           throw new Error(`No chunk limits for engine "${engineId}"`);
         }

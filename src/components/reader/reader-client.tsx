@@ -799,11 +799,6 @@ export function ReaderClient({
     [flatToc],
   );
 
-  const handleTtsNavigate = useCallback((href: string) => {
-    setCurrentHref(href);
-    viewerRef.current?.navigateTo(href);
-  }, []);
-
   const browserTts = useTtsEngine({
     bookId,
     bookLanguage: bookLanguage ?? "en",
@@ -813,7 +808,7 @@ export function ReaderClient({
     onSectionComplete: () => {
       const next = getNextSection(browserTts.state.sectionHref);
       if (next) {
-        handleTtsNavigate(next.href);
+        setCurrentHref(next.href);
         browserTts.startSection(next.href, next.label);
       }
     },
@@ -845,7 +840,7 @@ export function ReaderClient({
         phase === "IDLE"
           ? "IDLE"
           : phase === "LOADING"
-            ? "GENERATING"
+            ? "LOADING"
             : phase === "PLAYING"
               ? "PLAYING"
               : phase === "PAUSED"
