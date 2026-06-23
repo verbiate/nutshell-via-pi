@@ -98,7 +98,26 @@ export const kokoroEngine: TtsEngine = (() => {
       const tts = await getTts();
       await ensurePhonemizer();
       const lang = opts.lang === "en" ? "en-us" : opts.lang;
-      const phonemes = (await phonemize(text, lang)).join(" ");
+      const raw = (await phonemize(text, lang)).join(" ");
+
+      // ponytail: kokoro-js's generate() applies critical IPA post-processing
+      // that converts eSpeak NG output to the phoneme set Kokoro expects.
+      // Without these replacements (especially r→ɹ) the audio is garbled.
+      // Ported verbatim from kokoro-js's internal m() function.
+      let phonemes = raw
+        .replace(/kəkˈoːɹoʊ/g, "kˈoʊkəɹoʊ")
+        .replace(/kəkˈɔːɹəʊ/g, "kˈəʊkəɹoʊ")
+        .replace(/ʲ/g, "j")
+        .replace(/r/g, "ɹ")
+        .replace(/x/g, "k")
+        .replace(/ɬ/g, "l")
+        .replace(/(?<=[a-zɹː])(?=hˈʌndɹɪd)/g, " ")
+        .replace(/ z(?=[;:,.!?¡¿—…"«»"" ]|$)/g, "z");
+      if (lang === "en-us") {
+        phonemes = phonemes.replace(/(?<=nˈaɪn)ti(?!ː)/g, "di");
+      }
+      phonemes = phonemes.trim();
+
       const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
       const result = await tts.generate_from_ids(input_ids, {
         voice: opts.voiceId,
