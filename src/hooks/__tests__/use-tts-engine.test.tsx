@@ -219,7 +219,7 @@ describe("useTtsEngine", () => {
     unmount();
   });
 
-  it("navigates, loads the engine, chunks text, and plays the first chunk", async () => {
+  it("reads section text, loads the engine, chunks text, and plays the first chunk", async () => {
     const viewerRef = createViewerRef("Hello world. This is a test.");
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
@@ -234,9 +234,9 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
-    expect(viewerRef.current.navigateTo).toHaveBeenCalledWith(
-      "xhtml/chapter1.xhtml",
-    );
+    // ponytail: startSection no longer calls navigateTo — it reads text from
+    // the already-rendered iframe to avoid a re-display race.
+    expect(viewerRef.current.getSectionText).toHaveBeenCalled();
     expect(mockEngine.ensureLoaded).toHaveBeenCalled();
     expect(chunkText).toHaveBeenCalledWith(
       "Hello world. This is a test.",

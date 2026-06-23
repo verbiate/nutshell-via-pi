@@ -50,6 +50,12 @@ export const kokoroEngine: TtsEngine = (() => {
             : undefined,
         }) as Promise<KokoroTts>;
       })();
+      // ponytail: reset ttsPromise on rejection so a failed load (e.g. no
+      // WebGPU) doesn't permanently poison the cache. Without this, once Kokoro
+      // fails it can never retry for the rest of the session.
+      ttsPromise.catch(() => {
+        ttsPromise = null;
+      });
     }
     return ttsPromise;
   }

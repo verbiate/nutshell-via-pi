@@ -227,18 +227,22 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const resolveEngine = useCallback(async (): Promise<TtsEngine> => {
     try {
       const engine = await getEngine(engineIdRef.current);
+      console.log("[TTS] Loading engine:", engine.id);
       await engine.ensureLoaded((pct) => {
         setState((s) => ({ ...s, loadPct: pct }));
       });
+      console.log("[TTS] Engine loaded successfully:", engine.id);
       engineRef.current = engine;
       return engine;
     } catch (primaryErr) {
+      console.warn("[TTS] Engine load failed, falling back:", primaryErr);
       if (engineIdRef.current === "browser") throw primaryErr;
       toast("Switching to built-in voice");
       engineIdRef.current = "browser";
       setEffectiveEngineId("browser");
       const fallback = await getEngine("browser");
       await fallback.ensureLoaded();
+      console.log("[TTS] Fallback engine loaded:", fallback.id);
       engineRef.current = fallback;
       return fallback;
     }
@@ -251,6 +255,19 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       cleanupSource();
       cancelBrowserSpeech();
 
+      // ponytail: create AudioContext synchronously within the user gesture,
+      // before any await. Browsers gate AudioContext creation/resumption on a
+      // user gesture; if we defer it past the async Kokoro-load chain, Safari
+      // and Chrome will refuse to start playback.
+      if (!audioContextRef.current) {
+        try {
+          audioContextRef.current = new AudioContext();
+        } catch {
+          // ponytail: AudioContext unavailable (SSR / very old browser) — browser
+          // speech path doesn't need it, so this is non-fatal.
+        }
+      }
+
       setState({
         phase: "LOADING",
         loadPct: 0,
@@ -259,15 +276,23 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       });
 
       try {
-        await viewerRef.current?.navigateTo(href);
+        // ponytail: read text from the already-rendered iframe. We deliberately
+        // do NOT await navigateTo here — the user is already on the section when
+        // they click "Listen", and re-displaying the same href can cause epub.js
+        // to reload the iframe, racing with getSectionText. Auto-advance callers
+        // navigate the viewer via onSectionComplete before calling startSection.
         const text = viewerRef.current?.getSectionText() ?? "";
+        console.log("[TTS] getSectionText returned", text.length, "chars");
         if (!text.trim()) {
+          console.warn("[TTS] Section text is empty, skipping");
           setState((s) => ({ ...s, phase: "ENDED" }));
           onSectionComplete?.();
           return;
         }
 
+        console.log("[TTS] Resolving engine:", engineIdRef.current);
         const engine = await resolveEngine();
+        console.log("[TTS] Engine resolved:", engine.id);
 
         if (!runningRef.current || abortRef.current) return;
 
@@ -278,12 +303,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 
         chunksRef.current = chunkText(text, limits);
         currentIndexRef.current = 0;
-
-        // ponytail: AudioBuffer path needs an AudioContext; the browser path
-        // bypasses it entirely (see playChunk).
-        if (!isBrowserEngine(engine) && !audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-        }
+        console.log("[TTS] Chunked into", chunksRef.current.length, "pieces, starting playback");
 
         await playChunk(engine, 0);
       } catch (err) {
