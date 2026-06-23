@@ -49,36 +49,4 @@ export function saveTtsPref(language: string, pref: TtsPref): void {
   }
 }
 
-if (process.env.NODE_ENV !== "production") {
-  // ponytail: smallest runnable self-check — round-trips save/load against a
-  // throwaway in-memory store, then restores the global exactly. Runs on import
-  // in non-prod; in node `window` is undefined so the real fns early-return and
-  // never touch this store, making the override safe.
-  const g = globalThis as any;
-  const prev = Object.getOwnPropertyDescriptor(g, "localStorage");
-  const prevVal = g.localStorage;
-  const store = new Map<string, string>();
-  g.localStorage = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
-    key: (i: number) => [...store.keys()][i] ?? null,
-    get length() {
-      return store.size;
-    },
-  };
-  try {
-    saveTtsPref("en", { engineId: "kokoro", voiceId: "af_bella" });
-    const got = loadTtsPref("en");
-    const ok =
-      got.engineId === "kokoro" &&
-      got.voiceId === "af_bella" &&
-      loadTtsPref("xx").engineId === undefined;
-    if (!ok) throw new Error("[tts/pref] self-check failed: round-trip lost data");
-  } finally {
-    if (prev) Object.defineProperty(g, "localStorage", prev);
-    else if (prevVal === undefined) delete g.localStorage;
-    else g.localStorage = prevVal;
-  }
-}
+
