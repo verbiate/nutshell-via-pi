@@ -1,31 +1,27 @@
-// ponytail: kokoro-js imports phonemizer via ESM, but Turbopack breaks the
-// Emscripten initialization (var A=void 0!==A?A:{} → A is always {} →
-// A.FS_createPath is undefined → TypeError). Loading phonemizer from CDN via
-// a runtime dynamic import bypasses Turbopack's module transform — the
-// browser's native module system handles the Emscripten code correctly.
-//
-// Turbopack intercepts ALL dynamic import() calls and rewrites them into
-// __turbopack_context__.x(). Using `new Function` hides the import from
-// Turbopack's static analyzer so the browser's native import() handles the
-// CDN URL directly.
+// ponytail: kokoro-js imports phonemizer via ESM, but the Emscripten code
+// crashes in the browser (both Turbopack-bundled and native CDN import).
+// The phonemizer works correctly in Node.js, so we proxy through a server
+// endpoint. The browser sends chunk text, gets IPA phonemes back, then
+// tokenizes and runs the Kokoro model locally.
 
-const nativeImport = new Function(
-  "url",
-  "return import(url)",
-) as (url: string) => Promise<{ phonemize: (text: string, lang?: string) => Promise<string[]> }>;
+let cached: ((text: string, lang?: string) => Promise<string[]>) | null = null;
 
-let cached: { phonemize: (text: string, lang?: string) => Promise<string[]> } | null = null;
-
-async function loadPhonemizer() {
-  if (cached) return cached;
-  const url = "https://cdn.jsdelivr.net/npm/phonemizer@1.2.1/dist/phonemizer.js";
-  const mod = await nativeImport(url);
-  cached = mod;
-  return cached;
+function createPhonemizer() {
+  return async (text: string, language = "en-us"): Promise<string[]> => {
+    const res = await fetch("/api/tts/phonemize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, lang: language }),
+    });
+    if (!res.ok) {
+      throw new Error(`Phonemize request failed: ${res.status}`);
+    }
+    const data = await res.json();
+    return [data.phonemes];
+  };
 }
 
 export async function phonemize(text: string, language = "en-us"): Promise<string[]> {
-  const mod = await loadPhonemizer();
-  if (!mod) throw new Error("Failed to load phonemizer from CDN");
-  return mod.phonemize(text, language);
+  if (!cached) cached = createPhonemizer();
+  return cached(text, language);
 }
