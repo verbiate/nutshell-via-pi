@@ -147,6 +147,8 @@ function createViewerRef(text: string) {
     current: {
       navigateTo: vi.fn(() => Promise.resolve()),
       getSectionText: vi.fn(() => text),
+      highlightChunk: vi.fn(() => Promise.resolve()),
+      clearTtsHighlight: vi.fn(),
     } as unknown as import("@/components/reader/epub-viewer").EpubViewerHandle,
   };
 }

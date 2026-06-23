@@ -143,6 +143,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     abortRef.current = true;
     cleanupSource();
     cancelBrowserSpeech();
+    viewerRef.current?.clearTtsHighlight();
     if (audioContextRef.current?.state !== "closed") {
       try {
         void audioContextRef.current?.close();
@@ -154,7 +155,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     chunksRef.current = [];
     currentIndexRef.current = 0;
     setState(emptyState);
-  }, [cleanupSource]);
+  }, [cleanupSource, viewerRef]);
 
   const playChunk = useCallback(
     async (engine: TtsEngine, index: number) => {
@@ -167,6 +168,12 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 
       currentIndexRef.current = index;
       setState((s) => ({ ...s, phase: "PLAYING" }));
+
+      // ponytail: follow-along highlight — clear previous chunk's highlight,
+      // then highlight the current chunk's text in the reader iframe. If the
+      // text is on a later page, highlightChunk advances pages automatically.
+      viewerRef.current?.clearTtsHighlight();
+      await viewerRef.current?.highlightChunk(chunksRef.current[index]);
 
       try {
         const result = await engine.synthesize(chunksRef.current[index], {

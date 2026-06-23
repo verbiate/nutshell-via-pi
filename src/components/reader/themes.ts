@@ -16,6 +16,11 @@ export const READER_THEMES = {
         background: "#FEFBF5",
         color: "#402A08",
       },
+      ".tts-active": {
+        "background-color": "rgba(212, 165, 95, 0.25)",
+        "border-radius": "2px",
+        "box-shadow": "0 0 0 2px rgba(212, 165, 95, 0.25)",
+      },
     },
   },
   dark: {
@@ -24,6 +29,11 @@ export const READER_THEMES = {
         background: "#1A130C",
         color: "#F2E9D4",
       },
+      ".tts-active": {
+        "background-color": "rgba(212, 165, 95, 0.3)",
+        "border-radius": "2px",
+        "box-shadow": "0 0 0 2px rgba(212, 165, 95, 0.3)",
+      },
     },
   },
   sepia: {
@@ -31,6 +41,11 @@ export const READER_THEMES = {
       body: {
         background: "#f4ecd8",
         color: "#5b4636",
+      },
+      ".tts-active": {
+        "background-color": "rgba(180, 130, 60, 0.2)",
+        "border-radius": "2px",
+        "box-shadow": "0 0 0 2px rgba(180, 130, 60, 0.2)",
       },
     },
   },

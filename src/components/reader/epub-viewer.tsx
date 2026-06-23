@@ -45,6 +45,8 @@ export interface EpubViewerHandle {
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
   getSectionText: () => string;
+  highlightChunk: (text: string) => Promise<void>;
+  clearTtsHighlight: () => void;
 }
 
 // ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
@@ -198,11 +200,71 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         }
       },
       getSectionText: () => {
-        const doc = (renditionRef.current as any)?.contents?.document;
+        // ponytail: read directly from the DOM iframe — rendition.contents
+        // is unreliable in @likecoin/epub-ts. The iframe is always present
+        // when the user is reading (clearSelection uses the same pattern).
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
         if (!doc?.body) return "";
         const clone = doc.body.cloneNode(true) as HTMLElement;
         clone.querySelectorAll("script,style,head").forEach((n) => n.remove());
         return clone.textContent?.replace(/\s+\n/g, "\n").trim() ?? "";
+      },
+      highlightChunk: async (text: string) => {
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
+        if (!doc?.body || !text.trim()) return;
+
+        // ponytail: search for the first block element whose text contains
+        // the chunk's opening. Try progressively shorter needles so whitespace
+        // differences between textContent and the chunk don't cause misses.
+        const stripped = text.trim();
+        const needles = [stripped.slice(0, 60), stripped.slice(0, 30), stripped.slice(0, 15)];
+        const blocks = doc.querySelectorAll<HTMLElement>(
+          "p, div, h1, h2, h3, h4, h5, h6, li, blockquote",
+        );
+        let target: HTMLElement | null = null;
+        for (const needle of needles) {
+          if (!needle) continue;
+          for (const el of blocks) {
+            if (el.textContent?.includes(needle)) {
+              target = el;
+              break;
+            }
+          }
+          if (target) break;
+        }
+        if (!target) return;
+
+        // ponytail: in epub.js paginated mode (CSS columns), elements on the
+        // current page have getBoundingClientRect coordinates within the iframe
+        // viewport. If the target is off-screen, advance pages until visible.
+        const isVisible = (): boolean => {
+          const rect = target!.getBoundingClientRect();
+          const vw = iframe?.clientWidth ?? 0;
+          const vh = iframe?.clientHeight ?? 0;
+          return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
+        };
+
+        if (!isVisible()) {
+          const rendition = renditionRef.current;
+          if (rendition) {
+            for (let i = 0; i < 8 && !isVisible(); i++) {
+              rendition.next();
+              // ponytail: let the column layout settle before re-checking.
+              await new Promise((r) => setTimeout(r, 60));
+            }
+          }
+        }
+
+        target.classList.add("tts-active");
+      },
+      clearTtsHighlight: () => {
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
+        doc?.querySelectorAll(".tts-active").forEach((el) =>
+          el.classList.remove("tts-active"),
+        );
       },
     }));
 
