@@ -781,16 +781,20 @@ export function ReaderClient({
   const userRole: UserRole =
     ((user as any)?.role as UserRole) ?? "regular";
   const ttsLang = bookLanguage ?? "en";
-  const [enginePref, setEnginePref] = useState<EngineId>(() => {
-    // ponytail: Kokoro requires WebGPU. On browsers without it (Safari stable,
-    // older Firefox), skip straight to the zero-download browser engine instead
-    // of hanging for 10s on a doomed Kokoro load attempt.
-    if (typeof navigator !== "undefined" && !("gpu" in navigator)) {
-      return "browser";
-    }
-    return defaultEngineForLanguage(ttsLang);
-  });
+  const [enginePref, setEnginePref] = useState<EngineId>(() =>
+    defaultEngineForLanguage(ttsLang),
+  );
   const [voicePref, setVoicePref] = useState<string>("");
+
+  // ponytail: Kokoro requires WebGPU. On browsers without it (Safari stable,
+  // older Firefox), switch to the zero-download browser engine instead of
+  // hanging on a doomed Kokoro load attempt. Runs in useEffect to avoid SSR
+  // hydration mismatch (navigator doesn't exist identically on server/client).
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && !("gpu" in navigator)) {
+      setEnginePref((prev) => (prev === "kokoro" || prev === "supertonic" ? "browser" : prev));
+    }
+  }, []);
 
   // ponytail: load saved engine/voice once per book language. If the saved
   // engine no longer supports this language (language map changed), drop it
