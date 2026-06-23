@@ -15,13 +15,13 @@ describe("TTS engine registry", () => {
     expect(engine.getVoices("en").length).toBe(10);
   });
 
-  it("leaves cloud and browser slots empty", () => {
+  it("wires the browser fallback engine and leaves the cloud slot empty", () => {
     expect(ENGINES.cloud).toBeNull();
-    expect(ENGINES.browser).toBeNull();
+    expect(ENGINES.browser).not.toBeNull();
+    expect(ENGINES.browser?.id).toBe("browser");
   });
 
-  it("throws for unavailable engines", async () => {
+  it("throws for the unavailable cloud engine", async () => {
     await expect(getEngine("cloud")).rejects.toThrow('Engine "cloud" not available');
-    await expect(getEngine("browser")).rejects.toThrow('Engine "browser" not available');
   });
 });

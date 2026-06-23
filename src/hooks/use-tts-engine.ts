@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { EpubViewerHandle } from "@/components/reader/epub-viewer";
 import { chunkText, CHUNK_LIMITS } from "@/lib/tts/chunk";
 import { getEngine } from "@/lib/tts/engines";
@@ -46,6 +47,48 @@ function isAudioBufferResult(
   return result.kind === "audioBuffer";
 }
 
+function isBrowserEngine(engine: TtsEngine): boolean {
+  return engine.id === "browser";
+}
+
+function getSpeechSynthesis(): SpeechSynthesis | null {
+  const env = globalThis as unknown as { speechSynthesis?: SpeechSynthesis };
+  return env.speechSynthesis ?? null;
+}
+
+function pauseBrowserSpeech(): void {
+  const s = getSpeechSynthesis();
+  if (s) {
+    try {
+      s.pause();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function resumeBrowserSpeech(): void {
+  const s = getSpeechSynthesis();
+  if (s) {
+    try {
+      s.resume();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function cancelBrowserSpeech(): void {
+  const s = getSpeechSynthesis();
+  if (s) {
+    try {
+      s.cancel();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const {
     bookLanguage,
@@ -64,6 +107,15 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const currentIndexRef = useRef(0);
   const runningRef = useRef(false);
   const abortRef = useRef(false);
+  const engineRef = useRef<TtsEngine | null>(null);
+  // ponytail: engineIdRef tracks the effective id (prop or browser fallback).
+  // Kept in a ref so callbacks stay stable and the fallback swap is read on
+  // the next startSection without rebuilding the memo graph.
+  const engineIdRef = useRef<EngineId>(engineId);
+
+  useEffect(() => {
+    engineIdRef.current = engineId;
+  }, [engineId]);
 
   const cleanupSource = useCallback(() => {
     if (sourceNodeRef.current) {
@@ -81,6 +133,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     runningRef.current = false;
     abortRef.current = true;
     cleanupSource();
+    cancelBrowserSpeech();
     if (audioContextRef.current?.state !== "closed") {
       try {
         void audioContextRef.current?.close();
@@ -115,10 +168,17 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 
         if (!runningRef.current || abortRef.current) return;
 
+        // ponytail: browser speechSynthesis manages its own audio queue and
+        // cannot return an AudioBuffer — synthesize resolves on `onend`, so
+        // we just chain to the next chunk. No AudioBufferSourceNode needed.
         if (!isAudioBufferResult(result)) {
-          throw new Error(
-            `Engine "${engineId}" returned unsupported result kind: ${result.kind}`,
-          );
+          if (!isBrowserEngine(engine)) {
+            throw new Error(
+              `Engine "${engine.id}" returned unsupported result kind: ${result.kind}`,
+            );
+          }
+          void playChunk(engine, index + 1);
+          return;
         }
 
         const ctx = audioContextRef.current;
@@ -150,14 +210,36 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [bookLanguage, engineId, onSectionComplete, speed, voiceId],
+    [bookLanguage, onSectionComplete, speed, voiceId],
   );
+
+  // ponytail: try the requested engine; if its model load fails (no WebGPU,
+  // OOM, network), fall back to the zero-download browser engine and toast.
+  const resolveEngine = useCallback(async (): Promise<TtsEngine> => {
+    try {
+      const engine = await getEngine(engineIdRef.current);
+      await engine.ensureLoaded((pct) => {
+        setState((s) => ({ ...s, loadPct: pct }));
+      });
+      engineRef.current = engine;
+      return engine;
+    } catch (primaryErr) {
+      if (engineIdRef.current === "browser") throw primaryErr;
+      toast("Switching to built-in voice");
+      engineIdRef.current = "browser";
+      const fallback = await getEngine("browser");
+      await fallback.ensureLoaded();
+      engineRef.current = fallback;
+      return fallback;
+    }
+  }, []);
 
   const startSection = useCallback(
     async (href: string, title: string) => {
       abortRef.current = false;
       runningRef.current = true;
       cleanupSource();
+      cancelBrowserSpeech();
 
       setState({
         phase: "LOADING",
@@ -175,22 +257,21 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
           return;
         }
 
-        const engine = await getEngine(engineId);
-        await engine.ensureLoaded((pct) => {
-          setState((s) => ({ ...s, loadPct: pct }));
-        });
+        const engine = await resolveEngine();
 
         if (!runningRef.current || abortRef.current) return;
 
-        const limits = CHUNK_LIMITS[engineId];
+        const limits = CHUNK_LIMITS[engineIdRef.current];
         if (!limits) {
-          throw new Error(`No chunk limits for engine "${engineId}"`);
+          throw new Error(`No chunk limits for engine "${engineIdRef.current}"`);
         }
 
         chunksRef.current = chunkText(text, limits);
         currentIndexRef.current = 0;
 
-        if (!audioContextRef.current) {
+        // ponytail: AudioBuffer path needs an AudioContext; the browser path
+        // bypasses it entirely (see playChunk).
+        if (!isBrowserEngine(engine) && !audioContextRef.current) {
           audioContextRef.current = new AudioContext();
         }
 
@@ -206,31 +287,43 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [cleanupSource, engineId, onSectionComplete, playChunk, viewerRef],
+    [cleanupSource, onSectionComplete, playChunk, resolveEngine, viewerRef],
   );
 
   const pause = useCallback(() => {
     if (state.phase !== "PLAYING") return;
     runningRef.current = false;
-    cleanupSource();
-    audioContextRef.current?.suspend();
+    if (engineRef.current && isBrowserEngine(engineRef.current)) {
+      pauseBrowserSpeech();
+    } else {
+      cleanupSource();
+      audioContextRef.current?.suspend();
+    }
     setState((s) => ({ ...s, phase: "PAUSED" }));
   }, [cleanupSource, state.phase]);
 
   const resume = useCallback(() => {
     if (state.phase !== "PAUSED") return;
     runningRef.current = true;
-    setState((s) => ({ ...s, phase: "LOADING" }));
-    void getEngine(engineId).then((engine) =>
-      playChunk(engine, currentIndexRef.current),
-    );
-  }, [engineId, playChunk, state.phase]);
+    if (engineRef.current && isBrowserEngine(engineRef.current)) {
+      // ponytail: speechSynthesis.resume() restarts the paused utterance
+      // in place; no need to re-fire it through playChunk.
+      resumeBrowserSpeech();
+      setState((s) => ({ ...s, phase: "PLAYING" }));
+    } else {
+      setState((s) => ({ ...s, phase: "LOADING" }));
+      void getEngine(engineIdRef.current).then((engine) =>
+        playChunk(engine, currentIndexRef.current),
+      );
+    }
+  }, [playChunk, state.phase]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       abortRef.current = true;
       cleanupSource();
+      cancelBrowserSpeech();
       if (audioContextRef.current?.state !== "closed") {
         try {
           void audioContextRef.current?.close();

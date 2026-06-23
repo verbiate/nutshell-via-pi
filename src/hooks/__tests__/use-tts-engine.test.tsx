@@ -19,8 +19,14 @@ vi.mock("@/lib/tts/chunk", () => ({
   },
 }));
 
+// ponytail: sonner toast fires from the fallback branch in resolveEngine.
+vi.mock("sonner", () => ({
+  toast: vi.fn(),
+}));
+
 import { getEngine } from "@/lib/tts/engines";
 import { chunkText } from "@/lib/tts/chunk";
+import { toast } from "sonner";
 
 class FakeAudioBuffer implements AudioBuffer {
   duration = 0.1;
@@ -447,6 +453,62 @@ describe("useTtsEngine", () => {
     await vi.waitFor(() => expect(getApi().state.phase).toBe("IDLE"));
 
     expect(getApi().state.error).toBe("Synthesis failed");
+
+    unmount();
+  });
+
+  it("falls back to the browser engine when the primary model fails to load", async () => {
+    // ponytail: Task 8 — fallback swap path. Primary throws on ensureLoaded,
+    // hook toasts, swaps to browser engine, and uses browser chunk limits.
+    const primaryEngine = {
+      ...createMockEngine(),
+      id: "kokoro",
+      ensureLoaded: vi.fn().mockRejectedValue(new Error("no WebGPU")),
+    };
+    const browserEngine = {
+      id: "browser",
+      label: "Browser",
+      getVoices: vi.fn(() => []),
+      supportsLanguage: vi.fn(() => true),
+      ensureLoaded: vi.fn().mockResolvedValue(undefined),
+      synthesize: vi.fn().mockResolvedValue({
+        kind: "url" as const,
+        url: "",
+      }),
+    };
+    vi.mocked(getEngine).mockImplementation(async (id) =>
+      id === "browser"
+        ? (browserEngine as any)
+        : (primaryEngine as any),
+    );
+    vi.mocked(chunkText).mockReturnValue(["only chunk"]);
+
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      viewerRef: createViewerRef("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    await act(async () => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() =>
+      expect(browserEngine.synthesize).toHaveBeenCalledWith(
+        "only chunk",
+        { voiceId: "af_bella", lang: "en", speed: 1 },
+      ),
+    );
+
+    expect(toast).toHaveBeenCalledWith("Switching to built-in voice");
+    expect(chunkText).toHaveBeenCalledWith(
+      "Hello world.",
+      expect.objectContaining({ softLimit: 400, hardLimit: 500 }),
+    );
+    expect(primaryEngine.ensureLoaded).toHaveBeenCalledTimes(1);
+    expect(browserEngine.ensureLoaded).toHaveBeenCalledTimes(1);
+    expect(getApi().state.error).toBeUndefined();
 
     unmount();
   });
