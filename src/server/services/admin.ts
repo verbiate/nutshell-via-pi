@@ -198,6 +198,32 @@ export async function updateBookTwoPassEnabled(
   });
 }
 
+// ---- Explainer Cache Purge ----
+
+export async function purgeExplainerCache(adminId: string, explainerId: string) {
+  const explainer = await db.explainer.findUnique({
+    where: { id: explainerId },
+  });
+  if (!explainer) {
+    throw new Error("Explainer not found");
+  }
+
+  await db.explainer.delete({ where: { id: explainerId } });
+
+  await auditLog({
+    actorId: adminId,
+    action: "EXPLAINER_CACHE_PURGED",
+    entityType: "explainer",
+    entityId: explainerId,
+    oldValue: JSON.stringify({
+      contentHash: explainer.contentHash,
+      language: explainer.language,
+      contentType: explainer.contentType,
+      tier: explainer.tier,
+    }),
+  });
+}
+
 // ---- Audit Log Query (ADM-06) ----
 
 export async function getAuditLogs(page = 1, pageSize = 20) {

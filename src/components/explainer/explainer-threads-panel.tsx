@@ -11,6 +11,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -25,8 +35,11 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  Trash2,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/hooks/use-session";
 import {
   countTokens,
   formatTokens,
@@ -51,7 +64,7 @@ type ThreadPreview = {
   sectionHref: string | null;
   language: string;
   updatedAt: string;
-  explainer: { content: string; modelId: string };
+  explainer: { id: string; content: string; modelId: string };
   _count: { messages: number };
 };
 
@@ -96,8 +109,11 @@ export function ExplainerThreadsPanel({
   contextWindow,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
+  const { user } = useSession();
+  const isAdmin = ((user as any)?.role as string) === "admin";
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [threadToPurge, setThreadToPurge] = useState<ThreadPreview | null>(null);
   // ponytail: pop-out modal state. When true, the same panel view (thread or
   // list) renders inside a Dialog at max-w-2xl h-[80vh] for "elbow room".
   // Sidebar keeps rendering behind the dimmed/blurred overlay (Radix blocks
@@ -398,6 +414,49 @@ export function ExplainerThreadsPanel({
     abortRef.current?.abort();
   }
 
+  async function handleDeleteThread(id: string) {
+    try {
+      const res = await fetch(`/api/explainers/threads/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({
+          queryKey: ["explainer-threads", bookId],
+        });
+        if (id === activeThreadId) backToList();
+      } else {
+        console.error(
+          "[ExplainerThreadsPanel] delete thread failed:",
+          res.status
+        );
+      }
+    } catch (err) {
+      console.error("[ExplainerThreadsPanel] delete thread failed:", err);
+    }
+  }
+
+  async function handlePurgeCache(thread: ThreadPreview) {
+    try {
+      const res = await fetch(`/api/explainers/${thread.explainer.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({
+          queryKey: ["explainer-threads", bookId],
+        });
+        setThreadToPurge(null);
+        if (thread.id === activeThreadId) backToList();
+      } else {
+        console.error(
+          "[ExplainerThreadsPanel] purge cache failed:",
+          res.status
+        );
+      }
+    } catch (err) {
+      console.error("[ExplainerThreadsPanel] purge cache failed:", err);
+    }
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────
   // ponytail: during initial stream, activeData isn't loaded yet — derive the
   // thread type + passage text from the pendingRequest so the indicator can
@@ -448,6 +507,9 @@ export function ExplainerThreadsPanel({
         loading={listLoading}
         onSelect={selectThread}
         onPopOut={popOutThread}
+        onDelete={handleDeleteThread}
+        onPurge={setThreadToPurge}
+        isAdmin={isAdmin}
         emptyHint="Select text in the book and click 'Explain this' to start a discussion."
       />
     );
@@ -468,6 +530,32 @@ export function ExplainerThreadsPanel({
           {renderPanelContent(true)}
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!threadToPurge}
+        onOpenChange={(open) => !open && setThreadToPurge(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Purge cached explainer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes the shared explainer cache for this passage,
+              removing every reader&apos;s discussion thread and follow-up
+              messages. The next request will regenerate it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setThreadToPurge(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => threadToPurge && handlePurgeCache(threadToPurge)}
+            >
+              Purge
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -479,12 +567,18 @@ function ListView({
   loading,
   onSelect,
   onPopOut,
+  onDelete,
+  onPurge,
+  isAdmin,
   emptyHint,
 }: {
   threads: ThreadPreview[];
   loading: boolean;
   onSelect: (id: string) => void;
   onPopOut: (id: string) => void;
+  onDelete: (id: string) => void;
+  onPurge: (thread: ThreadPreview) => void;
+  isAdmin: boolean;
   emptyHint: string;
 }) {
   if (loading) {
@@ -571,6 +665,16 @@ function ListView({
                     <Maximize2 className="h-3.5 w-3.5" />
                     Pop out
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDelete(t.id)}>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    Delete
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={() => onPurge(t)}>
+                      <Database className="h-3.5 w-3.5 text-destructive" />
+                      Purge cached explainer (admin)
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

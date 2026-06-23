@@ -307,11 +307,26 @@ export async function listThreadsForBook(userId: string, bookId: string) {
   return db.explainerThread.findMany({
     where: { userId, bookId },
     include: {
-      explainer: { select: { content: true, modelId: true } },
+      explainer: { select: { id: true, content: true, modelId: true } },
       _count: { select: { messages: true } },
     },
     orderBy: { updatedAt: "desc" },
   });
+}
+
+/**
+ * Delete a thread and its messages. Ownership-checked (matches the bookmark
+ * and highlight delete pattern).
+ */
+export async function deleteThread(userId: string, threadId: string) {
+  const thread = await db.explainerThread.findUnique({
+    where: { id: threadId },
+    select: { userId: true },
+  });
+  if (!thread || thread.userId !== userId) {
+    throw new Error("Thread not found or access denied");
+  }
+  await db.explainerThread.delete({ where: { id: threadId } });
 }
 
 /**
