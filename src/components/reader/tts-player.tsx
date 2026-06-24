@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -11,13 +12,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Play, Pause, Loader2, X } from "lucide-react";
+import { Play, Pause, Loader2, X, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -57,6 +64,15 @@ export interface TtsPlayerProps {
   quota?: CloudQuota | null;
   /** Keep the bar visible even when state is IDLE (e.g. after engine switch). */
   forceVisible?: boolean;
+  /** Optional book metadata shown below the section title. */
+  bookTitle?: string;
+  bookAuthor?: string | null;
+  /**
+   * Whether the scrubber can seek. Only the cloud `<audio>` path supports
+   * scrubbing; the chunked AudioBuffer path is read-only progress. Defaults
+   * false.
+   */
+  canScrub?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -87,7 +103,11 @@ export function TtsPlayer({
   userRole,
   quota = null,
   forceVisible = false,
+  bookTitle,
+  bookAuthor,
+  canScrub = false,
 }: TtsPlayerProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const visible = forceVisible || state.state !== "IDLE";
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
@@ -127,167 +147,189 @@ export function TtsPlayer({
   return (
     <div
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-60 h-16 flex items-center gap-3 px-4 border-t border-border bg-background/95 backdrop-blur-sm transition-transform duration-300",
-        visible ? "translate-y-0" : "translate-y-full",
+        "absolute bottom-4 left-4 z-50 w-[calc(100%-2rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none",
       )}
       role="region"
       aria-label="Audio player"
+      aria-hidden={!visible}
     >
-      {/* Play / Pause / Spinner */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onPlayPause}
-        aria-label={isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Play"}
-        className="shrink-0"
-      >
-        {isLoading || isGenerating ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isPlaying ? (
-          <Pause className="h-4 w-4" />
-        ) : (
-          <Play className="h-4 w-4" />
-        )}
-      </Button>
-
-      {/* Section label */}
-      <span className="text-sm font-medium truncate max-w-[160px] sm:max-w-[240px] text-foreground shrink-0">
-        {isGenerating ? "Generating audio..." : state.sectionTitle}
-      </span>
-
-      {/* Engine radio group — hidden below lg where the bar gets crowded.
-          ponytail: each option is wrapped so disabled engines still surface a
-          tooltip via the non-disabled label span receiving pointer events. */}
-      <TooltipProvider>
-        <RadioGroup
-          value={enginePref}
-          onValueChange={(v) => onEngineChange(v as EngineId)}
-          className="hidden lg:flex flex-row items-center gap-3 shrink-0"
-          aria-label="Text-to-speech engine"
-        >
-          {ENGINE_OPTIONS.map((opt) => {
-            const reason = disabledReason(opt.id);
-            const disabled = reason !== null;
-            const radio = (
-              <span className="inline-flex items-center gap-1.5 text-xs">
-                <RadioGroupItem
-                  value={opt.id}
-                  id={`tts-eng-${opt.id}`}
-                  disabled={disabled}
-                  className="size-3.5"
-                />
-                <Label
-                  htmlFor={`tts-eng-${opt.id}`}
-                  className={cn(
-                    "text-xs font-medium cursor-pointer",
-                    disabled && "text-muted-foreground cursor-not-allowed",
-                  )}
-                >
-                  {opt.label}
-                </Label>
-              </span>
-            );
-            if (!disabled) return <span key={opt.id}>{radio}</span>;
-            return (
-              <Tooltip key={opt.id}>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">{radio}</span>
-                </TooltipTrigger>
-                <TooltipContent side="top">{reason}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </RadioGroup>
-      </TooltipProvider>
-
-      {/* ponytail: Premium-only quota badge. Hidden unless the cloud engine is
-          active and a quota snapshot has been fetched. */}
-      {quotaBadge && (
-        <span
-          className="hidden lg:inline text-[11px] tabular-nums text-muted-foreground shrink-0 px-1.5 py-0.5 rounded border border-border bg-muted/40"
-          title="Monthly Premium TTS generation quota"
-        >
-          {quotaBadge}
-        </span>
-      )}
-
-      {/* Voice picker */}
-      <Select value={isCloud ? "default" : voicePref} onValueChange={onVoiceChange}>
-        <SelectTrigger
-          size="sm"
-          className="hidden sm:flex w-[150px] shrink-0"
-          aria-label="Voice"
-        >
-          <SelectValue placeholder="Voice" />
-        </SelectTrigger>
-        <SelectContent>
-          {/* ponytail: cloud voices are picked server-side per tier; show one
-              placeholder option so the dropdown isn't empty. */}
-          {isCloud ? (
-            <SelectItem value="default">Default voice</SelectItem>
-          ) : voices.length === 0 ? (
-            <SelectItem value="__none" disabled>
-              No voices
-            </SelectItem>
-          ) : (
-            voices.map((v) => (
-              <SelectItem key={v.id} value={v.id}>
-                {voiceLabel(v)}
-              </SelectItem>
-            ))
-          )}
-        </SelectContent>
-      </Select>
-
-      {/* Model-load progress — replaces scrubber affordance while loading. */}
-      {isLoading && (
-        <div className="flex items-center gap-2 shrink-0">
-          <div
-            className="h-1 w-24 bg-muted rounded-full overflow-hidden"
-            role="progressbar"
-            aria-valuenow={Math.round(loadPct)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Voice model load progress"
-          >
+      {/* Scrubber or model-load progress */}
+      <div className="mb-3 flex items-center gap-3">
+        {isLoading ? (
+          <>
             <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${Math.min(100, Math.max(0, loadPct))}%` }}
+              className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden"
+              role="progressbar"
+              aria-valuenow={Math.round(loadPct)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Voice model load progress"
+            >
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${Math.min(100, Math.max(0, loadPct))}%` }}
+              />
+            </div>
+            <span className="hidden text-[11px] text-muted-foreground tabular-nums sm:inline">
+              Loading voice model… {Math.round(loadPct)}%
+            </span>
+          </>
+        ) : (
+          <>
+            <Slider
+              value={[state.currentTime]}
+              max={state.duration || 100}
+              step={1}
+              onValueChange={([v]) => onScrub(v)}
+              // ponytail: free engines can't seek — read-only progress bar.
+              // Also disabled while generating, and inert when duration is unknown
+              // (speechSynthesis fallback exposes no position).
+              disabled={isGenerating || !canScrub || state.duration === 0}
+              className="flex-1"
             />
-          </div>
-          <span className="text-xs text-muted-foreground hidden md:inline">
-            Loading voice model… {Math.round(loadPct)}%
-          </span>
-        </div>
-      )}
-
-      {/* Progress scrubber */}
-      <div className="flex-1 min-w-0">
-        <Slider
-          value={[state.currentTime]}
-          max={state.duration || 100}
-          step={1}
-          onValueChange={([v]) => onScrub(v)}
-          disabled={isGenerating}
-          className="w-full"
-        />
+            {state.duration > 0 && (
+              <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
+                {formatTime(state.currentTime)} / {formatTime(state.duration)}
+              </span>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Duration */}
-      <span className="text-xs text-muted-foreground tabular-nums shrink-0 hidden sm:inline">
-        {formatTime(state.currentTime)} / {formatTime(state.duration)}
-      </span>
+      {/* Controls row */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onPlayPause}
+          aria-label={isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Play"}
+          className="h-10 w-10 shrink-0 rounded-full active:scale-[0.96] transition-transform"
+        >
+          {isLoading || isGenerating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+        </Button>
 
-      {/* Close */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onClose}
-        aria-label="Close audio player"
-        className="shrink-0"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <span className="truncate text-sm font-medium text-foreground">
+            {isGenerating ? "Generating audio..." : state.sectionTitle}
+          </span>
+          {(bookTitle || bookAuthor) && (
+            <span className="truncate text-xs text-muted-foreground">
+              {bookTitle}
+              {bookTitle && bookAuthor ? " · " : ""}
+              {bookAuthor}
+            </span>
+          )}
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Audio settings"
+          className="shrink-0 active:scale-[0.96] transition-transform"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label="Close audio player"
+          className="shrink-0 active:scale-[0.96] transition-transform"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Settings modal */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Audio settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <TooltipProvider>
+              <RadioGroup
+                value={enginePref}
+                onValueChange={(v) => onEngineChange(v as EngineId)}
+                className="flex flex-col gap-2"
+                aria-label="Text-to-speech engine"
+              >
+                {ENGINE_OPTIONS.map((opt) => {
+                  const reason = disabledReason(opt.id);
+                  const disabled = reason !== null;
+                  const radio = (
+                    <span className="inline-flex items-center gap-1.5 text-sm">
+                      <RadioGroupItem
+                        value={opt.id}
+                        id={`tts-eng-${opt.id}`}
+                        disabled={disabled}
+                        className="size-4"
+                      />
+                      <Label
+                        htmlFor={`tts-eng-${opt.id}`}
+                        className={cn(
+                          "text-sm font-medium cursor-pointer",
+                          disabled && "text-muted-foreground cursor-not-allowed",
+                        )}
+                      >
+                        {opt.label}
+                      </Label>
+                    </span>
+                  );
+                  if (!disabled) return <span key={opt.id}>{radio}</span>;
+                  return (
+                    <Tooltip key={opt.id}>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex">{radio}</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{reason}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </RadioGroup>
+            </TooltipProvider>
+
+            {quotaBadge && (
+              <span
+                className="inline-block text-[11px] tabular-nums text-muted-foreground px-1.5 py-0.5 rounded border border-border bg-muted/40"
+                title="Monthly Premium TTS generation quota"
+              >
+                {quotaBadge}
+              </span>
+            )}
+
+            <Select value={isCloud ? "default" : voicePref} onValueChange={onVoiceChange}>
+              <SelectTrigger size="sm" className="w-full" aria-label="Voice">
+                <SelectValue placeholder="Voice" />
+              </SelectTrigger>
+              <SelectContent>
+                {isCloud ? (
+                  <SelectItem value="default">Default voice</SelectItem>
+                ) : voices.length === 0 ? (
+                  <SelectItem value="__none" disabled>
+                    No voices
+                  </SelectItem>
+                ) : (
+                  voices.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {voiceLabel(v)}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

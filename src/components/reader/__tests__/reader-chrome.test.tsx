@@ -71,10 +71,12 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     // Closed: header spans full viewport width so the right group is 48px from the viewport edge.
     expect(closedHeader!).toContain("right-0");
     expect(closedHeader!).not.toContain("sm:right-[");
-    // Open: header right edge stops 48px before the sidebar.
+    // Open: header right edge stops 48px before the sidebar, and pr-0 neutralizes the
+    // px-12 right padding so the right group actually sits 48px (not 96px) from the sidebar.
     expect(openHeader!).toContain(
       "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
     );
+    expect(openHeader!).toContain("sm:pr-0");
 
     // Interactive groups re-enable pointer events so buttons remain clickable.
     expect(closed).toContain("pointer-events-auto");

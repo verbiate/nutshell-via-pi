@@ -149,8 +149,10 @@ describe("Design system page", () => {
       expect(html).toContain(".ds-book-card:hover .ds-book-lift");
     });
 
-    it("consumes var(--tts-bar-h) on the TTS bar mirror", () => {
-      expect(render()).toContain("var(--tts-bar-h");
+    it("renders the TTS player mirror as a floating card", () => {
+      const html = render();
+      expect(html).toContain("max-w-[320px]");
+      expect(html).toContain('aria-label="Audio player (demo mirror)"');
     });
 
     it("consumes var(--toolbar-w) on the FloatingToolbar mirror", () => {
@@ -203,10 +205,11 @@ describe("Design system page", () => {
       expect(html).toContain("38%");
     });
 
-    it("renders the TTS player mirror with the Play icon and a section label", () => {
+    it("renders the TTS player mirror with the Play icon, section label, and settings button", () => {
       const html = render();
       expect(html).toContain("Section 1 · The Beginning");
       expect(html).toContain('aria-label="Play"');
+      expect(html).toContain('aria-label="Audio settings"');
     });
   });
 

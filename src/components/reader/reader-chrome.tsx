@@ -27,9 +27,13 @@ export function ReaderChrome({
       className={cn(
         // ponytail: full viewport width when closed (right-0) so the right group sits 48px from the
         // viewport edge; pointer-events-none on the header keeps the rail below clickable.
-        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right] duration-[var(--reader-dur)] ease-reader transition-opacity",
+        // ponytail: pr-0 when open neutralizes the px-12 right padding so the right group
+        // sits flush at the header's right edge (already 48px from the sidebar) — matches
+        // Bookshelf's 48px from the viewport-left wall. padding-right transitions alongside
+        // right so the group slides smoothly instead of snapping.
+        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right,padding-right] duration-[var(--reader-dur)] ease-reader transition-opacity",
         sidebarOpen
-          ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)]"
+          ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)] sm:pr-0"
           : "",
         hidden && "opacity-0",
       )}

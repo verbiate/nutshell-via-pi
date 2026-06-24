@@ -40,7 +40,6 @@ import { useTtsCloud, type CloudQuota } from "@/hooks/use-tts-cloud";
 import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
 import { ENGINES } from "@/lib/tts/engines";
 import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
-import { cn } from "@/lib/utils";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
 import type { LibraryBook, UserRole } from "@/types/book";
 
@@ -358,6 +357,13 @@ export function ReaderClient({
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
+  }, []);
+
+  // ponytail: epub.js fires `relocated` on every page turn with the spine href
+  // of the now-visible section. Tracking it here (not just on ToC clicks) is
+  // what lets the TTS label + active ToC row follow normal reading.
+  const handleSectionChange = useCallback((href: string) => {
+    setCurrentHref(href);
   }, []);
 
   const handleProgressChange = useCallback((pct: number) => {
@@ -835,6 +841,30 @@ export function ReaderClient({
     return items;
   }, [toc]);
 
+  // ponytail: resolve the current spine href → a human section title. epub-viewer
+  // already normalizes ToC hrefs to spine hrefs, so a direct match usually hits;
+  // the basename fallback covers fragments / path-prefix drift between EPUBs.
+  const currentSectionTitle = useMemo(() => {
+    if (!currentHref) return "";
+    const norm = (h: string) => h.split("#")[0].split("?")[0];
+    const target = norm(currentHref);
+    const base = target.split("/").pop() ?? target;
+    const walk = (items: NavItem[]): string => {
+      for (const it of items) {
+        const n = norm(it.href);
+        if (n === target || n === base || (n.split("/").pop() ?? n) === base) {
+          return it.label;
+        }
+        if (it.subitems?.length) {
+          const found = walk(it.subitems);
+          if (found) return found;
+        }
+      }
+      return "";
+    };
+    return walk(toc);
+  }, [toc, currentHref]);
+
   const getNextSection = useCallback(
     (href: string) => {
       const items = flatToc();
@@ -904,6 +934,11 @@ export function ReaderClient({
   // switcher inside it — leaving the user stuck.
   const [ttsBarVisible, setTtsBarVisible] = useState(false);
 
+  // ponytail: resolved once from currentHref (which now tracks every page turn
+  // via onSectionChange) so the "now reading" label is the real section title,
+  // never the stale "Reading" fallback.
+  const listenSectionTitle = currentSectionTitle || bookTitle || "Reading";
+
   // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
   // point. Dispatches on isCloud so either engine can be started from here.
   const handleListenFromHere = useCallback(() => {
@@ -911,8 +946,7 @@ export function ReaderClient({
     if (isCloud) {
       const cs = cloudTts.state.state;
       if (cs === "IDLE" || cs === "ENDED") {
-        const section = toc.find((item) => item.href === currentHref);
-        cloudTts.startSection(currentHref, section?.label || "Reading");
+        cloudTts.startSection(currentHref, listenSectionTitle);
       } else {
         cloudTts.togglePlayPause();
       }
@@ -922,14 +956,13 @@ export function ReaderClient({
       browserTts.state.phase === "IDLE" ||
       browserTts.state.phase === "ENDED"
     ) {
-      const section = toc.find((item) => item.href === currentHref);
-      browserTts.startSection(currentHref, section?.label || "Reading");
+      browserTts.startSection(currentHref, listenSectionTitle);
     } else if (browserTts.state.phase === "PLAYING") {
       browserTts.pause();
     } else if (browserTts.state.phase === "PAUSED") {
       browserTts.resume();
     }
-  }, [browserTts, cloudTts, isCloud, toc, currentHref]);
+  }, [browserTts, cloudTts, isCloud, currentHref, listenSectionTitle]);
 
   const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
     if (isCloud) return cloudTts.state;
@@ -949,8 +982,8 @@ export function ReaderClient({
       sectionHref: browserTts.state.sectionHref,
       audioUrl: null,
       audioId: null,
-      currentTime: 0,
-      duration: 0,
+      currentTime: browserTts.state.currentTime,
+      duration: browserTts.state.duration,
     };
   }, [browserTts.state, cloudTts.state, isCloud]);
 
@@ -1069,10 +1102,7 @@ export function ReaderClient({
   return (
     <div
       data-sidebar-open={activeTool ? "true" : "false"}
-      className={cn(
-        "relative h-full w-full",
-        (browserPhase !== "IDLE" || cloudState !== "IDLE") && "pb-16",
-      )}
+      className="relative h-full w-full"
       // ponytail: stage the sidebar open to finish with the 0.8s slide-in.
       // --reader-delay (300ms) holds the sidebar closed while the reader gets a
       // head start; --reader-dur (500ms) is the open itself. 300 + 500 = 800ms,
@@ -1159,6 +1189,7 @@ export function ReaderClient({
               initialCfi={savedPosition?.cfi ?? null}
               onTocLoaded={handleTocLoaded}
               onProgressChange={handleProgressChange}
+              onSectionChange={handleSectionChange}
               onPositionChange={handlePositionChange}
               onRenditionReady={handleRenditionReady}
               onError={handleError}
@@ -1169,6 +1200,35 @@ export function ReaderClient({
             />
           )}
           </div>
+
+          {isLoaded && !error && (
+            <ReadingProgress
+              percentage={percentage}
+              hidden={activeTool === null && !pointerActive}
+            />
+          )}
+          <TtsPlayer
+            state={ttsPlaybackState}
+            loadPct={browserTts.state.loadPct}
+            onPlayPause={handleTtsPlayPause}
+            onScrub={(t) => {
+              // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
+              if (isCloud) cloudTts.scrub(t);
+            }}
+            onClose={handleTtsClose}
+            bookLanguage={ttsLang}
+            enginePref={enginePref}
+            effectiveEngineId={browserTts.effectiveEngineId}
+            onEngineChange={handleEngineChange}
+            voicePref={voicePref}
+            onVoiceChange={setVoicePref}
+            userRole={userRole}
+            quota={activeQuota}
+            forceVisible={ttsBarVisible}
+            bookTitle={bookTitle}
+            bookAuthor={bookAuthor}
+            canScrub={isCloud}
+          />
         </div>
       )}
 
@@ -1187,46 +1247,39 @@ export function ReaderClient({
           the sidebar's bulb tool as threads. The old Sheet-based ExplainerPanel
           is gone; the ExplainerThreadsPanel handles every case. */}
 
-      {/* Reader chrome + reading progress — only shown once loaded and no error */}
+      {/* Reader chrome — only shown once loaded and no error */}
       {isLoaded && !error && (
-        <>
-          <ReaderChrome
-            onBack={handleBack}
-            sidebarOpen={activeTool !== null}
-            hidden={activeTool === null && !pointerActive}
-            onHideControls={() => setActiveTool(null)}
-            searchTrigger={
-              <SearchPanel
-                bookId={bookId}
-                onResultClick={handleSearchResult}
-              />
-            }
-            ttsTrigger={
-              <TtsTrigger
-                state={
-                  isCloud
-                    ? cloudState === "GENERATING" || cloudState === "LOADING"
-                      ? "loading"
-                      : cloudState === "IDLE" || cloudState === "ENDED"
-                        ? "idle"
-                        : "disabled"
-                    : browserPhase === "LOADING"
-                      ? "loading"
-                      : browserPhase === "IDLE" ||
-                          browserPhase === "ENDED"
-                        ? "idle"
-                        : "disabled"
-                }
-                onClick={handleListenFromHere}
-              />
-            }
-          />
-          <ReadingProgress
-            percentage={percentage}
-            sidebarOpen={activeTool !== null}
-            hidden={activeTool === null && !pointerActive}
-          />
-        </>
+        <ReaderChrome
+          onBack={handleBack}
+          sidebarOpen={activeTool !== null}
+          hidden={activeTool === null && !pointerActive}
+          onHideControls={() => setActiveTool(null)}
+          searchTrigger={
+            <SearchPanel
+              bookId={bookId}
+              onResultClick={handleSearchResult}
+            />
+          }
+          ttsTrigger={
+            <TtsTrigger
+              state={
+                isCloud
+                  ? cloudState === "GENERATING" || cloudState === "LOADING"
+                    ? "loading"
+                    : cloudState === "IDLE" || cloudState === "ENDED"
+                      ? "idle"
+                      : "disabled"
+                  : browserPhase === "LOADING"
+                    ? "loading"
+                    : browserPhase === "IDLE" ||
+                        browserPhase === "ENDED"
+                      ? "idle"
+                      : "disabled"
+              }
+              onClick={handleListenFromHere}
+            />
+          }
+        />
       )}
 
       {/*
@@ -1303,26 +1356,6 @@ export function ReaderClient({
         />
       )}
 
-      {/* TTS audio player — outside the isLoaded check so it persists independently */}
-      <TtsPlayer
-        state={ttsPlaybackState}
-        loadPct={browserTts.state.loadPct}
-        onPlayPause={handleTtsPlayPause}
-        onScrub={(t) => {
-          // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
-          if (isCloud) cloudTts.scrub(t);
-        }}
-        onClose={handleTtsClose}
-        bookLanguage={ttsLang}
-        enginePref={enginePref}
-        effectiveEngineId={browserTts.effectiveEngineId}
-        onEngineChange={handleEngineChange}
-        voicePref={voicePref}
-        onVoiceChange={setVoicePref}
-        userRole={userRole}
-        quota={activeQuota}
-        forceVisible={ttsBarVisible}
-      />
     </div>
   );
 }

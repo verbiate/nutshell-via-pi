@@ -10,6 +10,7 @@ import { computeProgressPercent } from "@/lib/reader/progress";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
 import { buildRenditionOptions } from "./rendition-options";
 import { highlightFill } from "./highlight-colors";
+import { htmlToTtsText } from "@/lib/tts/prepare-text";
 
 export interface EpubViewerProps {
   url: string;
@@ -26,6 +27,7 @@ export interface EpubViewerProps {
   ) => void;
   onTocLoaded?: (toc: NavItem[]) => void;
   onProgressChange?: (percentage: number) => void;
+  onSectionChange?: (href: string) => void;
   onRenditionReady?: (rendition: Rendition) => void;
   onNavigateRequest?: (href: string) => void;
   className?: string;
@@ -97,6 +99,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       onPositionChange,
       onTocLoaded,
       onProgressChange,
+      onSectionChange,
       onRenditionReady,
       className,
       onLoadChange,
@@ -200,15 +203,14 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         }
       },
       getSectionText: () => {
-        // ponytail: read directly from the DOM iframe — rendition.contents
-        // is unreliable in @likecoin/epub-ts. The iframe is always present
-        // when the user is reading (clearSelection uses the same pattern).
+        // ponytail: read directly from the DOM iframe. Use the shared TTS text
+        // prep helper so block boundaries (chapter numbers, titles, bylines)
+        // become sentence-separated lines with full-stop pauses.
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body) return "";
         const clone = doc.body.cloneNode(true) as HTMLElement;
-        clone.querySelectorAll("script,style,head").forEach((n) => n.remove());
-        return clone.textContent?.replace(/\s+\n/g, "\n").trim() ?? "";
+        return htmlToTtsText(clone.innerHTML);
       },
       highlightChunk: async (text: string) => {
         const iframe = containerRef.current?.querySelector("iframe");
@@ -383,6 +385,10 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                 // display), then reflects the real position on subsequent moves.
                 const percentage = Math.round((location.start.percentage ?? 0) * 100);
                 onProgressChange?.(percentage);
+                // ponytail: surface the current spine href so the reader tracks
+                // section identity on every page turn (not just ToC clicks) —
+                // drives the TTS "now reading" label and the active ToC row.
+                if (location.start?.href) onSectionChange?.(location.start.href);
                 onPositionChange?.({ paragraphIndex: 0, charOffset: 0 }, cfi ?? "", percentage);
               }
             );

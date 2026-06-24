@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Copy, Highlighter, Lightbulb, Pause, Play, Plus, Search as SearchIcon, StickyNote, Volume2 } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Copy, Highlighter, Lightbulb, Pause, Play, Plus, Search as SearchIcon, Settings, StickyNote, Volume2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -100,8 +100,6 @@ const TWEAK_FOLDERS: TweakFolder[] = [
     title: "Gallery Layout",
     bindings: [
       { key: "book-hover-lift", config: { min: 0, max: 10, step: 0.5, label: "Book Hover Lift" } },
-      { key: "tts-bar-h", config: { min: 32, max: 128, step: 2, label: "Tts Bar H" } },
-      { key: "tts-bar-blur", config: { min: 0, max: 24, step: 1, label: "Tts Bar Blur" } },
       { key: "toolbar-w", config: { min: 120, max: 360, step: 4, label: "Toolbar W" } },
       { key: "toolbar-shadow-y", config: { min: 0, max: 32, step: 1, label: "Toolbar Shadow Y" } },
     ],
@@ -1129,24 +1127,41 @@ export default function DesignSystemPage() {
                 />
                 <ReadingProgress percentage={progressVal[0]} />
 
-                {/* ponytail: demo mirror — original TtsPlayer uses `fixed bottom-0` bound to reader viewport; mirrored here with relative so the showcase frame contains it. */}
+                {/* ponytail: demo mirror — original TtsPlayer is now a floating card anchored inside the reader book area. */}
                 <div
-                  className="absolute bottom-0 left-0 right-0 z-60 flex items-center gap-3 border-t border-border bg-background/95 px-4"
+                  className="absolute bottom-4 left-4 z-60 flex w-[calc(100%-2rem)] max-w-[320px] flex-col gap-2 rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm"
                   role="region"
                   aria-label="Audio player (demo mirror)"
-                  style={{ height: "var(--tts-bar-h, 64px)", backdropFilter: "blur(var(--tts-bar-blur, 6px))" }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setTtsPlaying((p) => !p)}
-                    aria-label={ttsPlaying ? "Pause" : "Play"}
-                    className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
-                  >
-                    {ttsPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  <span className="truncate text-sm font-medium text-foreground">Section 1 · The Beginning</span>
-                  <div className="flex-1" />
-                  <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">0:00 / 4:12</span>
+                  <div className="flex items-center gap-3">
+                    <Slider value={progressVal} onValueChange={setProgressVal} max={100} aria-label="Progress" className="flex-1" />
+                    <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">0:00 / 4:12</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setTtsPlaying((p) => !p)}
+                      aria-label={ttsPlaying ? "Pause" : "Play"}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-foreground hover:bg-accent active:scale-[0.96] transition-transform"
+                    >
+                      {ttsPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </button>
+                    <span className="flex-1 truncate text-sm font-medium text-foreground">Section 1 · The Beginning</span>
+                    <button
+                      type="button"
+                      aria-label="Audio settings"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-accent active:scale-[0.96] transition-transform"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Close audio player"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-accent active:scale-[0.96] transition-transform"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 

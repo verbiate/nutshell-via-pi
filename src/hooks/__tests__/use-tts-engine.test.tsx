@@ -269,7 +269,16 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
-    expect(mockEngine.synthesize).toHaveBeenCalledTimes(1);
+    // ponytail: with prefetch, chunk two is synthesized in the background as
+    // soon as chunk one starts playing.
+    await vi.waitFor(() =>
+      expect(mockEngine.synthesize).toHaveBeenCalledTimes(2),
+    );
+    expect(mockEngine.synthesize).toHaveBeenLastCalledWith("chunk two", {
+      voiceId: "af_bella",
+      lang: "en",
+      speed: 1,
+    });
 
     act(() => {
       const ctx = FakeAudioContext.instances[0];
@@ -277,15 +286,81 @@ describe("useTtsEngine", () => {
       expect(source).toBeTruthy();
       (source as any).onended?.(new Event("ended"));
     });
+
+    // ponytail: chunk two was already prefetched, so advancing does not start
+    // a new synthesis call.
     await vi.waitFor(() =>
       expect(mockEngine.synthesize).toHaveBeenCalledTimes(2),
     );
 
-    expect(mockEngine.synthesize).toHaveBeenLastCalledWith("chunk two", {
+    unmount();
+  });
+
+  it("prefetches the next chunk while the current chunk plays", async () => {
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      viewerRef: createViewerRef("Hello world. This is a test."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    // ponytail: chunk one was synthesized to start playback; chunk two was
+    // prefetched in the background immediately after source.start().
+    await vi.waitFor(() =>
+      expect(mockEngine.synthesize).toHaveBeenCalledTimes(2),
+    );
+    expect(mockEngine.synthesize).toHaveBeenNthCalledWith(1, "chunk one", {
       voiceId: "af_bella",
       lang: "en",
       speed: 1,
     });
+    expect(mockEngine.synthesize).toHaveBeenNthCalledWith(2, "chunk two", {
+      voiceId: "af_bella",
+      lang: "en",
+      speed: 1,
+    });
+
+    act(() => {
+      const ctx = FakeAudioContext.instances[0];
+      const source = ctx?.lastSource;
+      expect(source).toBeTruthy();
+      (source as any).onended?.(new Event("ended"));
+    });
+
+    // ponytail: advancing to chunk two should not trigger a third synthesis;
+    // it plays from the prefetched cache.
+    await vi.waitFor(() =>
+      expect(mockEngine.synthesize).toHaveBeenCalledTimes(2),
+    );
+    expect(getApi().state.phase).toBe("PLAYING");
+
+    unmount();
+  });
+
+  it("exposes section duration and zeroed currentTime before playback ticks", async () => {
+    // ponytail: FakeAudioBuffer.duration = 0.1; two chunks → duration converges
+    // to 0.2 as the buffers resolve. currentTime starts at the chunk boundary.
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      viewerRef: createViewerRef("Hello world. This is a test."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    expect(getApi().state.currentTime).toBe(0);
+    await vi.waitFor(() => expect(getApi().state.duration).toBeGreaterThan(0));
 
     unmount();
   });
@@ -355,6 +430,12 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
+    // ponytail: prefetch means chunk two was already synthesized by the time
+    // chunk one started playing.
+    await vi.waitFor(() =>
+      expect(mockEngine.synthesize).toHaveBeenCalledTimes(2),
+    );
+
     act(() => {
       getApi().pause();
     });
@@ -365,11 +446,9 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
-    expect(mockEngine.synthesize).toHaveBeenLastCalledWith("chunk one", {
-      voiceId: "af_bella",
-      lang: "en",
-      speed: 1,
-    });
+    // ponytail: resume replays chunk one from the cached buffer — no new
+    // synthesis call should have been made.
+    expect(mockEngine.synthesize).toHaveBeenCalledTimes(2);
 
     unmount();
   });

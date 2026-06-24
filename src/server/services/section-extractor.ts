@@ -1,4 +1,5 @@
 import { storage } from "@/server/storage/local";
+import { htmlToTtsText } from "@/lib/tts/prepare-text";
 
 // ponytail: rewritten to bypass @likecoin/epub-ts. Its Book.spine.load() path
 // needs DOMParser (browser API) — unavailable in Node, caused "DOMParser is
@@ -14,7 +15,8 @@ import { storage } from "@/server/storage/local";
  */
 export async function extractSectionText(
   epubPath: string,
-  sectionHref: string
+  sectionHref: string,
+  opts?: { forTts?: boolean }
 ): Promise<string> {
   const epubBuffer = await storage.read(epubPath);
   const JSZip = (await import("jszip")).default;
@@ -56,7 +58,7 @@ export async function extractSectionText(
     throw new Error(`Section file not found in EPUB: ${fullPath}`);
   }
 
-  return stripHtml(content).trim();
+  return opts?.forTts ? htmlToTtsText(content) : stripHtml(content).trim();
 }
 
 // ─── Helpers (mirror epub-processor.ts patterns) ───────────────────────────

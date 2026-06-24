@@ -24,6 +24,11 @@ export interface TtsEngineState {
   loadPct: number;
   sectionTitle: string;
   sectionHref: string;
+  // ponytail: elapsed/total seconds for the AudioBuffer path (Kokoro/Supertonic).
+  // Both 0 for the speechSynthesis fallback, which can't expose position — the
+  // player hides the readout in that case.
+  currentTime: number;
+  duration: number;
   error?: string;
 }
 
@@ -52,6 +57,8 @@ const emptyState: TtsEngineState = {
   loadPct: 0,
   sectionTitle: "",
   sectionHref: "",
+  currentTime: 0,
+  duration: 0,
 };
 
 function isAudioBufferResult(
@@ -116,10 +123,23 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const runningRef = useRef(false);
   const abortRef = useRef(false);
   const engineRef = useRef<TtsEngine | null>(null);
+  // ponytail: 1-chunk prefetch cache for audio-buffer engines. Stores promises
+  // so both in-flight and resolved syntheses share the same await path.
+  const bufferCacheRef = useRef<Map<number, Promise<AudioBuffer>>>(new Map());
   // ponytail: engineIdRef tracks the effective id (prop or browser fallback).
   // Kept in a ref so callbacks stay stable and the fallback swap is read on
   // the next startSection without rebuilding the memo graph.
   const engineIdRef = useRef<EngineId>(engineId);
+
+  // ponytail: per-chunk playback timing. AudioBuffer engines expose duration
+  // per chunk (buffer.duration); we accumulate completed chunks into
+  // elapsedBeforeRef and measure the in-flight chunk against AudioContext time.
+  // Ceiling: the speechSynthesis fallback exposes none of this → duration stays 0
+  // and the player hides the readout.
+  const durationsRef = useRef<number[]>([]);
+  const elapsedBeforeRef = useRef(0);
+  const chunkStartedAtRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     engineIdRef.current = engineId;
@@ -135,6 +155,39 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     setPrevEngineId(engineId);
     setEffectiveEngineId(engineId);
   }
+
+  const sumKnownDurations = useCallback(() => {
+    return durationsRef.current.reduce((acc, d) => acc + (d || 0), 0);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // ponytail: ~4Hz is enough for a mm:ss readout without thrashing React.
+  const startTimer = useCallback(() => {
+    stopTimer();
+    timerRef.current = setInterval(() => {
+      const ctx = audioContextRef.current;
+      const startedAt = chunkStartedAtRef.current;
+      if (ctx == null || startedAt == null) return;
+      const idx = currentIndexRef.current;
+      const cur = durationsRef.current[idx] ?? 0;
+      const within = Math.max(0, Math.min(cur, ctx.currentTime - startedAt));
+      setState((s) => ({ ...s, currentTime: elapsedBeforeRef.current + within }));
+    }, 250);
+  }, [stopTimer]);
+
+  const recordDuration = useCallback(
+    (index: number, duration: number) => {
+      durationsRef.current[index] = duration;
+      setState((s) => ({ ...s, duration: sumKnownDurations() }));
+    },
+    [sumKnownDurations],
+  );
 
   const cleanupSource = useCallback(() => {
     if (sourceNodeRef.current) {
@@ -152,8 +205,10 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     runningRef.current = false;
     abortRef.current = true;
     cleanupSource();
+    stopTimer();
     cancelBrowserSpeech();
     viewerRef.current?.clearTtsHighlight();
+    bufferCacheRef.current.clear();
     if (audioContextRef.current?.state !== "closed") {
       try {
         void audioContextRef.current?.close();
@@ -164,14 +219,62 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     audioContextRef.current = null;
     chunksRef.current = [];
     currentIndexRef.current = 0;
+    durationsRef.current = [];
+    elapsedBeforeRef.current = 0;
+    chunkStartedAtRef.current = null;
     setState(emptyState);
-  }, [cleanupSource, viewerRef]);
+  }, [cleanupSource, stopTimer, viewerRef]);
+
+  const synthesizeCached = useCallback(
+    (engine: TtsEngine, index: number): Promise<AudioBuffer> => {
+      const cached = bufferCacheRef.current.get(index);
+      if (cached) return cached;
+
+      const SYNTHESIS_TIMEOUT_MS = 15_000;
+      const promise = (async () => {
+        const result = await Promise.race([
+          engine.synthesize(chunksRef.current[index], {
+            voiceId,
+            lang: bookLanguage,
+            speed,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `Synthesis timed out after ${SYNTHESIS_TIMEOUT_MS / 1000}s`,
+                  ),
+                ),
+              SYNTHESIS_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+
+        if (!isAudioBufferResult(result)) {
+          throw new Error(
+            `Engine "${engine.id}" returned unsupported result kind: ${result.kind}`,
+          );
+        }
+        // ponytail: record the chunk's duration so the readout total converges
+        // as buffers resolve (prefetch is one chunk ahead).
+        recordDuration(index, result.buffer.duration);
+        return result.buffer;
+      })();
+
+      bufferCacheRef.current.set(index, promise);
+      return promise;
+    },
+    [bookLanguage, recordDuration, speed, voiceId],
+  );
 
   const playChunk = useCallback(
     async (engine: TtsEngine, index: number) => {
       if (!runningRef.current || abortRef.current) return;
       if (index >= chunksRef.current.length) {
-        setState((s) => ({ ...s, phase: "ENDED" }));
+        stopTimer();
+        chunkStartedAtRef.current = null;
+        setState((s) => ({ ...s, phase: "ENDED", currentTime: s.duration }));
         onSectionComplete?.();
         return;
       }
@@ -186,56 +289,79 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       await viewerRef.current?.highlightChunk(chunksRef.current[index]);
 
       try {
-        // ponytail: wrap synthesis in a timeout — if the engine hangs (e.g.
-        // kokoro-js phonemizer deadlock), we don't block playback forever.
-        const SYNTHESIS_TIMEOUT_MS = 15_000;
-        const result = await Promise.race([
-          engine.synthesize(chunksRef.current[index], {
-            voiceId,
-            lang: bookLanguage,
-            speed,
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error(`Synthesis timed out after ${SYNTHESIS_TIMEOUT_MS / 1000}s`)),
-              SYNTHESIS_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-
-        if (!runningRef.current || abortRef.current) return;
-
         // ponytail: browser speechSynthesis manages its own audio queue and
         // cannot return an AudioBuffer — synthesize resolves on `onend`, so
         // we just chain to the next chunk. No AudioBufferSourceNode needed.
-        if (!isAudioBufferResult(result)) {
-          if (!isBrowserEngine(engine)) {
-            throw new Error(
-              `Engine "${engine.id}" returned unsupported result kind: ${result.kind}`,
-            );
+        if (isBrowserEngine(engine)) {
+          const SYNTHESIS_TIMEOUT_MS = 15_000;
+          const result = await Promise.race([
+            engine.synthesize(chunksRef.current[index], {
+              voiceId,
+              lang: bookLanguage,
+              speed,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Synthesis timed out after ${SYNTHESIS_TIMEOUT_MS / 1000}s`,
+                    ),
+                  ),
+                SYNTHESIS_TIMEOUT_MS,
+              ),
+            ),
+          ]);
+
+          if (!runningRef.current || abortRef.current) return;
+
+          if (!isAudioBufferResult(result)) {
+            void playChunk(engine, index + 1);
+            return;
           }
-          void playChunk(engine, index + 1);
-          return;
+
+          throw new Error(
+            `Browser engine "${engine.id}" returned unsupported audio buffer result`,
+          );
         }
+
+        const buffer = await synthesizeCached(engine, index);
+        if (!runningRef.current || abortRef.current) return;
 
         const ctx = audioContextRef.current;
         if (!ctx) return;
 
         const source = ctx.createBufferSource();
-        source.buffer = result.buffer;
+        source.buffer = buffer;
         source.connect(ctx.destination);
         sourceNodeRef.current = source;
 
         source.onended = () => {
           if (!runningRef.current || abortRef.current) return;
           sourceNodeRef.current = null;
+          // ponytail: bank this chunk's duration into elapsed before advancing
+          // so the readout keeps climbing across chunk boundaries.
+          elapsedBeforeRef.current += durationsRef.current[index] ?? buffer.duration;
+          // ponytail: free the just-played buffer now that it's consumed.
+          bufferCacheRef.current.delete(index);
           void playChunk(engine, index + 1);
         };
 
         if (ctx.state === "suspended") {
           await ctx.resume();
         }
+        // ponytail: seed elapsed (completed-chunk total) + start the wall-clock
+        // for this chunk, then tick currentTime ~4Hz for the readout/scrubber.
+        chunkStartedAtRef.current = ctx.currentTime;
         source.start();
+        setState((s) => ({ ...s, currentTime: elapsedBeforeRef.current }));
+        startTimer();
+
+        // ponytail: prefetch one chunk ahead — fire-and-forget. By the time
+        // this chunk finishes playing, the next buffer is ready → no gap.
+        if (index + 1 < chunksRef.current.length) {
+          void synthesizeCached(engine, index + 1);
+        }
       } catch (err) {
         if (abortRef.current) return;
 
@@ -247,6 +373,8 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
           toast("Switching to built-in voice");
           engineIdRef.current = "browser";
           setEffectiveEngineId("browser");
+          // ponytail: discard any buffers/prefetches from the broken engine.
+          bufferCacheRef.current.clear();
           try {
             const fallback = await getEngine("browser");
             await fallback.ensureLoaded();
@@ -258,6 +386,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
           }
         }
 
+        // ponytail: clear the failed chunk so a retry can resynthesize.
+        bufferCacheRef.current.delete(index);
+
         console.error("[TTS] Synthesis failed:", err);
         setState((s) => ({
           ...s,
@@ -266,7 +397,16 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }));
       }
     },
-    [bookLanguage, onSectionComplete, speed, voiceId, viewerRef],
+    [
+      bookLanguage,
+      onSectionComplete,
+      speed,
+      startTimer,
+      stopTimer,
+      synthesizeCached,
+      voiceId,
+      viewerRef,
+    ],
   );
 
   // ponytail: try the requested engine; if its model load fails (no WebGPU,
@@ -312,7 +452,11 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       abortRef.current = false;
       runningRef.current = true;
       cleanupSource();
+      stopTimer();
       cancelBrowserSpeech();
+      durationsRef.current = [];
+      elapsedBeforeRef.current = 0;
+      chunkStartedAtRef.current = null;
 
       // ponytail: create AudioContext synchronously within the user gesture,
       // before any await. Browsers gate AudioContext creation/resumption on a
@@ -332,6 +476,8 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         loadPct: 0,
         sectionTitle: title,
         sectionHref: href,
+        currentTime: 0,
+        duration: 0,
       });
 
       try {
@@ -376,7 +522,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [cleanupSource, onSectionComplete, playChunk, resolveEngine, viewerRef],
+    [cleanupSource, onSectionComplete, playChunk, resolveEngine, stopTimer, viewerRef],
   );
 
   const pause = useCallback(() => {
@@ -386,10 +532,12 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       pauseBrowserSpeech();
     } else {
       cleanupSource();
+      stopTimer();
+      chunkStartedAtRef.current = null;
       audioContextRef.current?.suspend();
     }
     setState((s) => ({ ...s, phase: "PAUSED" }));
-  }, [cleanupSource, state.phase]);
+  }, [cleanupSource, stopTimer, state.phase]);
 
   const resume = useCallback(() => {
     if (state.phase !== "PAUSED") return;
@@ -412,6 +560,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     return () => {
       abortRef.current = true;
       cleanupSource();
+      stopTimer();
       cancelBrowserSpeech();
       if (audioContextRef.current?.state !== "closed") {
         try {
@@ -421,7 +570,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     };
-  }, [cleanupSource]);
+  }, [cleanupSource, stopTimer]);
 
   return { state, effectiveEngineId, startSection, pause, resume, close };
 }

@@ -42,57 +42,68 @@ export function computeTtsContentHash(text: string): string {
 }
 
 /**
- * Split text into chunks under maxChars, preferring paragraph breaks (\n\n or \n).
- * If a single paragraph exceeds maxChars, split at the nearest word boundary within the limit.
- * Never truncates mid-word.
+ * Split text into chunks under maxChars, packing paragraphs together where
+ * possible. Paragraphs are separated by preserved \n inside a chunk when they
+ * fit; if a single paragraph exceeds maxChars, split at the nearest word
+ * boundary. Never truncates mid-word.
  */
 export function chunkText(text: string, maxChars: number): string[] {
   if (maxChars <= 0) throw new Error("maxChars must be positive");
   if (text.length <= maxChars) return [text];
 
-  // Split by paragraph boundary — prefer \n\n then \n
-  const paragraphs: string[] = [];
-  let current = "";
-
-  const lines = text.split(/(\n\n|\n)/);
-  for (const part of lines) {
-    if (part === "\n\n" || part === "\n") {
-      // Separator — flush current paragraph
-      if (current) {
-        paragraphs.push(current);
-        current = "";
-      }
-      continue;
-    }
-    current += part;
-  }
-  if (current) paragraphs.push(current);
+  const paragraphs = text
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   const chunks: string[] = [];
+  let current = "";
+
   for (const para of paragraphs) {
-    if (para.length <= maxChars) {
-      chunks.push(para);
+    if (!current) {
+      current = para;
+      continue;
+    }
+    if (current.length + 1 + para.length <= maxChars) {
+      current += "\n" + para;
     } else {
-      // Split long paragraph at word boundary
-      const words = para.split(/(\s+)/);
-      let chunk = "";
-      for (const word of words) {
-        if (word.trim() === "") {
-          chunk += word;
-          continue;
-        }
-        if ((chunk + word).length > maxChars) {
-          if (chunk) chunks.push(chunk.trim());
-          chunk = word;
-        } else {
-          chunk += word;
-        }
-      }
-      if (chunk.trim()) chunks.push(chunk.trim());
+      chunks.push(current);
+      current = para;
     }
   }
+  if (current) chunks.push(current);
 
-  return chunks;
+  // Split any over-long paragraph at a word boundary.
+  const result: string[] = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= maxChars) {
+      result.push(chunk);
+    } else {
+      result.push(...splitAtWordBoundary(chunk, maxChars));
+    }
+  }
+  return result;
+}
+
+function splitAtWordBoundary(text: string, maxChars: number): string[] {
+  const words = text.split(/(\s+)/);
+  const result: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    if (word.trim() === "") {
+      current += word;
+      continue;
+    }
+    if ((current + word).length > maxChars) {
+      if (current.trim()) result.push(current.trim());
+      current = word;
+    } else {
+      current += word;
+    }
+  }
+  if (current.trim()) result.push(current.trim());
+  return result;
 }
 
 /**
@@ -159,7 +170,9 @@ export async function generateTtsAudio(
   if (!book) throw new Error("Book not found");
 
   // 2. Extract section text
-  const sourceText = await extractSectionText(book.epubPath, sectionHref);
+  const sourceText = await extractSectionText(book.epubPath, sectionHref, {
+    forTts: true,
+  });
   if (!sourceText.trim()) throw new Error("Section text is empty");
 
   // 3. Compute content hash

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 
-// ponytail: SSR mocks — radix Select/Tooltip use portals that don't render
+// ponytail: SSR mocks — radix Select/Tooltip/Dialog use portals that don't render
 // during renderToStaticMarkup. Pass children through so we can assert labels.
 vi.mock("@/components/ui/select", () => ({
   Select: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -23,6 +23,15 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: ReactNode }) => (
     <span data-tooltip>{children}</span>
   ),
+}));
+
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DialogContent: ({ children }: { children: ReactNode }) => (
+    <div data-dialog-content>{children}</div>
+  ),
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 import { TtsPlayer } from "../tts-player";
@@ -80,6 +89,44 @@ function mkPlayer(overrides: Partial<Parameters<typeof TtsPlayer>[0]> = {}) {
   );
 }
 
+describe("TtsPlayer: floating card", () => {
+  it("renders as a rounded floating card anchored in the book area", () => {
+    const html = render(mkPlayer());
+    expect(html).toContain("max-w-[320px]");
+    expect(html).toContain("rounded-xl");
+    expect(html).toContain("shadow-card");
+  });
+
+  it("hides the card when IDLE", () => {
+    const html = render(mkPlayer({ state: idleState }));
+    expect(html).toContain("opacity-0");
+    expect(html).toContain("translate-y-4");
+    expect(html).toContain("pointer-events-none");
+  });
+});
+
+describe("TtsPlayer: playback controls", () => {
+  it("still renders play/pause, close, and settings buttons", () => {
+    const html = render(mkPlayer());
+    expect(html).toContain('aria-label="Pause"');
+    expect(html).toContain('aria-label="Close audio player"');
+    expect(html).toContain('aria-label="Audio settings"');
+  });
+
+  it("shows the section title and optional book metadata", () => {
+    const html = render(
+      mkPlayer({
+        state: { ...playingState, sectionTitle: "Chapter 5" },
+        bookTitle: "Measure What Matters",
+        bookAuthor: "John Doerr",
+      }),
+    );
+    expect(html).toContain("Chapter 5");
+    expect(html).toContain("Measure What Matters");
+    expect(html).toContain("John Doerr");
+  });
+});
+
 describe("TtsPlayer: engine switcher", () => {
   it("renders all three engine options with the spec labels", () => {
     const html = render(mkPlayer());
@@ -98,10 +145,9 @@ describe("TtsPlayer: engine switcher", () => {
   it('disables "Premium" for regular users and shows the upgrade tooltip', () => {
     const html = render(mkPlayer({ userRole: "regular" }));
     const cloudRadio = html.match(
-      /<button[^>]*value="cloud"[^>]*>/,
+      /<button[^\u003e]*value="cloud"[^\u003e]*>/,
     )?.[0];
     expect(cloudRadio, "cloud radio should be present").toBeTruthy();
-    // ponytail: assert the boolean attribute, not the "disabled:" tailwind class.
     expect(cloudRadio!).toContain('disabled=""');
     expect(html).toContain("Upgrade to Pro");
   });
@@ -109,16 +155,15 @@ describe("TtsPlayer: engine switcher", () => {
   it("does not disable Premium or show the upgrade tooltip for pro users", () => {
     const html = render(mkPlayer({ userRole: "pro" }));
     expect(html).not.toContain("Upgrade to Pro");
-    const cloudRadio = html.match(/<button[^>]*value="cloud"[^>]*>/)?.[0];
+    const cloudRadio = html.match(/<button[^\u003e]*value="cloud"[^\u003e]*>/)?.[0];
     expect(cloudRadio).toBeTruthy();
     expect(cloudRadio!).not.toContain('disabled=""');
   });
 
   it("disables Kokoro for a language it doesn't support (de) with a tooltip", () => {
     const html = render(mkPlayer({ bookLanguage: "de" }));
-    // German is in SUPERTONIC but not KOKORO → Kokoro radio disabled.
     const kokoroRadio = html.match(
-      /<button[^>]*value="kokoro"[^>]*>/,
+      /<button[^\u003e]*value="kokoro"[^\u003e]*>/,
     )?.[0];
     expect(kokoroRadio).toBeTruthy();
     expect(kokoroRadio!).toContain('disabled=""');
@@ -128,7 +173,7 @@ describe("TtsPlayer: engine switcher", () => {
   it("keeps Supertonic enabled for a supertonic-only language (de)", () => {
     const html = render(mkPlayer({ bookLanguage: "de" }));
     const supertonicRadio = html.match(
-      /<button[^>]*value="supertonic"[^>]*>/,
+      /<button[^\u003e]*value="supertonic"[^\u003e]*>/,
     )?.[0];
     expect(supertonicRadio).toBeTruthy();
     expect(supertonicRadio!).not.toContain('disabled=""');
@@ -160,8 +205,6 @@ describe("TtsPlayer: voice picker", () => {
   });
 
   it("renders the Default voice placeholder for the cloud engine", () => {
-    // cloud voices are picked server-side per tier — UI shows a single
-    // "Default voice" entry instead of the no-voices placeholder.
     const html = render(
       mkPlayer({ enginePref: "cloud", userRole: "pro" }),
     );
@@ -177,7 +220,6 @@ describe("TtsPlayer: model-load progress", () => {
     expect(html).toContain("Loading voice model");
     expect(html).toContain("43%");
     expect(html).toContain("progressbar");
-    // width is set inline from loadPct.
     expect(html).toContain("width:42.7%");
   });
 
@@ -187,15 +229,29 @@ describe("TtsPlayer: model-load progress", () => {
   });
 });
 
-describe("TtsPlayer: existing controls intact", () => {
-  it("still renders play/pause and close buttons", () => {
+describe("TtsPlayer: scrubber + time readout", () => {
+  it("shows the time readout when duration is known", () => {
+    // playingState has currentTime 30, duration 120 → 0:30 / 2:00.
     const html = render(mkPlayer());
-    expect(html).toContain('aria-label="Pause"');
-    expect(html).toContain('aria-label="Close audio player"');
+    expect(html).toContain("0:30 / 2:00");
   });
 
-  it("hides the whole bar when IDLE", () => {
-    const html = render(mkPlayer({ state: idleState }));
-    expect(html).toContain("translate-y-full");
+  it("hides the time readout when duration is 0 (speechSynthesis fallback)", () => {
+    const html = render(
+      mkPlayer({ state: { ...idleState, state: "READY", duration: 0 } }),
+    );
+    expect(html).not.toMatch(/0:00 \//);
+  });
+
+  it("disables the scrubber when canScrub is false (free engines)", () => {
+    const html = render(mkPlayer());
+    const slider = html.match(/<span[^>]*data-slot="slider"[^>]*>/)?.[0] ?? "";
+    expect(slider).toContain('aria-disabled="true"');
+  });
+
+  it("enables the scrubber when canScrub is true and duration is known", () => {
+    const html = render(mkPlayer({ canScrub: true }));
+    const slider = html.match(/<span[^>]*data-slot="slider"[^>]*>/)?.[0] ?? "";
+    expect(slider).not.toContain('aria-disabled="true"');
   });
 });
