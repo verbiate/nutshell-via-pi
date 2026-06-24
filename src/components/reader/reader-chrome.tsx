@@ -29,9 +29,11 @@ export function ReaderChrome({
         // viewport edge; pointer-events-none on the header keeps the rail below clickable.
         // ponytail: pr-0 when open neutralizes the px-12 right padding so the right group
         // sits flush at the header's right edge (already 48px from the sidebar) — matches
-        // Bookshelf's 48px from the viewport-left wall. padding-right transitions alongside
-        // right so the group slides smoothly instead of snapping.
-        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right,padding-right] duration-[var(--reader-dur)] ease-reader transition-opacity",
+        // Bookshelf's 48px from the viewport-left wall. All three animatable properties share
+        // one transition declaration: two transition-* classes would both set transition-property
+        // and the cascade silently kills one — that made right/pr snap on close while the
+        // collapsing Hide-controls button overshot its target width.
+        "absolute top-12 left-0 right-0 z-50 flex h-12 items-center justify-between px-12 pointer-events-none transition-[right,padding-right,opacity] duration-[var(--reader-dur)] ease-reader",
         sidebarOpen
           ? "sm:right-[calc(var(--reader-rail-w)+var(--reader-sidebar-w)+48px)] sm:pr-0"
           : "",

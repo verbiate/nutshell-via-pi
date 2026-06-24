@@ -70,7 +70,6 @@ const loadingState: TtsPlaybackState = {
 const baseProps = {
   onPlayPause: () => {},
   onScrub: () => {},
-  onClose: () => {},
   onEngineChange: (_: EngineId) => {},
   onVoiceChange: (_: string) => {},
 };
@@ -97,19 +96,24 @@ describe("TtsPlayer: floating card", () => {
     expect(html).toContain("shadow-card");
   });
 
-  it("hides the card when IDLE", () => {
+  it("is always visible, even in IDLE (persistent fixture)", () => {
+    // ponytail: player is a permanent corner fixture — no opacity-0 / translate-y-4
+    // hiding. The minimize toggle collapses to a mini form instead of unmounting.
+    // (Don't assert on pointer-events-none: radix Slider emits disabled:pointer-events-none
+    // as a substring inside the player, unrelated to root visibility.)
     const html = render(mkPlayer({ state: idleState }));
-    expect(html).toContain("opacity-0");
-    expect(html).toContain("translate-y-4");
-    expect(html).toContain("pointer-events-none");
+    expect(html).not.toContain("opacity-0");
+    expect(html).not.toContain("translate-y-4");
+    expect(html).toContain('role="region"');
+    expect(html).toContain('aria-label="Audio player"');
   });
 });
 
 describe("TtsPlayer: playback controls", () => {
-  it("still renders play/pause, close, and settings buttons", () => {
+  it("still renders play/pause, minimize, and settings buttons", () => {
     const html = render(mkPlayer());
     expect(html).toContain('aria-label="Pause"');
-    expect(html).toContain('aria-label="Close audio player"');
+    expect(html).toContain('aria-label="Minimize audio player"');
     expect(html).toContain('aria-label="Audio settings"');
   });
 

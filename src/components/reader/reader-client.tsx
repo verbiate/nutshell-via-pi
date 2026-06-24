@@ -928,12 +928,6 @@ export function ReaderClient({
   const cloudState = cloudTts.state.state;
   const browserPhase = browserTts.state.phase;
 
-  // ponytail: keep the player bar visible once activated until the user
-  // explicitly closes it. Without this, switching to an engine whose state
-  // is IDLE (e.g. cloud before first play) hides the bar — and the engine
-  // switcher inside it — leaving the user stuck.
-  const [ttsBarVisible, setTtsBarVisible] = useState(false);
-
   // ponytail: resolved once from currentHref (which now tracks every page turn
   // via onSectionChange) so the "now reading" label is the real section title,
   // never the stale "Reading" fallback.
@@ -942,7 +936,6 @@ export function ReaderClient({
   // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
   // point. Dispatches on isCloud so either engine can be started from here.
   const handleListenFromHere = useCallback(() => {
-    setTtsBarVisible(true);
     if (isCloud) {
       const cs = cloudTts.state.state;
       if (cs === "IDLE" || cs === "ENDED") {
@@ -964,7 +957,7 @@ export function ReaderClient({
     }
   }, [browserTts, cloudTts, isCloud, currentHref, listenSectionTitle]);
 
-  const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
+const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
     if (isCloud) return cloudTts.state;
     const phase = browserTts.state.phase;
     return {
@@ -1002,15 +995,6 @@ export function ReaderClient({
     }
   }, [browserTts, cloudTts, isCloud]);
 
-  const handleTtsClose = useCallback(() => {
-    setTtsBarVisible(false);
-    if (isCloud) {
-      cloudTts.close();
-      return;
-    }
-    browserTts.close();
-  }, [browserTts, cloudTts, isCloud]);
-
   // ponytail: active quota for the player badge — null when not on cloud.
   const activeQuota: CloudQuota | null = isCloud ? cloudTts.quota : null;
 
@@ -1020,7 +1004,6 @@ export function ReaderClient({
     if (isCloud) cloudTts.close();
     else browserTts.close();
     setEnginePref(next);
-    setTtsBarVisible(true);
   }, [isCloud, browserTts, cloudTts]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
@@ -1215,7 +1198,6 @@ export function ReaderClient({
               // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
               if (isCloud) cloudTts.scrub(t);
             }}
-            onClose={handleTtsClose}
             bookLanguage={ttsLang}
             enginePref={enginePref}
             effectiveEngineId={browserTts.effectiveEngineId}
@@ -1224,7 +1206,6 @@ export function ReaderClient({
             onVoiceChange={setVoicePref}
             userRole={userRole}
             quota={activeQuota}
-            forceVisible={ttsBarVisible}
             bookTitle={bookTitle}
             bookAuthor={bookAuthor}
             canScrub={isCloud}

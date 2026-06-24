@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Play, Pause, Loader2, X, Settings } from "lucide-react";
+import { Play, Pause, Loader2, Minimize2, Maximize2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -47,7 +47,6 @@ export interface TtsPlayerProps {
   loadPct?: number;
   onPlayPause: () => void;
   onScrub: (time: number) => void;
-  onClose: () => void;
   bookLanguage: string;
   enginePref: EngineId;
   /**
@@ -62,8 +61,6 @@ export interface TtsPlayerProps {
   userRole: UserRole;
   /** Cloud-only quota snapshot; rendered as a small badge next to the engines. */
   quota?: CloudQuota | null;
-  /** Keep the bar visible even when state is IDLE (e.g. after engine switch). */
-  forceVisible?: boolean;
   /** Optional book metadata shown below the section title. */
   bookTitle?: string;
   bookAuthor?: string | null;
@@ -93,7 +90,6 @@ export function TtsPlayer({
   loadPct = 0,
   onPlayPause,
   onScrub,
-  onClose,
   bookLanguage,
   enginePref,
   effectiveEngineId,
@@ -102,13 +98,15 @@ export function TtsPlayer({
   onVoiceChange,
   userRole,
   quota = null,
-  forceVisible = false,
   bookTitle,
   bookAuthor,
   canScrub = false,
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const visible = forceVisible || state.state !== "IDLE";
+  // ponytail: player is a permanent fixture in the bottom-left corner. The
+  // minimize toggle collapses to a mini form (play + expand) instead of
+  // unmounting — preserves state, avoids re-show affordances.
+  const [collapsed, setCollapsed] = useState(false);
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
@@ -146,15 +144,16 @@ export function TtsPlayer({
 
   return (
     <div
-      className={cn(
-        "absolute bottom-4 left-4 z-50 w-[calc(100%-2rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
-        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none",
-      )}
+      // ponytail: 48px corner padding matches the reader-chrome Bookshelf button
+      // (header top-12 + px-12). EPUB wrapper's left edge is pinned to viewport-
+      // left even when the sidebar opens, so this anchor stays aligned with
+      // Bookshelf regardless of sidebar state.
+      className="absolute bottom-12 left-12 z-50 w-[calc(100%-6rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300"
       role="region"
       aria-label="Audio player"
-      aria-hidden={!visible}
     >
       {/* Scrubber or model-load progress */}
+      {!collapsed && (
       <div className="mb-3 flex items-center gap-3">
         {isLoading ? (
           <>
@@ -196,6 +195,7 @@ export function TtsPlayer({
           </>
         )}
       </div>
+      )}
 
       {/* Controls row */}
       <div className="flex items-center gap-3">
@@ -215,6 +215,7 @@ export function TtsPlayer({
           )}
         </Button>
 
+        {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <span className="truncate text-sm font-medium text-foreground">
             {isGenerating ? "Generating audio..." : state.sectionTitle}
@@ -227,7 +228,9 @@ export function TtsPlayer({
             </span>
           )}
         </div>
+        )}
 
+        {!collapsed && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -237,15 +240,16 @@ export function TtsPlayer({
         >
           <Settings className="h-4 w-4" />
         </Button>
+        )}
 
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={onClose}
-          aria-label="Close audio player"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand audio player" : "Minimize audio player"}
           className="shrink-0 active:scale-[0.96] transition-transform"
         >
-          <X className="h-4 w-4" />
+          {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
         </Button>
       </div>
 
