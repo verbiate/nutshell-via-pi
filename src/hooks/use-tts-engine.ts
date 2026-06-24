@@ -531,13 +531,16 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     if (engineRef.current && isBrowserEngine(engineRef.current)) {
       pauseBrowserSpeech();
     } else {
-      cleanupSource();
+      // ponytail: DON'T stop the source — AudioBufferSourceNode is one-shot, so
+      // stopping it would force a restart-from-zero on resume ("starts over").
+      // Suspending the context freezes the in-flight buffer at its exact
+      // position; resume() continues it sample-accurately. Keep sourceNodeRef
+      // and chunkStartedAtRef intact for the timer to pick back up.
       stopTimer();
-      chunkStartedAtRef.current = null;
       audioContextRef.current?.suspend();
     }
     setState((s) => ({ ...s, phase: "PAUSED" }));
-  }, [cleanupSource, stopTimer, state.phase]);
+  }, [stopTimer, state.phase]);
 
   const resume = useCallback(() => {
     if (state.phase !== "PAUSED") return;
@@ -547,13 +550,23 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // in place; no need to re-fire it through playChunk.
       resumeBrowserSpeech();
       setState((s) => ({ ...s, phase: "PLAYING" }));
+    } else if (sourceNodeRef.current) {
+      // ponytail: the frozen source is still alive — resume the context within
+      // the click gesture and it continues exactly where it paused.
+      audioContextRef.current?.resume();
+      startTimer();
+      setState((s) => ({ ...s, phase: "PLAYING" }));
     } else {
+      // ponytail: paused during a between-chunk gap (next chunk never started).
+      // Nothing is frozen to continue, so replay the current chunk from its
+      // start — nothing audible is lost.
+      audioContextRef.current?.resume();
       setState((s) => ({ ...s, phase: "LOADING" }));
       void getEngine(engineIdRef.current).then((engine) =>
         playChunk(engine, currentIndexRef.current),
       );
     }
-  }, [playChunk, state.phase]);
+  }, [playChunk, startTimer, state.phase]);
 
   // Cleanup on unmount
   useEffect(() => {

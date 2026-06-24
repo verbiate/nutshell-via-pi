@@ -446,8 +446,8 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
-    // ponytail: resume replays chunk one from the cached buffer — no new
-    // synthesis call should have been made.
+    // ponytail: resume continues the frozen source — no new synthesis and no
+    // replay-from-zero (the source was suspended, not destroyed).
     expect(mockEngine.synthesize).toHaveBeenCalledTimes(2);
 
     unmount();
