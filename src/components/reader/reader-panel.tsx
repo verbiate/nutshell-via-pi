@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -126,7 +126,6 @@ export interface ReaderPanelProps {
   currentHref: string;
   onNavigate: (href: string) => void;
   initialLanguage: string;
-  onListenFromHere: () => void;
   onAskAboutSection?: (href: string, label: string) => void;
   onAskAboutBook?: () => void;
   isAdmin?: boolean;
@@ -150,7 +149,6 @@ export function ReaderPanel({
   currentHref,
   onNavigate,
   initialLanguage,
-  onListenFromHere,
   onAskAboutSection,
   onAskAboutBook,
   isAdmin,
@@ -258,13 +256,6 @@ export function ReaderPanel({
 
       {/* Action row */}
       <div className="flex flex-col gap-3 px-12">
-        <Button
-          className="w-full gap-2 bg-chocolate text-white hover:bg-chocolate/90"
-          onClick={onListenFromHere}
-        >
-          <Play className="text-blue" />
-          Listen from here
-        </Button>
         <Button
           variant="outline"
           className="w-full gap-2"

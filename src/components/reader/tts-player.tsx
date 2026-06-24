@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Play, Pause, Loader2, Minimize2, Maximize2, Settings, X } from "lucide-react";
+import { Loader2, Minimize2, Maximize2, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -90,6 +90,24 @@ function voiceLabel(v: TtsVoice): string {
   // ponytail: Kokoro English voices carry region (US/GB) → "Bella (US)".
   // Supertonic + non-en Kokoro have none → plain label. One rule covers both.
   return v.region ? `${v.label} (${v.region})` : v.label;
+}
+
+// ponytail: solid play/pause as inline SVG (heroicons paths) — avoids pulling a
+// second icon lib for two glyphs. Decorative: button has its own aria-label.
+function PlaySolid({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653Z" />
+    </svg>
+  );
+}
+
+function PauseSolid({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M6.75 5.25a.75.75 0 0 1 .75.75v12a.75.75 0 0 1-.75.75H5.25a.75.75 0 0 1-.75-.75V6a.75.75 0 0 1 .75-.75h1.5Zm9 0a.75.75 0 0 1 .75.75v12a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75V6a.75.75 0 0 1 .75-.75h1.5Z" />
+    </svg>
+  );
 }
 
 export function TtsPlayer({
@@ -217,18 +235,17 @@ export function TtsPlayer({
       {/* Controls row */}
       <div className="flex items-center gap-3">
         <Button
-          variant="outline"
           size="icon"
           onClick={onPlayPause}
           aria-label={isIdle ? "Read aloud" : isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Resume"}
-          className="h-10 w-10 shrink-0 rounded-full active:scale-[0.96] transition-transform"
+          className="h-10 w-10 shrink-0 rounded-full bg-chocolate text-white hover:bg-chocolate/90 active:scale-[0.96] transition-transform"
         >
           {isLoading || isGenerating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin text-blue" />
           ) : isPlaying ? (
-            <Pause className="h-4 w-4" />
+            <PauseSolid className="h-4 w-4 text-blue" />
           ) : (
-            <Play className="h-4 w-4" />
+            <PlaySolid className="h-4 w-4 text-blue" />
           )}
         </Button>
 

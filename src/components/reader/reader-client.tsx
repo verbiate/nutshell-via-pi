@@ -1329,7 +1329,6 @@ export function ReaderClient({
                 currentHref={currentHref}
                 onNavigate={handleTocNavigate}
                 initialLanguage={initialLanguage}
-                onListenFromHere={handleListenFromHere}
                 isAdmin={isAdmin}
                 bookCreatedAt={bookCreatedAt}
                 coverHidden={forwardFlyActive}
