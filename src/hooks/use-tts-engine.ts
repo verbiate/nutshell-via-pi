@@ -8,6 +8,14 @@ import { getEngine } from "@/lib/tts/engines";
 import { getSpeechSynthesis } from "@/lib/tts/engines/browser-speech-engine";
 import type { EngineId } from "@/lib/tts/languages";
 import type { TtsEngine, TtsSynthesisResult } from "@/lib/tts/types";
+import {
+  FALLBACK_WPM,
+  countWords,
+  deriveWpm,
+  estimateSeconds,
+  getCachedWpm,
+  setCachedWpm,
+} from "@/lib/tts/estimate";
 
 // ponytail: once Kokoro fails in this session (phonemizer broken, no WebGPU,
 // etc.), skip it on all subsequent attempts. Survives component remounts so
@@ -140,6 +148,15 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const elapsedBeforeRef = useRef(0);
   const chunkStartedAtRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ponytail: section-duration estimate bookkeeping. The synthesized-buffer
+  // path only learns each chunk's true length as it resolves, so we seed the
+  // displayed total from a per-voice WPM estimate and refine it proportionally
+  // as real chunks land (converging to the exact total by the last chunk).
+  // chunkWordCountsRef parallels durationsRef; totalWordsRef is the full
+  // section word count; seedRef holds the pre-resolution fallback estimate.
+  const chunkWordCountsRef = useRef<number[]>([]);
+  const totalWordsRef = useRef(0);
+  const seedRef = useRef(0);
 
   useEffect(() => {
     engineIdRef.current = engineId;
@@ -156,8 +173,25 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     setEffectiveEngineId(engineId);
   }
 
-  const sumKnownDurations = useCallback(() => {
-    return durationsRef.current.reduce((acc, d) => acc + (d || 0), 0);
+  // ponytail: proportional section-duration estimate. Sums the durations +
+  // word counts of every resolved chunk, then scales known-duration up by the
+  // (totalWords / knownWords) ratio → an actual-speed total that converges to
+  // exact as chunks resolve. Falls back to the WPM seed before any chunk lands.
+  const computeDuration = useCallback(() => {
+    const durs = durationsRef.current;
+    const words = chunkWordCountsRef.current;
+    let knownDur = 0;
+    let knownWords = 0;
+    for (let i = 0; i < durs.length; i++) {
+      const d = durs[i];
+      if (typeof d === "number" && d > 0) {
+        knownDur += d;
+        knownWords += words[i] ?? 0;
+      }
+    }
+    const total = totalWordsRef.current;
+    if (knownWords > 0 && total > 0) return knownDur * (total / knownWords);
+    return seedRef.current;
   }, []);
 
   const stopTimer = useCallback(() => {
@@ -184,9 +218,18 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const recordDuration = useCallback(
     (index: number, duration: number) => {
       durationsRef.current[index] = duration;
-      setState((s) => ({ ...s, duration: sumKnownDurations() }));
+      // ponytail: cache this voice's baseline (speed=1) WPM from the first
+      // resolved chunk so future sections seed accurately. Engines bake `speed`
+      // into the buffer, so normalize by the current speed to recover the 1x
+      // rate the seed formula expects.
+      const cw = chunkWordCountsRef.current[index] ?? 0;
+      if (cw > 0 && duration > 0 && speed > 0) {
+        const baseline = deriveWpm(cw, duration) / speed;
+        if (baseline > 0) setCachedWpm(engineIdRef.current, voiceId, baseline);
+      }
+      setState((s) => ({ ...s, duration: computeDuration() }));
     },
-    [sumKnownDurations],
+    [computeDuration, speed, voiceId],
   );
 
   const cleanupSource = useCallback(() => {
@@ -220,6 +263,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     chunksRef.current = [];
     currentIndexRef.current = 0;
     durationsRef.current = [];
+    chunkWordCountsRef.current = [];
+    totalWordsRef.current = 0;
+    seedRef.current = 0;
     elapsedBeforeRef.current = 0;
     chunkStartedAtRef.current = null;
     setState(emptyState);
@@ -455,6 +501,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       stopTimer();
       cancelBrowserSpeech();
       durationsRef.current = [];
+      chunkWordCountsRef.current = [];
+      totalWordsRef.current = 0;
+      seedRef.current = 0;
       elapsedBeforeRef.current = 0;
       chunkStartedAtRef.current = null;
 
@@ -510,6 +559,19 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         currentIndexRef.current = 0;
         console.log("[TTS] Chunked into", chunksRef.current.length, "pieces, starting playback");
 
+        // ponytail: seed the section-duration estimate from a per-voice WPM rate
+        // (cached from a prior section's first chunk, else a generic fallback).
+        // recordDuration refines this proportionally as real chunks resolve.
+        chunkWordCountsRef.current = chunksRef.current.map(countWords);
+        totalWordsRef.current = chunkWordCountsRef.current.reduce(
+          (acc, n) => acc + n,
+          0,
+        );
+        const cachedWpm =
+          getCachedWpm(engineIdRef.current, voiceId) ?? FALLBACK_WPM;
+        seedRef.current = estimateSeconds(totalWordsRef.current, cachedWpm, speed);
+        setState((s) => ({ ...s, duration: seedRef.current }));
+
         await playChunk(engine, 0);
       } catch (err) {
         if (!abortRef.current) {
@@ -522,7 +584,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [cleanupSource, onSectionComplete, playChunk, resolveEngine, stopTimer, viewerRef],
+    [cleanupSource, onSectionComplete, playChunk, resolveEngine, speed, stopTimer, viewerRef, voiceId],
   );
 
   const pause = useCallback(() => {

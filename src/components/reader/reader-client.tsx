@@ -39,6 +39,7 @@ import { useTtsCloud, type CloudQuota } from "@/hooks/use-tts-cloud";
 import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
 import { ENGINES } from "@/lib/tts/engines";
 import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
+import { countWords, estimateSeconds, FALLBACK_WPM } from "@/lib/tts/estimate";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
 import type { LibraryBook, UserRole } from "@/types/book";
 
@@ -879,6 +880,7 @@ export function ReaderClient({
     viewerRef,
     engineId: enginePref,
     voiceId: voicePref,
+    speed: bookSettings.voiceSpeed,
     onSectionComplete: () => {
       const next = getNextSection(browserTts.state.sectionHref);
       if (next) {
@@ -960,8 +962,33 @@ export function ReaderClient({
     }
   }, [browserTts, cloudTts, isCloud, currentHref, listenSectionTitle]);
 
-const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
-    if (isCloud) return cloudTts.state;
+  // ponytail: cloud generates the whole section server-side, so the true total
+  // only arrives on <audio> loadedmetadata. While GENERATING, seed a word-count
+  // estimate so the readout isn't blank. Computed in an effect (ref reads are
+  // allowed there) and fed to the memo below as plain state.
+  const [cloudGenEstimate, setCloudGenEstimate] = useState(0);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!isCloud || cloudTts.state.state !== "GENERATING") {
+      setCloudGenEstimate(0);
+      return;
+    }
+    const text = viewerRef.current?.getSectionText() ?? "";
+    const words = countWords(text);
+    setCloudGenEstimate(
+      words > 0 ? estimateSeconds(words, FALLBACK_WPM, bookSettings.voiceSpeed) : 0,
+    );
+  }, [isCloud, cloudTts.state.state, bookSettings.voiceSpeed, viewerRef]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
+    if (isCloud) {
+      const cs = cloudTts.state;
+      if (cs.state === "GENERATING" && cs.duration === 0 && cloudGenEstimate > 0) {
+        return { ...cs, duration: cloudGenEstimate };
+      }
+      return cs;
+    }
     const phase = browserTts.state.phase;
     return {
       state:
@@ -981,7 +1008,7 @@ const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
       currentTime: browserTts.state.currentTime,
       duration: browserTts.state.duration,
     };
-  }, [browserTts.state, cloudTts.state, isCloud]);
+  }, [browserTts.state, cloudTts.state, isCloud, bookSettings.voiceSpeed, cloudGenEstimate]);
 
   // ponytail: Stop = halt + reset to IDLE, but keep the card visible so the main
   // button reverts to "Start reading from here". Distinct from a full unmount.

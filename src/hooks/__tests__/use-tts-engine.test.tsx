@@ -26,6 +26,7 @@ vi.mock("sonner", () => ({
 
 import { getEngine } from "@/lib/tts/engines";
 import { chunkText } from "@/lib/tts/chunk";
+import { _resetWpmCache } from "@/lib/tts/estimate";
 import { toast } from "sonner";
 
 class FakeAudioBuffer implements AudioBuffer {
@@ -197,6 +198,9 @@ describe("useTtsEngine", () => {
     vi.mocked(getEngine).mockResolvedValue(mockEngine as any);
     vi.mocked(chunkText).mockReturnValue(["chunk one", "chunk two"]);
     FakeAudioContext.instances = [];
+    // ponytail: the per-voice WPM cache (session map + storage) leaks across
+    // tests; reset it so duration-seed behavior is deterministic.
+    _resetWpmCache();
     Object.defineProperty(globalThis, "AudioContext", {
       writable: true,
       configurable: true,

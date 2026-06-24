@@ -26,6 +26,26 @@ async function rawAudioToAudioBuffer(
   return buffer;
 }
 
+function withOrtNoiseSuppressed<T>(fn: () => Promise<T>): Promise<T> {
+  const noisy = /VerifyEachNodeIsAssignedToAnEp|Rerunning with verbose output/;
+  const origError: Console["error"] = console.error;
+  const origWarn: Console["warn"] = console.warn;
+  const suppress = (...args: unknown[]) =>
+    args.some((a) => typeof a === "string" && noisy.test(a));
+
+  console.error = (...args) => {
+    if (!suppress(...args)) origError(...args);
+  };
+  console.warn = (...args) => {
+    if (!suppress(...args)) origWarn(...args);
+  };
+
+  return Promise.resolve(fn()).finally(() => {
+    console.error = origError;
+    console.warn = origWarn;
+  });
+}
+
 export const kokoroEngine: TtsEngine = (() => {
   let ttsPromise: Promise<KokoroTtsInstance> | null = null;
 
@@ -37,22 +57,27 @@ export const kokoroEngine: TtsEngine = (() => {
         // env.logLevel. The default emits the benign "[W:onnxruntime:...]
         // VerifyEachNodeIsAssignedToAnEp" hints at error level during session
         // creation (shape ops on CPU is by design) — set to ERROR to suppress.
+        // Some ORT-web builds still leak the warning via console, so we also
+        // filter it for the duration of model load.
         const { env, LogLevel } = await import("@huggingface/transformers");
         env.logLevel = LogLevel.ERROR;
-        return KokoroTTS.from_pretrained(MODEL_ID, {
-          // ponytail: was "q8" — q8 + webgpu garbles the waveform. kokoro-js
-          // README: "If using webgpu, we recommend dtype=fp32." fp32 matches the
-          // "Highest Quality" label; costs a one-time ~320MB download on first load.
-          dtype: "fp32",
-          device: "webgpu",
-          progress_callback: onProgress
-            ? (progress: { status: string; file?: string; progress?: number }) => {
-                if (typeof progress.progress === "number") {
-                  onProgress(progress.progress);
+        return withOrtNoiseSuppressed(async () => {
+          const tts = await KokoroTTS.from_pretrained(MODEL_ID, {
+            // ponytail: was "q8" — q8 + webgpu garbles the waveform. kokoro-js
+            // README: "If using webgpu, we recommend dtype=fp32." fp32 matches the
+            // "Highest Quality" label; costs a one-time ~320MB download on first load.
+            dtype: "fp32",
+            device: "webgpu",
+            progress_callback: onProgress
+              ? (progress: { status: string; file?: string; progress?: number }) => {
+                  if (typeof progress.progress === "number") {
+                    onProgress(progress.progress);
+                  }
                 }
-              }
-            : undefined,
-        }) as Promise<KokoroTtsInstance>;
+              : undefined,
+          });
+          return tts as KokoroTtsInstance;
+        });
       })();
       ttsPromise.catch(() => {
         ttsPromise = null;
