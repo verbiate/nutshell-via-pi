@@ -164,10 +164,12 @@ export function ReaderClient({
   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
   const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState("");
-  // ponytail: auto-hide chrome (top bar + progress) when the sidebar is closed
-  // and the pointer is idle. pointermove covers mouse + touch + pen. Ceiling: a
-  // touch tap with no drag won't re-show (no pointermove fires); upgrade path is
-  // also listening for pointerdown. TtsPlayer and FloatingToolbar stay visible.
+  // ponytail: auto-hide reader chrome (top bar + progress + right rail + TTS
+  // card) when the sidebar is closed and the pointer is idle. pointermove covers
+  // mouse + touch + pen. Ceiling: a touch tap with no drag won't re-show (no
+  // pointermove fires); upgrade path is also listening for pointerdown. The TTS
+  // card opts out while actively playing/loading/generating. FloatingToolbar is
+  // selection-driven and stays out of this system.
   const [pointerActive, setPointerActive] = useState(true);
   const pointerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ponytail: pendingRequest communicates any "ask about" click (floating
@@ -1028,6 +1030,16 @@ export function ReaderClient({
     };
   }, [browserTts.state, cloudTts.state, isCloud, bookSettings.voiceSpeed, cloudGenEstimate]);
 
+  // ponytail: idle-fade predicate shared by chrome, progress, and the right
+  // rail. The TTS card opts out while audio work is in flight (PLAYING/LOADING/
+  // GENERATING) so now-playing UI + progress don't vanish mid-playback.
+  const chromeHidden = activeTool === null && !pointerActive;
+  const isActivelyPlaying =
+    ttsPlaybackState.state === "PLAYING" ||
+    ttsPlaybackState.state === "LOADING" ||
+    ttsPlaybackState.state === "GENERATING";
+  const ttsHidden = chromeHidden && !isActivelyPlaying;
+
   // ponytail: Stop = halt + reset to IDLE, but keep the card visible so the main
   // button reverts to "Start reading from here". Distinct from a full unmount.
   const handleTtsStop = useCallback(() => {
@@ -1230,7 +1242,7 @@ export function ReaderClient({
           {isLoaded && !error && (
             <ReadingProgress
               percentage={percentage}
-              hidden={activeTool === null && !pointerActive}
+              hidden={chromeHidden}
             />
           )}
           {playerVisible && (
@@ -1254,6 +1266,7 @@ export function ReaderClient({
             bookTitle={bookTitle}
             bookAuthor={bookAuthor}
             canScrub={isCloud}
+            hidden={ttsHidden}
           />
           )}
         </div>
@@ -1279,7 +1292,7 @@ export function ReaderClient({
         <ReaderChrome
           onBack={handleBack}
           sidebarOpen={activeTool !== null}
-          hidden={activeTool === null && !pointerActive}
+          hidden={chromeHidden}
           onHideControls={() => setActiveTool(null)}
           // ponytail: find-in-book hidden for now — restore by passing searchTrigger={<SearchPanel .../>}
         />
@@ -1295,6 +1308,7 @@ export function ReaderClient({
       {!error && (
         <ReaderSidebar
           activeTool={activeTool}
+          hidden={chromeHidden}
           onToolClick={(id) =>
             setActiveTool((prev) => (prev === id ? null : id))
           }

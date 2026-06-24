@@ -24,12 +24,15 @@ export interface ReaderSidebarProps {
   activeTool: ReaderTool["id"] | null;
   onToolClick: (id: ReaderTool["id"]) => void;
   panels: Record<ReaderTool["id"], ReactNode>;
+  /** Fade the rail out when the reader chrome is idle-hidden. */
+  hidden?: boolean;
 }
 
 export function ReaderSidebar({
   activeTool,
   onToolClick,
   panels,
+  hidden = false,
 }: ReaderSidebarProps) {
   const isOpen = activeTool !== null;
 
@@ -141,7 +144,11 @@ export function ReaderSidebar({
       <nav
         role="toolbar"
         aria-label="Reader tools"
-        className="absolute bottom-0 right-0 top-0 z-40 hidden w-[var(--reader-rail-w)] flex-col items-center justify-center gap-2 px-2 py-3 sm:flex"
+        aria-hidden={hidden}
+        className={cn(
+          "absolute bottom-0 right-0 top-0 z-40 hidden w-[var(--reader-rail-w)] flex-col items-center justify-center gap-2 px-2 py-3 transition-opacity duration-300 sm:flex",
+          hidden && "opacity-0 pointer-events-none",
+        )}
       >
         {READER_TOOLS.map((tool) => {
           const Icon = ICONS[tool.icon];

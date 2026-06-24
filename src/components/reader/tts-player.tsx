@@ -72,6 +72,11 @@ export interface TtsPlayerProps {
    * false.
    */
   canScrub?: boolean;
+  /**
+   * Fade the card out on reader pointer-idle. Caller carves out active
+   * playback (PLAYING/LOADING/GENERATING) so the card stays put mid-audio.
+   */
+  hidden?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -104,6 +109,7 @@ export function TtsPlayer({
   bookTitle,
   bookAuthor,
   canScrub = false,
+  hidden = false,
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // ponytail: player is a permanent fixture in the bottom-left corner. The
@@ -153,10 +159,15 @@ export function TtsPlayer({
       // ponytail: 48px corner padding matches the reader-chrome Bookshelf button
       // (header top-12 + px-12). EPUB wrapper's left edge is pinned to viewport-
       // left even when the sidebar opens, so this anchor stays aligned with
-      // Bookshelf regardless of sidebar state.
-      className="absolute bottom-12 left-12 z-50 w-[calc(100%-6rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300"
+      // Bookshelf regardless of sidebar state. transition-all covers opacity for
+      // the idle-fade (no separate transition-opacity needed).
+      className={cn(
+        "absolute bottom-12 left-12 z-50 w-[calc(100%-6rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
+        hidden && "opacity-0 pointer-events-none",
+      )}
       role="region"
       aria-label="Audio player"
+      aria-hidden={hidden}
     >
       {/* Scrubber or model-load progress */}
       {!collapsed && (

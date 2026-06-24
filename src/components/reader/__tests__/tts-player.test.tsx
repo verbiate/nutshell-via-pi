@@ -97,9 +97,11 @@ describe("TtsPlayer: floating card", () => {
     expect(html).toContain("shadow-card");
   });
 
-  it("is always visible, even in IDLE (persistent fixture)", () => {
-    // ponytail: player is a permanent corner fixture — no opacity-0 / translate-y-4
-    // hiding. The minimize toggle collapses to a mini form instead of unmounting.
+  it("renders fully visible by default (no hidden prop)", () => {
+    // ponytail: with no `hidden` prop the card is fully visible — no opacity-0 /
+    // translate-y-4 hiding. The minimize toggle collapses to a mini form instead
+    // of unmounting. Idle-fade is the caller's job (reader-client passes
+    // hidden={ttsHidden}); the default stays opaque.
     // (Don't assert on pointer-events-none: radix Slider emits disabled:pointer-events-none
     // as a substring inside the player, unrelated to root visibility.)
     const html = render(mkPlayer({ state: idleState }));
@@ -107,6 +109,12 @@ describe("TtsPlayer: floating card", () => {
     expect(html).not.toContain("translate-y-4");
     expect(html).toContain('role="region"');
     expect(html).toContain('aria-label="Audio player"');
+  });
+
+  it("fades out when hidden={true} is passed (idle-fade)", () => {
+    const html = render(mkPlayer({ state: idleState, hidden: true }));
+    expect(html).toContain("opacity-0");
+    expect(html).toContain('aria-hidden="true"');
   });
 });
 
