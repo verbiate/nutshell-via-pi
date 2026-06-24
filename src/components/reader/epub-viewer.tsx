@@ -7,10 +7,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
 import type { ParagraphMap } from "@/lib/reader/position-tracking";
 import { computeProgressPercent } from "@/lib/reader/progress";
+import {
+  pickTtsTargetIndex,
+  findChunkRange,
+  buildTextMap,
+  unwrapMarks,
+  wrapRangePerBlock,
+  positionBlock,
+  TTS_BLOCK_SELECTOR,
+} from "@/lib/reader/tts-highlight-match";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
 import { buildRenditionOptions } from "./rendition-options";
 import { highlightFill } from "./highlight-colors";
 import { htmlToTtsText } from "@/lib/tts/prepare-text";
+
+// ponytail: TTS follow-along only considers leaf text blocks. A block is a
+// "container" (dropped) when it owns a block descendant with text, so wrapper
+// <div>s don't swallow the highlight while heading/paragraph leaves stay live.
+function hasTextBlockDescendant(el: HTMLElement): boolean {
+  return Array.from(el.querySelectorAll<HTMLElement>(TTS_BLOCK_SELECTOR)).some(
+    (d) => (d.textContent ?? "").trim().length > 0,
+  );
+}
 
 export interface EpubViewerProps {
   url: string;
@@ -217,54 +235,74 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const doc = iframe?.contentDocument;
         if (!doc?.body || !text.trim()) return;
 
-        // ponytail: search for the first block element whose text contains
-        // the chunk's opening. Try progressively shorter needles so whitespace
-        // differences between textContent and the chunk don't cause misses.
-        const stripped = text.trim();
-        const needles = [stripped.slice(0, 60), stripped.slice(0, 30), stripped.slice(0, 15)];
-        const blocks = doc.querySelectorAll<HTMLElement>(
-          "p, div, h1, h2, h3, h4, h5, h6, li, blockquote",
-        );
-        let target: HTMLElement | null = null;
-        for (const needle of needles) {
-          if (!needle) continue;
-          for (const el of blocks) {
-            if (el.textContent?.includes(needle)) {
-              target = el;
-              break;
-            }
-          }
-          if (target) break;
+        // ponytail: leaf blocks, used only by the fallback path. A block is a
+        // "container" (dropped) when it owns a block descendant with text, so
+        // Calibre wrapper <div>s don't win the fallback while leaves stay live.
+        const blocks = Array.from(
+          doc.querySelectorAll<HTMLElement>(TTS_BLOCK_SELECTOR),
+        ).filter((el) => !hasTextBlockDescendant(el));
+
+        // ponytail: build ONE text map over the whole section body, then mark the
+        // chunk's full span across every block it covers. A ~400-char chunk
+        // regularly spans a heading + paragraph (or the tail of one paragraph and
+        // the head of the next); the old single-block mark left that leading
+        // portion spoken-but-unmarked — the "every other chunk" symptom.
+        // wrapRangePerBlock splits the span at block boundaries so no <mark>
+        // crosses a paragraph (which would flatten the paginated column layout).
+        const map = buildTextMap(doc, doc.body);
+        const range = findChunkRange(text, map.text);
+
+        let marksCreated = 0;
+        let startBlock: HTMLElement | null = null;
+        if (range) {
+          marksCreated = wrapRangePerBlock(doc, map, range.start, range.end);
+          const ob = positionBlock(map, range.start);
+          if (ob instanceof HTMLElement) startBlock = ob;
         }
-        if (!target) return;
 
-        // ponytail: in epub.js paginated mode (CSS columns), elements on the
-        // current page have getBoundingClientRect coordinates within the iframe
-        // viewport. If the target is off-screen, advance pages until visible.
-        const isVisible = (): boolean => {
-          const rect = target!.getBoundingClientRect();
-          const vw = iframe?.clientWidth ?? 0;
-          const vh = iframe?.clientHeight ?? 0;
-          return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
-        };
-
-        if (!isVisible()) {
-          const rendition = renditionRef.current;
-          if (rendition) {
-            for (let i = 0; i < 8 && !isVisible(); i++) {
-              rendition.next();
-              // ponytail: let the column layout settle before re-checking.
-              await new Promise((r) => setTimeout(r, 60));
-            }
+        // ponytail: fallback when the matcher misses entirely (htmlToTtsText
+        // period/entity drift defeats every probe needle): light the first
+        // overlapping leaf block at block-level so we never silently show nothing.
+        if (marksCreated === 0) {
+          const idx = pickTtsTargetIndex(
+            text,
+            blocks.map((b) => b.textContent ?? ""),
+          );
+          const target = blocks[idx] ?? null;
+          if (target) {
+            target.classList.add("tts-active");
+            if (!startBlock) startBlock = target;
           }
         }
 
-        target.classList.add("tts-active");
+        // ponytail: scroll the chunk's START block into view. In epub.js
+        // paginated mode the DOM persists across column shifts, so reading the
+        // start block's geometry around next() stays valid.
+        if (startBlock) {
+          const isVisible = (): boolean => {
+            const rect = startBlock!.getBoundingClientRect();
+            const vw = iframe?.clientWidth ?? 0;
+            const vh = iframe?.clientHeight ?? 0;
+            return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
+          };
+          if (!isVisible()) {
+            const rendition = renditionRef.current;
+            if (rendition) {
+              for (let i = 0; i < 8 && !isVisible(); i++) {
+                rendition.next();
+                // ponytail: let the column layout settle before re-checking.
+                await new Promise((r) => setTimeout(r, 60));
+              }
+            }
+          }
+        }
       },
       clearTtsHighlight: () => {
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
-        doc?.querySelectorAll(".tts-active").forEach((el) =>
+        if (!doc) return;
+        unwrapMarks(doc);
+        doc.querySelectorAll(".tts-active").forEach((el) =>
           el.classList.remove("tts-active"),
         );
       },
@@ -358,6 +396,31 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             for (const [prop, value] of Object.entries(READER_THEME_OVERRIDES)) {
               rendition.themes.override(prop, value, true);
             }
+
+            // ponytail: themes.register's type/runtime mismatch drops these
+            // rules, so inject the highlight CSS directly via the same
+            // addStylesheetCss path as the image blend below. Emits both the
+            // block-level fallback (.tts-active) and the per-chunk span (.tts-chunk).
+            const ttsHighlightCss = Object.entries(READER_THEMES)
+              .flatMap(([name, theme]) => {
+                const rules = theme.rules as unknown as Record<
+                  string,
+                  Record<string, string>
+                >;
+                return ([".tts-active", ".tts-chunk"] as const)
+                  .filter((sel) => rules[sel])
+                  .map((sel) => {
+                    const declarations = Object.entries(rules[sel])
+                      .map(([prop, value]) => `${prop}: ${value};`)
+                      .join(" ");
+                    return `.${name} ${sel} { ${declarations} }`;
+                  });
+              })
+              .join("\n");
+
+            rendition.hooks.content.register((contents: Contents) => {
+              contents.addStylesheetCss(ttsHighlightCss, "br-tts-highlight");
+            });
 
             // ponytail: cream/sepia paper bg makes white-background images
             // float as bright boxes. multiply lets them absorb the page tint.

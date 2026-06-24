@@ -1,67 +1,53 @@
-import { createMiddleware } from '@frontman-ai/nextjs';
-import { type NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const frontman = createMiddleware({
-  host: 'api.frontman.sh',
-});
-
-// Lightweight auth check — we only validate session cookie exists.
+// Lightweight auth check in the proxy — we only validate session cookie exists.
 // Full role checks happen in route handlers and server components.
 
-const PROTECTED_ROUTES = ['/my-library', '/book'];
-const ADMIN_ROUTES = ['/admin'];
-const AUTH_ROUTES = ['/login'];
+const PROTECTED_ROUTES = ["/my-library", "/book"];
+const ADMIN_ROUTES = ["/admin"];
+const AUTH_ROUTES = ["/login"];
 
-export async function proxy(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Frontman dev UI + tool calls (dev-only, not auth-gated).
-  if (pathname === '/frontman' || pathname.startsWith('/frontman/')) {
-    const response = await frontman(request);
-    if (response) return response;
-    return NextResponse.next();
-  }
-
+  // Check if route requires authentication
   const isProtectedRoute = PROTECTED_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + '/')
+    (route) => pathname === route || pathname.startsWith(route + "/")
   );
   const isAdminRoute = ADMIN_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + '/')
+    (route) => pathname === route || pathname.startsWith(route + "/")
   );
   const isAuthRoute = AUTH_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + '/')
+    (route) => pathname === route || pathname.startsWith(route + "/")
   );
 
-  const sessionCookie = request.cookies.get('better-auth.session_token');
+  // Read session cookie
+  const sessionCookie = request.cookies.get("better-auth.session_token");
 
   if ((isProtectedRoute || isAdminRoute) && !sessionCookie) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  // Authenticated users on auth routes redirect to library
   if (isAuthRoute && sessionCookie) {
-    return NextResponse.redirect(new URL('/my-library', request.url));
+    return NextResponse.redirect(new URL("/my-library", request.url));
   }
 
-  if (pathname === '/' && sessionCookie) {
-    return NextResponse.redirect(new URL('/my-library', request.url));
+  // Authenticated users on the root landing page go straight to their home
+  if (pathname === "/" && sessionCookie) {
+    return NextResponse.redirect(new URL("/my-library", request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  runtime: 'nodejs',
   matcher: [
-    // Auth-gated routes (was src/middleware.ts)
-    '/',
-    '/my-library/:path*',
-    '/book/:path*',
-    '/admin/:path*',
-    '/login',
-    // Frontman dev UI
-    '/frontman',
-    '/frontman/:path*',
-    '/:path*/frontman',
-    '/:path*/frontman/',
+    "/",
+    "/my-library/:path*",
+    "/book/:path*",
+    "/admin/:path*",
+    "/login",
   ],
 };

@@ -51,9 +51,6 @@
   },
   "devDependencies": {
     "@better-auth/cli": "1.4.21",
-    "@frontman-ai/nextjs": "^1.0.1",
-    "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/sdk-node": "^0.52.1",
     "@playwright/test": "1.59.1",
     "@tailwindcss/postcss": "4.2.4",
     "@types/eslint": "9",

@@ -67,10 +67,12 @@ describe("chunkText", () => {
   });
 
   it("uses CHUNK_LIMITS constants", () => {
-    expect(CHUNK_LIMITS.kokoro.softLimit).toBe(400);
-    expect(CHUNK_LIMITS.kokoro.hardLimit).toBe(500);
-    expect(CHUNK_LIMITS.supertonic.softLimit).toBe(400);
-    expect(CHUNK_LIMITS.supertonic.hardLimit).toBe(500);
+    expect(CHUNK_LIMITS.kokoro.softLimit).toBe(180);
+    expect(CHUNK_LIMITS.kokoro.hardLimit).toBe(260);
+    expect(CHUNK_LIMITS.supertonic.softLimit).toBe(180);
+    expect(CHUNK_LIMITS.supertonic.hardLimit).toBe(260);
+    expect(CHUNK_LIMITS.browser.softLimit).toBe(180);
+    expect(CHUNK_LIMITS.browser.hardLimit).toBe(260);
     expect(CHUNK_LIMITS.cloud.softLimit).toBe(4500);
     expect(CHUNK_LIMITS.cloud.hardLimit).toBe(5000);
   });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ interface TocEntryProps {
   level?: number;
   currentHref?: string;
   onAskAboutSection?: (href: string, label: string) => void;
+  onPlaySection?: (href: string, label: string) => void;
 }
 
 function TocEntry({
@@ -34,12 +35,13 @@ function TocEntry({
   level = 0,
   currentHref,
   onAskAboutSection,
+  onPlaySection,
 }: TocEntryProps) {
   const isActive = currentHref ? item.href === currentHref : false;
 
   return (
     <div>
-      <div className="group relative flex items-center pr-12">
+      <div className="group relative flex items-center gap-1 pr-14">
         {/*
           ponytail: active top-level rows get a left accent bar (the mockup's
           chapter indicator). Subitems keep their existing indent border instead
@@ -66,6 +68,15 @@ function TocEntry({
         >
           {item.label}
         </button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-6 w-6 opacity-100 transition-opacity shrink-0 hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+          aria-label={`Play ${item.label}`}
+          onClick={() => onPlaySection?.(item.href, item.label)}
+        >
+          <Play className="h-4 w-4" />
+        </Button>
         {/*
           ponytail: hover-revealed overflow menu. "Ask about this" opens the
           section explainer as a thread in the sidebar's bulb tool — same UI as
@@ -103,6 +114,7 @@ function TocEntry({
               level={level + 1}
               currentHref={currentHref}
               onAskAboutSection={onAskAboutSection}
+              onPlaySection={onPlaySection}
             />
           ))}
         </div>
@@ -127,6 +139,7 @@ export interface ReaderPanelProps {
   onNavigate: (href: string) => void;
   initialLanguage: string;
   onAskAboutSection?: (href: string, label: string) => void;
+  onPlaySection?: (href: string, label: string) => void;
   onAskAboutBook?: () => void;
   isAdmin?: boolean;
   bookCreatedAt?: string;
@@ -150,6 +163,7 @@ export function ReaderPanel({
   onNavigate,
   initialLanguage,
   onAskAboutSection,
+  onPlaySection,
   onAskAboutBook,
   isAdmin,
   bookCreatedAt,
@@ -296,6 +310,7 @@ export function ReaderPanel({
                 level={0}
                 currentHref={currentHref}
                 onAskAboutSection={onAskAboutSection}
+                onPlaySection={onPlaySection}
               />
             ))}
           </div>

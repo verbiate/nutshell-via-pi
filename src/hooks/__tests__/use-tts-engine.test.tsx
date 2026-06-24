@@ -143,15 +143,8 @@ function createMockEngine() {
   };
 }
 
-function createViewerRef(text: string) {
-  return {
-    current: {
-      navigateTo: vi.fn(() => Promise.resolve()),
-      getSectionText: vi.fn(() => text),
-      highlightChunk: vi.fn(() => Promise.resolve()),
-      clearTtsHighlight: vi.fn(),
-    } as unknown as import("@/components/reader/epub-viewer").EpubViewerHandle,
-  };
+function createGetText(text: string) {
+  return vi.fn(async () => text);
 }
 
 function Probe(
@@ -216,7 +209,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -227,11 +220,11 @@ describe("useTtsEngine", () => {
   });
 
   it("reads section text, loads the engine, chunks text, and plays the first chunk", async () => {
-    const viewerRef = createViewerRef("Hello world. This is a test.");
+    const getText = createGetText("Hello world. This is a test.");
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef,
+      getText,
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -241,9 +234,9 @@ describe("useTtsEngine", () => {
     });
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
-    // ponytail: startSection no longer calls navigateTo — it reads text from
-    // the already-rendered iframe to avoid a re-display race.
-    expect(viewerRef.current.getSectionText).toHaveBeenCalled();
+    // ponytail: startSection reads text through the injected source; the
+    // source decides whether to use the live iframe or the server endpoint.
+    expect(getText).toHaveBeenCalledWith("xhtml/chapter1.xhtml");
     expect(mockEngine.ensureLoaded).toHaveBeenCalled();
     expect(chunkText).toHaveBeenCalledWith(
       "Hello world. This is a test.",
@@ -263,7 +256,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world. This is a test."),
+      getText: createGetText("Hello world. This is a test."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -304,7 +297,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world. This is a test."),
+      getText: createGetText("Hello world. This is a test."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -353,7 +346,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world. This is a test."),
+      getText: createGetText("Hello world. This is a test."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -375,7 +368,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
       onSectionComplete,
@@ -402,7 +395,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -424,7 +417,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -461,7 +454,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -486,7 +479,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("   "),
+      getText: createGetText("   "),
       engineId: "kokoro",
       voiceId: "af_bella",
       onSectionComplete,
@@ -509,7 +502,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -530,7 +523,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });
@@ -574,7 +567,7 @@ describe("useTtsEngine", () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",
       bookLanguage: "en",
-      viewerRef: createViewerRef("Hello world."),
+      getText: createGetText("Hello world."),
       engineId: "kokoro",
       voiceId: "af_bella",
     });

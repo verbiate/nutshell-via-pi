@@ -184,8 +184,7 @@ function baseProps(
       { label: "Chapter 1", href: "ch1.xhtml" },
       { label: "Chapter 2", href: "ch2.xhtml" },
     ],
-    currentHref: "ch1.xhtml",
-    onNavigateToSection: vi.fn(),
+    onSectionComplete: vi.fn(),
     audioRef: { current: new FakeHTMLAudioElement() } as any,
     // ponytail: primed quota on every test so we skip the mount-time fetch
     // and only declare entries for the actions each test actually performs.

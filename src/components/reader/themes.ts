@@ -21,6 +21,12 @@ export const READER_THEMES = {
         "border-radius": "2px",
         "box-shadow": "0 0 0 2px rgba(212, 165, 95, 0.25)",
       },
+      ".tts-chunk": {
+        "background-color": "rgba(212, 165, 95, 0.4)",
+        "border-radius": "2px",
+        "box-shadow": "none",
+        color: "inherit",
+      },
     },
   },
   dark: {
@@ -34,6 +40,12 @@ export const READER_THEMES = {
         "border-radius": "2px",
         "box-shadow": "0 0 0 2px rgba(212, 165, 95, 0.3)",
       },
+      ".tts-chunk": {
+        "background-color": "rgba(212, 165, 95, 0.45)",
+        "border-radius": "2px",
+        "box-shadow": "none",
+        color: "inherit",
+      },
     },
   },
   sepia: {
@@ -46,6 +58,12 @@ export const READER_THEMES = {
         "background-color": "rgba(180, 130, 60, 0.2)",
         "border-radius": "2px",
         "box-shadow": "0 0 0 2px rgba(180, 130, 60, 0.2)",
+      },
+      ".tts-chunk": {
+        "background-color": "rgba(180, 130, 60, 0.3)",
+        "border-radius": "2px",
+        "box-shadow": "none",
+        color: "inherit",
       },
     },
   },

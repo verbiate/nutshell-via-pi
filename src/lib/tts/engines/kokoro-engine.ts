@@ -2,6 +2,7 @@ import type { TtsEngine, TtsVoice, SynthesizeOpts, TtsSynthesisResult } from "..
 import { KOKORO_VOICES } from "../voices/kokoro";
 import { KOKORO_LANGUAGES } from "../languages";
 import { phonemize } from "../phonemizer-cdn";
+import { chunkText } from "../chunk";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
@@ -24,6 +25,25 @@ async function rawAudioToAudioBuffer(
   const buffer = ctx.createBuffer(1, audio.length, samplingRate);
   buffer.getChannelData(0).set(audio);
   return buffer;
+}
+
+export function concatFloat32(parts: Float32Array[], silenceSamples: number): Float32Array {
+  if (parts.length === 0) return new Float32Array(0);
+  if (parts.length === 1) return parts[0]!;
+
+  const total =
+    parts.reduce((sum, p) => sum + p.length, 0) + silenceSamples * (parts.length - 1);
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]!;
+    out.set(p, offset);
+    offset += p.length;
+    if (i < parts.length - 1) {
+      offset += silenceSamples;
+    }
+  }
+  return out;
 }
 
 function withOrtNoiseSuppressed<T>(fn: () => Promise<T>): Promise<T> {
@@ -127,16 +147,36 @@ export const kokoroEngine: TtsEngine = (() => {
     },
     async synthesize(text: string, opts: SynthesizeOpts): Promise<TtsSynthesisResult> {
       const tts = await getTts();
-      const phonemes = await phonemize(text, opts.voiceId);
-      const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
-      const result = await tts.generate_from_ids(input_ids, {
-        voice: opts.voiceId,
-        speed: opts.speed ?? 1,
-      });
-      if (!result?.audio?.length) {
+      const speed = opts.speed ?? 1;
+      // ponytail: Kokoro's positional ceiling is ~510 phoneme tokens; the tokenizer
+      // (truncation:true) silently drops anything longer, so re-split at sentence
+      // boundaries and concatenate — same pattern supertonic-engine uses. 220 chars
+      // stays well under 510 tokens for English; truncation:true is now a backstop.
+      const pieces = chunkText(text, { softLimit: 160, hardLimit: 220 });
+      const parts: Float32Array[] = [];
+      let samplingRate = 24000;
+
+      for (const piece of pieces) {
+        if (!piece.trim()) continue;
+        const phonemes = await phonemize(piece, opts.voiceId);
+        const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
+        const result = await tts.generate_from_ids(input_ids, {
+          voice: opts.voiceId,
+          speed,
+        });
+        if (!result?.audio?.length) {
+          throw new Error("Kokoro synthesis produced no audio");
+        }
+        samplingRate = result.sampling_rate;
+        parts.push(result.audio);
+      }
+
+      if (parts.length === 0) {
         throw new Error("Kokoro synthesis produced no audio");
       }
-      const buffer = await rawAudioToAudioBuffer(result.audio, result.sampling_rate);
+
+      const audio = concatFloat32(parts, Math.floor(0.05 * samplingRate));
+      const buffer = await rawAudioToAudioBuffer(audio, samplingRate);
       return { kind: "audioBuffer", buffer };
     },
     dispose() {

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@teispace/next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SceneTransitionProvider } from "@/components/transitions/scene-transition";
+import { AudioProvider } from "@/components/audio/audio-provider";
 import { useState } from "react";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -29,7 +30,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         disableTransitionOnChange={false}
       >
         <TooltipProvider>
-          <SceneTransitionProvider>{children}</SceneTransitionProvider>
+          <SceneTransitionProvider>
+            <AudioProvider>{children}</AudioProvider>
+          </SceneTransitionProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

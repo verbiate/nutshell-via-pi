@@ -34,6 +34,10 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("@/components/ui/scroll-area", () => ({
+  ScrollArea: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
 import { TtsPlayer } from "../tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { EngineId } from "@/lib/tts/languages";
@@ -92,7 +96,7 @@ function mkPlayer(overrides: Partial<Parameters<typeof TtsPlayer>[0]> = {}) {
 describe("TtsPlayer: floating card", () => {
   it("renders as a rounded floating card anchored in the book area", () => {
     const html = render(mkPlayer());
-    expect(html).toContain("max-w-[320px]");
+    expect(html).toContain("max-w-[640px]");
     expect(html).toContain("rounded-xl");
     expect(html).toContain("shadow-card");
   });
@@ -266,6 +270,42 @@ describe("TtsPlayer: scrubber + time readout", () => {
     const html = render(mkPlayer({ canScrub: true }));
     const slider = html.match(/<span[^>]*data-slot="slider"[^>]*>/)?.[0] ?? "";
     expect(slider).not.toContain('aria-disabled="true"');
+  });
+});
+
+describe("TtsPlayer: playlist", () => {
+  it("shows a playlist button when playlist + onJumpTo are provided", () => {
+    const html = render(
+      mkPlayer({
+        playlist: [
+          { label: "Chapter 1", href: "ch1.xhtml", index: 0 },
+          { label: "Chapter 2", href: "ch2.xhtml", index: 1 },
+        ],
+        onJumpTo: () => {},
+      }),
+    );
+    expect(html).toContain('aria-label="Playlist"');
+  });
+
+  it("hides the playlist button when no onJumpTo is provided", () => {
+    const html = render(mkPlayer());
+    expect(html).not.toContain('aria-label="Playlist"');
+  });
+
+  it("renders the playlist dialog with the current section highlighted", () => {
+    const html = render(
+      mkPlayer({
+        playlist: [
+          { label: "Chapter 1", href: "ch1.xhtml", index: 0 },
+          { label: "Chapter 2", href: "ch2.xhtml", index: 1 },
+        ],
+        currentIndex: 1,
+        onJumpTo: () => {},
+      }),
+    );
+    expect(html).toContain("Chapter 1");
+    expect(html).toContain("Chapter 2");
+    expect(html).toContain("bg-chocolate/10");
   });
 });
 

@@ -6,18 +6,15 @@
 
 ### Pre-flight checklist
 
-**GATE: Do not call any other tool (web_fetch, web_search, bash, image_search, or any other) until you have red ALL of the following agent skill files. No exceptions. No "I'll read them after." The user's message does not exist until these calls are complete.**
+GATE: Do not call any other tool (web_fetch, web_search, bash, image_search, or any other) until you have red ALL of the following agent skill files. *No exceptions, ever.* No "I'll read them after." The user's message does not exist until these calls are complete.
 
 ```
 `nutshell-codebase-guide` via ./opencode/skills/nutshell-codebase-guide/SKILL.md
-`hansv-squircles` via `~/.config/opencode/skills`
-`hansv-screen-typography`
-`hansv-harmonic-margins`
 `docs-seeker`
 
 ```
 
-After all three `view` calls return, proceed to the user's message.
+After all these have been read, proceed to the user's message.
 
 ## GSD Integration
 

@@ -43,7 +43,15 @@ export interface TtsEngineState {
 export interface UseTtsEngineOptions {
   bookId: string;
   bookLanguage: string;
-  viewerRef: React.RefObject<EpubViewerHandle | null>;
+  /**
+   * Text source for the section being synthesized. In the reader this should
+   * read from the live iframe (and optionally navigate to the section first so
+   * highlight-follow-along aligns); on the bookshelf or for playlist jumps it
+   * falls back to the server-side section-text endpoint.
+   */
+  getText: (href: string) => Promise<string>;
+  /** Optional live viewer, used only for follow-along highlighting. */
+  viewerRef?: React.RefObject<EpubViewerHandle | null>;
   engineId: EngineId;
   voiceId: string;
   speed?: number;
@@ -115,6 +123,7 @@ function cancelBrowserSpeech(): void {
 export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   const {
     bookLanguage,
+    getText,
     viewerRef,
     engineId,
     voiceId,
@@ -250,7 +259,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     cleanupSource();
     stopTimer();
     cancelBrowserSpeech();
-    viewerRef.current?.clearTtsHighlight();
+    viewerRef?.current?.clearTtsHighlight();
     bufferCacheRef.current.clear();
     if (audioContextRef.current?.state !== "closed") {
       try {
@@ -331,8 +340,8 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // ponytail: follow-along highlight — clear previous chunk's highlight,
       // then highlight the current chunk's text in the reader iframe. If the
       // text is on a later page, highlightChunk advances pages automatically.
-      viewerRef.current?.clearTtsHighlight();
-      await viewerRef.current?.highlightChunk(chunksRef.current[index]);
+      viewerRef?.current?.clearTtsHighlight();
+      await viewerRef?.current?.highlightChunk(chunksRef.current[index]);
 
       try {
         // ponytail: browser speechSynthesis manages its own audio queue and
@@ -530,13 +539,13 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       });
 
       try {
-        // ponytail: read text from the already-rendered iframe. We deliberately
-        // do NOT await navigateTo here — the user is already on the section when
-        // they click "Listen", and re-displaying the same href can cause epub.js
-        // to reload the iframe, racing with getSectionText. Auto-advance callers
-        // navigate the viewer via onSectionComplete before calling startSection.
-        const text = viewerRef.current?.getSectionText() ?? "";
-        console.log("[TTS] getSectionText returned", text.length, "chars");
+      // ponytail: read text from the injected source. In the reader this is the
+      // live iframe; on the bookshelf or for playlist jumps it's the server-side
+      // section-text endpoint. We deliberately do NOT await navigateTo here —
+      // the text source handles any required navigation so the hook stays
+      // decoupled from the viewer lifecycle.
+      const text = await getText(href);
+      console.log("[TTS] getText returned", text.length, "chars");
         if (!text.trim()) {
           console.warn("[TTS] Section text is empty, skipping");
           setState((s) => ({ ...s, phase: "ENDED" }));
@@ -584,7 +593,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [cleanupSource, onSectionComplete, playChunk, resolveEngine, speed, stopTimer, viewerRef, voiceId],
+    [cleanupSource, getText, onSectionComplete, playChunk, resolveEngine, speed, stopTimer, voiceId],
   );
 
   const pause = useCallback(() => {

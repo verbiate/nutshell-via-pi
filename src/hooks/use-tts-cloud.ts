@@ -25,8 +25,6 @@ export interface UseTtsCloudOptions {
     href: string;
     subitems?: Array<{ label: string; href: string }>;
   }>;
-  currentHref: string;
-  onNavigateToSection: (href: string) => void;
   /**
    * External `<audio>` element ref. The hook wires playback through this
    * element; the parent owns the JSX so the hidden audio markup lives next
@@ -34,6 +32,8 @@ export interface UseTtsCloudOptions {
    * tripping the react-hooks/refs lint rule on the composite return value.
    */
   audioRef: React.RefObject<HTMLAudioElement | null>;
+  /** Fired when a section finishes playing. The caller decides whether to advance. */
+  onSectionComplete?: () => void;
   /** Fired when usage crosses 100% (or generate returns 429). */
   onQuotaExhausted?: () => void;
   /** Initial quota so the badge paints before the first fetch resolves. */
@@ -70,8 +70,8 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
   const {
     bookId,
     toc,
-    onNavigateToSection,
     audioRef,
+    onSectionComplete,
     onQuotaExhausted,
     initialQuota = null,
     enabled = true,
@@ -353,10 +353,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
       setState((s) => ({ ...s, state: "ENDED" }));
       const next = getNextSection(state.sectionHref);
       if (next) {
-        setTimeout(() => {
-          onNavigateToSection(next.href);
-          startSection(next.href, next.label);
-        }, 500);
+        onSectionComplete?.();
       } else {
         setState((s) => ({ ...s, state: "IDLE" }));
       }
@@ -380,7 +377,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);
     };
-  }, [state.sectionHref, getNextSection, onNavigateToSection, startSection]);
+  }, [state.sectionHref, getNextSection, onSectionComplete, startSection]);
 
   return {
     state,

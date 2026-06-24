@@ -4,10 +4,10 @@ export interface ChunkOptions {
 }
 
 export const CHUNK_LIMITS = {
-  kokoro: { softLimit: 400, hardLimit: 500 },
-  supertonic: { softLimit: 400, hardLimit: 500 },
+  kokoro: { softLimit: 180, hardLimit: 260 },
+  supertonic: { softLimit: 180, hardLimit: 260 },
   cloud: { softLimit: 4500, hardLimit: 5000 },
-  browser: { softLimit: 400, hardLimit: 500 },
+  browser: { softLimit: 180, hardLimit: 260 },
 } as const;
 
 const SENTENCE_RE = /.*?(?:[.!?]+["')\]]*(?=\s|$)|$)/gs;

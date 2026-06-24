@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Loader2, Minimize2, Maximize2, Settings, X } from "lucide-react";
+import { Loader2, Minimize2, Maximize2, Settings, X, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -77,6 +78,17 @@ export interface TtsPlayerProps {
    * playback (PLAYING/LOADING/GENERATING) so the card stays put mid-audio.
    */
   hidden?: boolean;
+  /**
+   * `reader` = absolute inside the reader wrapper (legacy). `floating` =
+   * relative, meant to live inside a fixed-position provider wrapper.
+   */
+  variant?: "reader" | "floating";
+  /** Playlist sections. */
+  playlist?: ReadonlyArray<{ label: string; href: string; index: number }>;
+  /** Index of the currently playing section in the playlist. */
+  currentIndex?: number;
+  /** Jump to a playlist section. */
+  onJumpTo?: (index: number) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -128,8 +140,13 @@ export function TtsPlayer({
   bookAuthor,
   canScrub = false,
   hidden = false,
+  variant = "reader",
+  playlist,
+  currentIndex,
+  onJumpTo,
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   // ponytail: player is a permanent fixture in the bottom-left corner. The
   // minimize toggle collapses to a mini form (play + expand) instead of
   // unmounting — preserves state, avoids re-show affordances.
@@ -174,13 +191,11 @@ export function TtsPlayer({
 
   return (
     <div
-      // ponytail: 48px corner padding matches the reader-chrome Bookshelf button
-      // (header top-12 + px-12). EPUB wrapper's left edge is pinned to viewport-
-      // left even when the sidebar opens, so this anchor stays aligned with
-      // Bookshelf regardless of sidebar state. transition-all covers opacity for
-      // the idle-fade (no separate transition-opacity needed).
       className={cn(
-        "absolute bottom-12 left-12 z-50 w-[calc(100%-6rem)] max-w-[320px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
+        "z-50 w-[calc(100%-6rem)] max-w-[640px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
+        variant === "reader"
+          ? "absolute bottom-12 left-12"
+          : "relative w-full",
         hidden && "opacity-0 pointer-events-none",
       )}
       role="region"
@@ -273,6 +288,18 @@ export function TtsPlayer({
           className="shrink-0 active:scale-[0.96] transition-transform"
         >
           <Settings className="h-4 w-4" />
+        </Button>
+        )}
+
+        {!collapsed && onJumpTo && playlist && playlist.length > 0 && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPlaylistOpen(true)}
+          aria-label="Playlist"
+          className="shrink-0 active:scale-[0.96] transition-transform"
+        >
+          <ListMusic className="h-4 w-4" />
         </Button>
         )}
 
@@ -380,6 +407,42 @@ export function TtsPlayer({
           </div>
         </DialogContent>
       </Dialog>
+      {/* Playlist modal */}
+      {playlist && playlist.length > 0 && onJumpTo && (
+      <Dialog open={playlistOpen} onOpenChange={setPlaylistOpen}>
+        <DialogContent className="max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Playlist</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <ol className="space-y-1">
+              {playlist.map((item) => {
+                const isCurrent = item.index === currentIndex;
+                return (
+                  <li key={item.index}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onJumpTo(item.index);
+                        setPlaylistOpen(false);
+                      }}
+                      className={cn(
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                        isCurrent
+                          ? "bg-chocolate/10 font-medium text-chocolate"
+                          : "hover:bg-muted",
+                      )}
+                    >
+                      <span className="line-clamp-2">{item.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+      )}
     </div>
   );
 }

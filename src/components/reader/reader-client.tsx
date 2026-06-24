@@ -31,14 +31,7 @@ import { ExplainerThreadsPanel, type PendingExplainerRequest } from "@/component
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
-import { TtsPlayer } from "./tts-player";
-import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
-import { useTtsEngine } from "@/hooks/use-tts-engine";
-import { useTtsCloud, type CloudQuota } from "@/hooks/use-tts-cloud";
-import { defaultEngineForLanguage, engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
-import { ENGINES } from "@/lib/tts/engines";
-import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
-import { countWords, estimateSeconds, FALLBACK_WPM } from "@/lib/tts/estimate";
+import { useAudio } from "@/components/audio/audio-context";
 import { shouldDisplayProgress } from "@/lib/reader/progress";
 import type { LibraryBook, UserRole } from "@/types/book";
 
@@ -806,260 +799,47 @@ export function ReaderClient({
   // session is still loading so nothing premium flashes for anon users.
   const userRole: UserRole =
     ((user as any)?.role as UserRole) ?? "regular";
-  const ttsLang = bookLanguage ?? "en";
-  const [enginePref, setEnginePref] = useState<EngineId>(() =>
-    defaultEngineForLanguage(ttsLang),
-  );
-  const [voicePref, setVoicePref] = useState<string>("");
+  const { registerBook, registerViewer, unregisterViewer, setReaderControlsHidden, startFromHere } = useAudio();
 
-  // ponytail: Kokoro requires WebGPU. On browsers without it (Safari stable,
-  // older Firefox), switch to the zero-download browser engine instead of
-  // hanging on a doomed Kokoro load attempt. Runs in useEffect to avoid SSR
-  // hydration mismatch (navigator doesn't exist identically on server/client).
+  // ponytail: register the open book + live viewer with the persistent audio
+  // layer. The viewer unregisters on reader unmount so highlight-follow-along
+  // no-ops off-reader, but playback keeps running.
   useEffect(() => {
-    if (typeof navigator !== "undefined" && !("gpu" in navigator)) {
-      setEnginePref((prev) => (prev === "kokoro" || prev === "supertonic" ? "browser" : prev));
-    }
-  }, []);
-
-  // ponytail: load saved engine/voice once per book language. If the saved
-  // engine no longer supports this language (language map changed), drop it
-  // and keep the default. Runs on language change, not every render.
-  // setState-in-effect is intentional here (one-shot pref hydration); same
-  // pattern as the sidebar/entry effects below.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    const saved = loadTtsPref(ttsLang);
-    if (
-      saved.engineId &&
-      engineSupportsLanguage(saved.engineId, ttsLang)
-    ) {
-      setEnginePref(saved.engineId);
-    }
-    if (saved.voiceId) {
-      setVoicePref(saved.voiceId);
-    }
-  }, [ttsLang]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // ponytail: persist resolved prefs (waits for voice to settle so we don't
-  // save the transient "" before the reset effect picks a default).
-  useEffect(() => {
-    if (!voicePref) return;
-    saveTtsPref(ttsLang, { engineId: enginePref, voiceId: voicePref });
-  }, [ttsLang, enginePref, voicePref]);
-
-  const flatToc = useCallback(() => {
-    const items: Array<{ label: string; href: string }> = [];
-    function walk(nodes: typeof toc) {
-      for (const node of nodes) {
-        items.push({ label: node.label, href: node.href });
-        if (node.subitems) walk(node.subitems);
-      }
-    }
-    walk(toc);
-    return items;
-  }, [toc]);
-
-  // ponytail: resolve the current spine href → a human section title. epub-viewer
-  // already normalizes ToC hrefs to spine hrefs, so a direct match usually hits;
-  // the basename fallback covers fragments / path-prefix drift between EPUBs.
-  const currentSectionTitle = useMemo(() => {
-    if (!currentHref) return "";
-    const norm = (h: string) => h.split("#")[0].split("?")[0];
-    const target = norm(currentHref);
-    const base = target.split("/").pop() ?? target;
-    const walk = (items: NavItem[]): string => {
-      for (const it of items) {
-        const n = norm(it.href);
-        if (n === target || n === base || (n.split("/").pop() ?? n) === base) {
-          return it.label;
-        }
-        if (it.subitems?.length) {
-          const found = walk(it.subitems);
-          if (found) return found;
-        }
-      }
-      return "";
+    registerBook({
+      bookId,
+      bookTitle,
+      bookAuthor,
+      bookLanguage: bookLanguage ?? "en",
+      toc,
+      userRole,
+      currentHref,
+      voiceSpeed: bookSettings.voiceSpeed,
+    });
+    registerViewer(viewerRef);
+    return () => {
+      unregisterViewer();
     };
-    return walk(toc);
-  }, [toc, currentHref]);
-
-  const getNextSection = useCallback(
-    (href: string) => {
-      const items = flatToc();
-      const idx = items.findIndex((i) => i.href === href);
-      return idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
-    },
-    [flatToc],
-  );
-
-  const browserTts = useTtsEngine({
+  }, [
+    registerBook,
+    registerViewer,
+    unregisterViewer,
     bookId,
-    bookLanguage: bookLanguage ?? "en",
-    viewerRef,
-    engineId: enginePref,
-    voiceId: voicePref,
-    speed: bookSettings.voiceSpeed,
-    onSectionComplete: () => {
-      const next = getNextSection(browserTts.state.sectionHref);
-      if (next) {
-        setCurrentHref(next.href);
-        browserTts.startSection(next.href, next.label);
-      }
-    },
-  });
-
-  // ponytail: snap voicePref to the active engine's voice catalog. Uses the
-  // hook's effectiveEngineId (not enginePref) so a WebGPU→browser fallback
-  // refreshes the picker to browser voices instead of leaving a stale list
-  // pinned to the failed engine's catalog.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    const engine = ENGINES[browserTts.effectiveEngineId];
-    const voices = engine?.getVoices(ttsLang) ?? [];
-    if (voices.length === 0) {
-      if (voicePref !== "") setVoicePref("");
-      return;
-    }
-    if (!voices.some((v) => v.id === voicePref)) {
-      setVoicePref(voices[0].id);
-    }
-  }, [browserTts.effectiveEngineId, ttsLang, voicePref]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // ponytail: cloud path (Task 7). Always mounted so the audio element ref is
-  // stable; reader-client decides which hook drives the UI via `isCloud`.
-  // onQuotaExhausted snaps the engine pref back to kokoro when the limit hits.
-  const cloudAudioRef = useRef<HTMLAudioElement | null>(null);
-  const cloudTts = useTtsCloud({
-    bookId,
+    bookTitle,
+    bookAuthor,
+    bookLanguage,
     toc,
+    userRole,
     currentHref,
-    audioRef: cloudAudioRef,
-    onNavigateToSection: handleTocNavigate,
-    onQuotaExhausted: useCallback(() => setEnginePref("kokoro"), []),
-    // ponytail: regular tier can't use cloud — skip the mount-time quota fetch.
-    enabled: userRole !== "regular",
-  });
-
-  // ponytail: dispatcher — cloud is gated by tier (regular → forced to browser).
-  const isCloud = enginePref === "cloud" && userRole !== "regular";
-  // ponytail: pull state slices off the hook returns for cleaner JSX reads.
-  const cloudState = cloudTts.state.state;
-
-  // ponytail: resolved once from currentHref (which now tracks every page turn
-  // via onSectionChange) so the "now reading" label is the real section title,
-  // never the stale "Reading" fallback.
-  const listenSectionTitle = currentSectionTitle || bookTitle || "Reading";
-
-  // ponytail: the player card is now the sole TTS surface (no chrome speaker).
-  // It stays visible once the book has rendered; the X/Stop only resets playback.
-  const playerVisible = isLoaded && !entering;
-
-  // ponytail: the single context-aware entry point. IDLE/ENDED → start reading
-  // the current section; PLAYING → pause; PAUSED → resume. Wired to the card's
-  // main button AND the sidebar "Listen from here" button.
-  const handleListenFromHere = useCallback(() => {
-    if (isCloud) {
-      const cs = cloudTts.state.state;
-      if (cs === "IDLE" || cs === "ENDED") {
-        cloudTts.startSection(currentHref, listenSectionTitle);
-      } else {
-        cloudTts.togglePlayPause();
-      }
-      return;
-    }
-    if (
-      browserTts.state.phase === "IDLE" ||
-      browserTts.state.phase === "ENDED"
-    ) {
-      browserTts.startSection(currentHref, listenSectionTitle);
-    } else if (browserTts.state.phase === "PLAYING") {
-      browserTts.pause();
-    } else if (browserTts.state.phase === "PAUSED") {
-      browserTts.resume();
-    }
-  }, [browserTts, cloudTts, isCloud, currentHref, listenSectionTitle]);
-
-  // ponytail: cloud generates the whole section server-side, so the true total
-  // only arrives on <audio> loadedmetadata. While GENERATING, seed a word-count
-  // estimate so the readout isn't blank. Computed in an effect (ref reads are
-  // allowed there) and fed to the memo below as plain state.
-  const [cloudGenEstimate, setCloudGenEstimate] = useState(0);
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (!isCloud || cloudTts.state.state !== "GENERATING") {
-      setCloudGenEstimate(0);
-      return;
-    }
-    const text = viewerRef.current?.getSectionText() ?? "";
-    const words = countWords(text);
-    setCloudGenEstimate(
-      words > 0 ? estimateSeconds(words, FALLBACK_WPM, bookSettings.voiceSpeed) : 0,
-    );
-  }, [isCloud, cloudTts.state.state, bookSettings.voiceSpeed, viewerRef]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
-    if (isCloud) {
-      const cs = cloudTts.state;
-      if (cs.state === "GENERATING" && cs.duration === 0 && cloudGenEstimate > 0) {
-        return { ...cs, duration: cloudGenEstimate };
-      }
-      return cs;
-    }
-    const phase = browserTts.state.phase;
-    return {
-      state:
-        phase === "IDLE"
-          ? "IDLE"
-          : phase === "LOADING"
-            ? "LOADING"
-            : phase === "PLAYING"
-              ? "PLAYING"
-              : phase === "PAUSED"
-                ? "READY"
-                : "ENDED",
-      sectionTitle: browserTts.state.sectionTitle,
-      sectionHref: browserTts.state.sectionHref,
-      audioUrl: null,
-      audioId: null,
-      currentTime: browserTts.state.currentTime,
-      duration: browserTts.state.duration,
-    };
-  }, [browserTts.state, cloudTts.state, isCloud, bookSettings.voiceSpeed, cloudGenEstimate]);
+    bookSettings.voiceSpeed,
+  ]);
 
   // ponytail: idle-fade predicate shared by chrome, progress, and the right
-  // rail. The TTS card opts out while audio work is in flight (PLAYING/LOADING/
-  // GENERATING) so now-playing UI + progress don't vanish mid-playback.
+  // rail, and pushed to AudioProvider so the floating TTS card mirrors it.
   const chromeHidden = activeTool === null && !pointerActive;
-  const isActivelyPlaying =
-    ttsPlaybackState.state === "PLAYING" ||
-    ttsPlaybackState.state === "LOADING" ||
-    ttsPlaybackState.state === "GENERATING";
-  const ttsHidden = chromeHidden && !isActivelyPlaying;
 
-  // ponytail: Stop = halt + reset to IDLE, but keep the card visible so the main
-  // button reverts to "Start reading from here". Distinct from a full unmount.
-  const handleTtsStop = useCallback(() => {
-    if (isCloud) {
-      cloudTts.close();
-      return;
-    }
-    browserTts.close();
-  }, [browserTts, cloudTts, isCloud]);
-
-  // ponytail: active quota for the player badge — null when not on cloud.
-  const activeQuota: CloudQuota | null = isCloud ? cloudTts.quota : null;
-
-  // ponytail: when switching engines, stop the old engine's playback so audio
-  // doesn't bleed across engines and the state source cleanly transitions.
-  const handleEngineChange = useCallback((next: EngineId) => {
-    if (isCloud) cloudTts.close();
-    else browserTts.close();
-    setEnginePref(next);
-  }, [isCloud, browserTts, cloudTts]);
+  useEffect(() => {
+    setReaderControlsHidden(chromeHidden);
+  }, [chromeHidden, setReaderControlsHidden]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
   // effect only fires on actual change. Publisher font = omit font-family so the
@@ -1075,15 +855,6 @@ export function ReaderClient({
     else if (bookSettings.fontFamily === "sans") o["font-family"] = SANS_STACK;
     return o;
   }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment, bookSettings.fontFamily]);
-
-  // Apply TTS playback speed to the audio element whenever it changes or a new
-  // section loads. ponytail: only the cloud path uses an <audio> element;
-  // browser engines go through AudioContext (handled in use-tts-engine).
-  useEffect(() => {
-    if (cloudAudioRef.current) {
-      cloudAudioRef.current.playbackRate = bookSettings.voiceSpeed;
-    }
-  }, [bookSettings.voiceSpeed, cloudAudioRef, cloudState]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -1161,9 +932,6 @@ export function ReaderClient({
         userName={libraryUserName}
         digestImage={libraryDigestImage}
       />
-
-      {/* Hidden audio element for cloud TTS playback */}
-      <audio ref={cloudAudioRef} className="hidden" />
 
       {/* Error overlay */}
       {error && <ReaderError onBack={handleBack} onRetry={handleRetry} />}
@@ -1245,30 +1013,6 @@ export function ReaderClient({
               hidden={chromeHidden}
             />
           )}
-          {playerVisible && (
-          <TtsPlayer
-            state={ttsPlaybackState}
-            loadPct={browserTts.state.loadPct}
-            onPlayPause={handleListenFromHere}
-            onStop={handleTtsStop}
-            onScrub={(t) => {
-              // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
-              if (isCloud) cloudTts.scrub(t);
-            }}
-            bookLanguage={ttsLang}
-            enginePref={enginePref}
-            effectiveEngineId={browserTts.effectiveEngineId}
-            onEngineChange={handleEngineChange}
-            voicePref={voicePref}
-            onVoiceChange={setVoicePref}
-            userRole={userRole}
-            quota={activeQuota}
-            bookTitle={bookTitle}
-            bookAuthor={bookAuthor}
-            canScrub={isCloud}
-            hidden={ttsHidden}
-          />
-          )}
         </div>
       )}
 
@@ -1333,6 +1077,7 @@ export function ReaderClient({
                 bookCreatedAt={bookCreatedAt}
                 coverHidden={forwardFlyActive}
                 onAskAboutSection={handleAskAboutSection}
+                onPlaySection={startFromHere}
                 onAskAboutBook={handleAskAboutBook}
               />
             ),
