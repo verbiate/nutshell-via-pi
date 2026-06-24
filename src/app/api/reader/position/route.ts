@@ -71,7 +71,12 @@ export async function POST(request: Request) {
       charOffset?: number;
       cfi?: string;
       tocSectionId?: string;
+      // ponytail: client callers (reader position + TTS advance) send the spine
+      // href as `sectionHref`; older callers send `tocSectionId`. Accept either
+      // so this route is the single sink for position writes.
+      sectionHref?: string;
       percentage?: number;
+      ttsChunkAnchor?: string;
     };
     try {
       body = JSON.parse(rawBody);
@@ -79,7 +84,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { bookId, paragraphIndex, charOffset, cfi, tocSectionId, percentage } = body;
+    const {
+      bookId,
+      paragraphIndex,
+      charOffset,
+      cfi,
+      tocSectionId,
+      sectionHref,
+      percentage,
+      ttsChunkAnchor,
+    } = body;
 
     // Validate required fields
     if (!bookId || typeof bookId !== "string" || bookId.trim() === "") {
@@ -122,6 +136,27 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    // ponytail: TTS writes carry the spine href (as sectionHref) and a short
+    // chunk anchor so off-reader playback can be re-located on reopen. Clamp
+    // the anchor to a sane length — client sends ~60 chars; allow headroom.
+    if (
+      ttsChunkAnchor !== undefined &&
+      (typeof ttsChunkAnchor !== "string" || ttsChunkAnchor.length > 200)
+    ) {
+      return NextResponse.json(
+        { error: "ttsChunkAnchor must be a string of at most 200 chars" },
+        { status: 400 }
+      );
+    }
+    if (
+      sectionHref !== undefined &&
+      (typeof sectionHref !== "string" || sectionHref.length > 512)
+    ) {
+      return NextResponse.json(
+        { error: "sectionHref must be a string of at most 512 chars" },
+        { status: 400 }
+      );
+    }
 
     // Validate book access before saving
     const hasAccess = await verifyBookAccess(user.id, bookId);
@@ -138,8 +173,11 @@ export async function POST(request: Request) {
       paragraphIndex,
       charOffset,
       cfi,
-      tocSectionId,
+      // ponytail: prefer sectionHref (TTS path); fall back to tocSectionId for
+      // any legacy caller. Both map onto the same column.
+      tocSectionId: sectionHref ?? tocSectionId,
       percentage,
+      ttsChunkAnchor,
     });
     console.log("[POSITION POST] savePosition returned ok");
 

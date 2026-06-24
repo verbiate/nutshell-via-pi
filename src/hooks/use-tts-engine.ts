@@ -56,6 +56,18 @@ export interface UseTtsEngineOptions {
   voiceId: string;
   speed?: number;
   onSectionComplete?: () => void;
+  /**
+   * Fired each time the engine begins speaking a new chunk. Carries the section
+   * href, the chunk's index within that section, and a short anchor (leading
+   * text) so callers (AudioProvider) can persist the spoken position even while
+   * the reader/viewer is unmounted — the cornerstone of "read-aloud position =
+   * saved reading position."
+   */
+  onChunkAdvance?: (info: {
+    sectionHref: string;
+    chunkIndex: number;
+    anchorText: string;
+  }) => void;
 }
 
 export interface UseTtsEngineReturn {
@@ -66,6 +78,9 @@ export interface UseTtsEngineReturn {
   pause: () => void;
   resume: () => void;
   close: () => void;
+  /** The chunk now being spoken (sectionHref + text), or null if none. Used to
+   * catch a freshly-mounted viewer up to live playback. */
+  getCurrentChunk: () => { sectionHref: string; chunkText: string } | null;
 }
 
 const emptyState: TtsEngineState = {
@@ -129,9 +144,24 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     voiceId,
     speed = 1,
     onSectionComplete,
+    onChunkAdvance,
   } = options;
 
   const [state, setState] = useState<TtsEngineState>(emptyState);
+
+  // ponytail: keep onChunkAdvance + the current section href in refs so the
+  // memoized playChunk can fire position advances without rebuilding its dep
+  // graph on every state/section change. sectionHrefRef lags section swaps by
+  // one render max — playChunk reads it AFTER setState in startSection has
+  // flushed, so by the time chunk 0 plays the ref is current.
+  const onChunkAdvanceRef = useRef(onChunkAdvance);
+  useEffect(() => {
+    onChunkAdvanceRef.current = onChunkAdvance;
+  });
+  const sectionHrefRef = useRef<string>("");
+  useEffect(() => {
+    sectionHrefRef.current = state.sectionHref;
+  }, [state.sectionHref]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -343,6 +373,16 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       viewerRef?.current?.clearTtsHighlight();
       await viewerRef?.current?.highlightChunk(chunksRef.current[index]);
 
+      // ponytail: persist the spoken position. Fires whether or not the viewer
+      // is mounted — off-reader the anchor is the only signal that survives,
+      // on-reader the caller can also grab a fresh CFI. Always emit so the
+      // bookshelf→reopen path lands on the last chunk actually spoken.
+      onChunkAdvanceRef.current?.({
+        sectionHref: sectionHrefRef.current,
+        chunkIndex: index,
+        anchorText: chunksRef.current[index]?.slice(0, 60) ?? "",
+      });
+
       try {
         // ponytail: browser speechSynthesis manages its own audio queue and
         // cannot return an AudioBuffer — synthesize resolves on `onend`, so
@@ -537,6 +577,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         currentTime: 0,
         duration: 0,
       });
+      // ponytail: sync synchronously so playChunk(0)'s onChunkAdvance sees the
+      // correct href before the state-driven ref effect flushes.
+      sectionHrefRef.current = href;
 
       try {
       // ponytail: read text from the injected source. In the reader this is the
@@ -656,5 +699,23 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     };
   }, [cleanupSource, stopTimer]);
 
-  return { state, effectiveEngineId, startSection, pause, resume, close };
+  return {
+    state,
+    effectiveEngineId,
+    startSection,
+    pause,
+    resume,
+    close,
+    // ponytail: exposes the chunk currently being spoken so a freshly-mounted
+    // viewer can be navigated + highlighted to catch up to live playback after
+    // a reader remount (bookshelf → back). Null when no section is loaded.
+    getCurrentChunk: (): {
+      sectionHref: string;
+      chunkText: string;
+    } | null => {
+      const text = chunksRef.current[currentIndexRef.current] ?? "";
+      if (!text || !sectionHrefRef.current) return null;
+      return { sectionHref: sectionHrefRef.current, chunkText: text };
+    },
+  };
 }

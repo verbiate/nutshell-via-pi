@@ -214,6 +214,101 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [enginePref]);
 
+  // ─── TTS read-aloud position persistence ────────────────────────────────────
+  // ponytail: the last chunk spoken aloud IS the reading position. We persist
+  // advances straight from here so a book reopened after off-reader playback
+  // (audio kept running on the bookshelf) lands on the spoken chunk's page.
+  // Browser/Kokoro path gets chunk precision via onChunkAdvance; cloud gets
+  // section-level via startSection. Debounced ~1.5s; flushed on stop + tab hide.
+  const ttsPosPendingRef = useRef<{
+    bookId: string;
+    sectionHref: string;
+    ttsChunkAnchor?: string;
+  } | null>(null);
+  const ttsPosTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ponytail: mirror registeredViewer into a ref so scheduleTtsPosSave (stable
+  // callback) can read the current mount state without rebuilding on every
+  // register/unregister.
+  const registeredViewerRef = useRef(registeredViewer);
+  useEffect(() => {
+    registeredViewerRef.current = registeredViewer;
+  }, [registeredViewer]);
+
+  const flushTtsPosSave = useCallback(() => {
+    if (ttsPosTimerRef.current) {
+      clearTimeout(ttsPosTimerRef.current);
+      ttsPosTimerRef.current = null;
+    }
+    const pending = ttsPosPendingRef.current;
+    ttsPosPendingRef.current = null;
+    if (!pending) return;
+    // ponytail: best-effort CFI when the reader is mounted — gives precise
+    // display(cfi) restore. Off-reader (viewer null) we rely on the anchor.
+    // Read via the ref mirror so this callback stays stable (no state in deps)
+    // and the React Compiler can preserve the memoization.
+    const cfi =
+      registeredViewerRef.current?.current?.getCurrentCfi() ?? undefined;
+    // ponytail: section-proxy percentage so the bookshelf progress bar doesn't
+    // blank out after off-reader playback (it sources from `percentage`).
+    // Coarse — section-level — but only used off-reader where we have no page.
+    const flatToc = sessionRef.current?.flatToc ?? [];
+    let percentage: number | undefined;
+    if (flatToc.length > 0) {
+      const idx = flatToc.findIndex(
+        (s) => s.href === pending.sectionHref,
+      );
+      if (idx >= 0) {
+        percentage = Math.round(((idx + 1) / flatToc.length) * 100);
+      }
+    }
+    void fetch("/api/reader/position", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bookId: pending.bookId,
+        paragraphIndex: 0,
+        charOffset: 0,
+        cfi,
+        sectionHref: pending.sectionHref,
+        ttsChunkAnchor: pending.ttsChunkAnchor,
+        percentage,
+      }),
+    }).catch(() => {
+      // non-blocking — position save is best-effort
+    });
+  }, []);
+
+  const scheduleTtsPosSave = useCallback(
+    (info: { sectionHref: string; ttsChunkAnchor?: string }) => {
+      // ponytail: when the reader is mounted, the viewer's `relocated` event
+      // already persists a page-precise CFI + percentage on every page turn
+      // (including TTS-driven ones). Writing here too would clobber percentage
+      // with null and the anchor with a coarser signal. Only write off-reader —
+      // that's the case the relocated path can't see and the anchor exists for.
+      if (registeredViewerRef.current) return;
+      const bookId = sessionRef.current?.bookId;
+      if (!bookId || !info.sectionHref) return;
+      ttsPosPendingRef.current = {
+        bookId,
+        sectionHref: info.sectionHref,
+        ttsChunkAnchor: info.ttsChunkAnchor,
+      };
+      if (ttsPosTimerRef.current) clearTimeout(ttsPosTimerRef.current);
+      ttsPosTimerRef.current = setTimeout(() => flushTtsPosSave(), 1500);
+    },
+    [flushTtsPosSave],
+  );
+
+  // Flush the last spoken position when the tab is hidden — the provider never
+  // unmounts, so this is the close analog of the reader's unmount flush.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushTtsPosSave();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [flushTtsPosSave]);
+
   // ─── Hooks ─────────────────────────────────────────────────────────────────
   const browserTts = useTtsEngine({
     bookId: session?.bookId ?? "",
@@ -224,6 +319,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     voiceId: voicePref,
     speed: session?.voiceSpeed ?? 1,
     onSectionComplete: handleSectionComplete,
+    onChunkAdvance: (info) =>
+      scheduleTtsPosSave({
+        sectionHref: info.sectionHref,
+        ttsChunkAnchor: info.anchorText || undefined,
+      }),
   });
 
   const cloudTts = useTtsCloud({
@@ -262,8 +362,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       } else {
         browserTtsRef.current?.startSection(href, title);
       }
+      // ponytail: persist the section being read. For cloud (section-level
+      // audio, no chunk highlighting) this is the finest precision we get; for
+      // the browser path, onChunkAdvance overrides with chunk precision next.
+      scheduleTtsPosSave({ sectionHref: href });
     },
-    [enginePref, registeredViewer],
+    [enginePref, registeredViewer, scheduleTtsPosSave],
   );
 
   // ─── Cloud generation duration estimate ────────────────────────────────────
@@ -384,6 +488,45 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [enginePref, browserTts, cloudTts]);
 
+  // ponytail: catch a freshly-mounted viewer up to live playback. Called by the
+  // reader after its rendition is ready when playback is active — navigates the
+  // viewer to the section TTS is currently reading and lights up the chunk now
+  // being spoken. Without this, a reader remount (bookshelf → back) lands on the
+  // saved position while TTS reads a different section, so highlight-follow-
+  // along silently misses until the next section boundary.
+  const syncViewerToPlayback = useCallback(async () => {
+    const s = sessionRef.current;
+    // ponytail: read via the ref mirror so this callback stays stable (no
+    // state in deps) and the React Compiler can preserve the memoization.
+    const viewer = registeredViewerRef.current?.current;
+    if (!s || !viewer) return;
+    // ponytail: never hijack a different book's viewer — if the user opened book
+    // B while book A's audio plays, B restores its own position and A keeps going.
+    if (openBookRef.current?.bookId !== s.bookId) return;
+    const section = s.flatToc[s.currentIndex];
+    if (!section) return;
+
+    try {
+      await viewer.navigateTo(section.href);
+    } catch (err) {
+      console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
+      return;
+    }
+    // ponytail: let the iframe render the target section before marking it,
+    // otherwise highlightChunk reads the previous section's DOM and misses.
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Cloud engine has no chunk-level text; section-level navigation is enough.
+    const chunk = browserTtsRef.current?.getCurrentChunk();
+    if (chunk?.chunkText) {
+      try {
+        await viewer.highlightChunk(chunk.chunkText);
+      } catch {
+        // non-blocking — next chunk boundary will retry naturally
+      }
+    }
+  }, []);
+
   const startFromHere = useCallback((overrideHref?: string, overrideLabel?: string) => {
     const open = openBookRef.current;
     if (!open) return;
@@ -446,8 +589,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     } else {
       browserTts.close();
     }
+    // ponytail: flush the last spoken chunk before tearing the session down so
+    // the just-read position isn't lost to the debounce timer.
+    flushTtsPosSave();
     setSession(null);
-  }, [enginePref, browserTts.close, cloudTts.close]);
+  }, [enginePref, browserTts.close, cloudTts.close, flushTtsPosSave]);
 
   const scrub = useCallback(
     (time: number) => {
@@ -513,6 +659,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       registerViewer,
       unregisterViewer,
       startFromHere,
+      syncViewerToPlayback,
       playPause,
       stop,
       scrub,
@@ -534,6 +681,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       registerViewer,
       unregisterViewer,
       startFromHere,
+      syncViewerToPlayback,
       playPause,
       stop,
       scrub,

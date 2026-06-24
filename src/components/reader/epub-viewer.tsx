@@ -67,6 +67,13 @@ export interface EpubViewerHandle {
   getSectionText: () => string;
   highlightChunk: (text: string) => Promise<void>;
   clearTtsHighlight: () => void;
+  /**
+   * Navigate to `sectionHref` and page-advance until the chunk matched by
+   * `anchorText` is visible — WITHOUT marking it. Used to restore the last
+   * read-aloud position on book reopen (off-reader playback case where no CFI
+   * was captured). Mirrors highlightChunk's locate + advance loop, minus marks.
+   */
+  showChunk: (sectionHref: string, anchorText: string) => Promise<void>;
 }
 
 // ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
@@ -305,6 +312,54 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         doc.querySelectorAll(".tts-active").forEach((el) =>
           el.classList.remove("tts-active"),
         );
+      },
+      showChunk: async (sectionHref: string, anchorText: string) => {
+        if (!sectionHref || !anchorText.trim()) return;
+        // ponytail: jump to the section first. navigateTo is display(href); it
+        // no-ops cleanly if the section is already current. Await a short settle
+        // so the iframe DOM for the target section is present before we map it.
+        try {
+          await renditionRef.current?.display(sectionHref);
+        } catch (err: any) {
+          console.warn("[EpubViewer] showChunk section nav failed:", err);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 60));
+
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
+        if (!doc?.body) return;
+
+        // ponytail: reuse the same chunk-location machinery as highlightChunk,
+        // but only to find the START block — we advance pages until it's
+        // visible and stop. No marks, no tts-active class.
+        const map = buildTextMap(doc, doc.body);
+        const range = findChunkRange(anchorText, map.text);
+        let startBlock: HTMLElement | null = null;
+        if (range) {
+          const ob = positionBlock(map, range.start);
+          if (ob instanceof HTMLElement) startBlock = ob;
+        }
+
+        if (!startBlock) {
+          // Anchor couldn't be re-located (engine/text drift). The section's
+          // first page is already on screen from the display() above — leave it.
+          return;
+        }
+
+        const isVisible = (): boolean => {
+          const rect = startBlock!.getBoundingClientRect();
+          const vw = iframe?.clientWidth ?? 0;
+          const vh = iframe?.clientHeight ?? 0;
+          return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
+        };
+        if (isVisible()) return;
+        const rendition = renditionRef.current;
+        if (!rendition) return;
+        for (let i = 0; i < 8 && !isVisible(); i++) {
+          rendition.next();
+          await new Promise((r) => setTimeout(r, 60));
+        }
       },
     }));
 

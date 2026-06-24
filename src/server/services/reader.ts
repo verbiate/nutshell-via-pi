@@ -17,6 +17,7 @@ export async function getPosition(
   cfi?: string;
   tocSectionId?: string;
   percentage?: number;
+  ttsChunkAnchor?: string;
 } | null> {
   const position = await db.userBookPosition.findUnique({
     where: { userId_bookId: { userId, bookId } },
@@ -26,6 +27,7 @@ export async function getPosition(
       cfi: true,
       tocSectionId: true,
       percentage: true,
+      ttsChunkAnchor: true,
     },
   });
   if (!position) return null;
@@ -36,6 +38,7 @@ export async function getPosition(
     cfi: position.cfi ?? undefined,
     tocSectionId: position.tocSectionId ?? undefined,
     percentage: position.percentage ?? undefined,
+    ttsChunkAnchor: position.ttsChunkAnchor ?? undefined,
   };
 }
 
@@ -54,6 +57,7 @@ export async function savePosition(
     cfi?: string;
     tocSectionId?: string;
     percentage?: number;
+    ttsChunkAnchor?: string;
   }
 ): Promise<void> {
   await db.userBookPosition.upsert({
@@ -66,6 +70,7 @@ export async function savePosition(
       cfi: data.cfi,
       tocSectionId: data.tocSectionId,
       percentage: data.percentage,
+      ttsChunkAnchor: data.ttsChunkAnchor,
     },
     update: {
       paragraphIndex: data.paragraphIndex,
@@ -73,6 +78,7 @@ export async function savePosition(
       cfi: data.cfi,
       tocSectionId: data.tocSectionId,
       percentage: data.percentage,
+      ttsChunkAnchor: data.ttsChunkAnchor,
     },
   });
 }

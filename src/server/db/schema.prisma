@@ -186,6 +186,11 @@ model UserBookPosition {
   cfi            String?
   tocSectionId   String?
   percentage     Int?
+  // ponytail: leading ~60 chars of the last TTS chunk spoken. Lets a book
+  // reopened after off-reader playback re-locate the exact chunk's page even
+  // when no live CFI was captured (audio kept playing on the bookshelf).
+  // Null for manual-only reading or section-level cloud TTS.
+  ttsChunkAnchor String?
   updatedAt      DateTime @updatedAt
 
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)

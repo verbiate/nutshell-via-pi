@@ -40,6 +40,12 @@ interface SavedPosition {
   charOffset: number;
   cfi?: string;
   percentage?: number;
+  // ponytail: TTS read-aloud restore. When the last position was written by
+  // off-reader playback (no live CFI), sectionHref + ttsChunkAnchor let the
+  // viewer re-locate the spoken chunk's page on reopen. sectionHref comes from
+  // the position row's tocSectionId column.
+  sectionHref?: string;
+  ttsChunkAnchor?: string;
 }
 
 export interface ReaderClientProps {
@@ -244,6 +250,8 @@ export function ReaderClient({
             paragraphIndex: data.position.paragraphIndex,
             charOffset: data.position.charOffset,
             cfi: data.position.cfi ?? undefined,
+            sectionHref: data.position.tocSectionId ?? undefined,
+            ttsChunkAnchor: data.position.ttsChunkAnchor ?? undefined,
           });
         }
       } catch (err) {
@@ -260,6 +268,74 @@ export function ReaderClient({
       cancelled = true;
     };
   }, [bookId]);
+
+  // ponytail: audio context — single useAudio() call hoisted here because
+  // ttsLiveForBook (derived from it) gates initialCfi and the restore/sync
+  // effects below. The rest of the TTS wiring (registerBook effect etc.) sits
+  // further down but consumes these same bindings.
+  const {
+    registerBook,
+    registerViewer,
+    unregisterViewer,
+    setReaderControlsHidden,
+    startFromHere,
+    syncViewerToPlayback,
+    session: audioSession,
+    playbackState: audioPlaybackState,
+  } = useAudio();
+  // ponytail: when the reader re-mounts while TTS is already playing THIS book
+  // (user left for the bookshelf, audio kept going, came back), the viewer must
+  // catch up to live playback rather than restore a stale saved position. This
+  // flag routes the initial nav to syncViewerToPlayback instead of cfi/showChunk.
+  const ttsLiveForBook =
+    audioSession?.bookId === bookId &&
+    (audioPlaybackState.state === "PLAYING" ||
+      audioPlaybackState.state === "LOADING");
+
+  // ponytail: restore the last read-aloud position when no CFI was captured
+  // (off-reader playback kept going on the bookshelf). The cfi path is handled
+  // inside EpubViewer via initialCfi; this is the section+anchor fallback that
+  // lands on the spoken chunk's page without showing a highlight. Runs once per
+  // book, after the rendition is loaded and the position fetch has resolved.
+  const chunkRestoredRef = useRef(false);
+  useEffect(() => {
+    if (chunkRestoredRef.current) return;
+    if (!isLoaded) return;
+    // ponytail: defer to live playback sync when TTS is active on this book —
+    // it navigates to the section being read and shows the live highlight.
+    if (ttsLiveForBook) {
+      chunkRestoredRef.current = true;
+      return;
+    }
+    const pos = savedPosition;
+    // ponytail: prefer cfi (handled by EpubViewer); only fall back to the
+    // chunk anchor when there's no cfi but we have both a section + anchor.
+    if (pos?.cfi) {
+      chunkRestoredRef.current = true;
+      return;
+    }
+    if (!pos?.sectionHref || !pos?.ttsChunkAnchor) return;
+    chunkRestoredRef.current = true;
+    viewerRef.current?.showChunk(pos.sectionHref, pos.ttsChunkAnchor).catch(
+      (err) => console.warn("[ReaderClient] showChunk restore failed:", err),
+    );
+  }, [isLoaded, savedPosition, ttsLiveForBook]);
+
+  // ponytail: catch the viewer up to LIVE playback on remount. Fires once per
+  // mount, at the moment the rendition becomes ready, ONLY when TTS is already
+  // playing this book (bookshelf → back while audio continued). If playback
+  // starts later while on-reader, the engine's own highlightChunk path drives
+  // the viewer — no sync needed, hence the one-shot ref.
+  const ttsSyncedRef = useRef(false);
+  useEffect(() => {
+    if (ttsSyncedRef.current) return;
+    if (!isLoaded) return;
+    ttsSyncedRef.current = true;
+    if (!ttsLiveForBook) return;
+    syncViewerToPlayback().catch((err) =>
+      console.warn("[ReaderClient] syncViewerToPlayback failed:", err),
+    );
+  }, [isLoaded, ttsLiveForBook, syncViewerToPlayback]);
 
   // ─── Debounced save ──────────────────────────────────────────────────────────
   const savePosition = useCallback(
@@ -799,7 +875,6 @@ export function ReaderClient({
   // session is still loading so nothing premium flashes for anon users.
   const userRole: UserRole =
     ((user as any)?.role as UserRole) ?? "regular";
-  const { registerBook, registerViewer, unregisterViewer, setReaderControlsHidden, startFromHere } = useAudio();
 
   // ponytail: register the open book + live viewer with the persistent audio
   // layer. The viewer unregisters on reader unmount so highlight-follow-along
@@ -992,7 +1067,9 @@ export function ReaderClient({
               url={epubUrl}
               theme={readerTheme}
               typography={typography}
-              initialCfi={savedPosition?.cfi ?? null}
+              // ponytail: skip cfi restore when TTS is live on this book —
+              // syncViewerToPlayback owns the initial navigation in that case.
+              initialCfi={ttsLiveForBook ? null : (savedPosition?.cfi ?? null)}
               onTocLoaded={handleTocLoaded}
               onProgressChange={handleProgressChange}
               onSectionChange={handleSectionChange}

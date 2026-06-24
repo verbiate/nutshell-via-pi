@@ -61,6 +61,16 @@ export type AudioContextValue = {
   unregisterViewer: () => void;
   /** Start playing from the open book's current section, or from the given section. */
   startFromHere: (overrideHref?: string, overrideLabel?: string) => void;
+  /**
+   * Navigate the registered viewer to the section currently being read and
+   * highlight the chunk now being spoken. Used when the reader re-mounts while
+   * playback is active (user left for the bookshelf, audio kept going, came
+   * back) — without this the viewer lands on the stale saved position while
+   * TTS reads a different section, so the live highlight never lands.
+   * No-op when no session, no viewer, the open book differs from the session
+   * book, or playback isn't active.
+   */
+  syncViewerToPlayback: () => Promise<void>;
   playPause: () => void;
   stop: () => void;
   scrub: (time: number) => void;
