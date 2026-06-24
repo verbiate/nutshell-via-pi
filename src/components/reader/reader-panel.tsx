@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { BookCover } from "@/components/library/book-cover";
+
+// ponytail: leading-trim/text-edge are draft CSS (css-inline-3) that crop the
+// half-leading inset so the cap-height box matches the Figma box exactly.
+// Progressive enhancement — unsupported engines (no Safari/Chrome support yet)
+// just render with normal leading, no visual breakage. Cast because csstype
+// hasn't shipped these keys yet.
+const TRIM_STYLE = { leadingTrim: "both", textEdge: "cap" } as CSSProperties;
 
 interface TocEntryProps {
   item: NavItem;
@@ -110,8 +117,11 @@ export interface ReaderPanelProps {
   author?: string | null;
   coverPath?: string | null;
   language?: string;
+  metadataTitle?: string | null;
+  subtitle?: string | null;
   description?: string | null;
   descriptionLoading?: boolean;
+  isNarrative?: boolean | null;
   toc: NavItem[];
   currentHref: string;
   onNavigate: (href: string) => void;
@@ -133,6 +143,9 @@ export function ReaderPanel({
   coverPath,
   description,
   descriptionLoading,
+  metadataTitle,
+  subtitle,
+  isNarrative,
   toc,
   currentHref,
   onNavigate,
@@ -184,15 +197,34 @@ export function ReaderPanel({
           <BookCover coverPath={coverPath} title={bookTitle} />
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center self-stretch">
+          {/*
+            ponytail: prefer the LLM-extracted main title (BookMetadata.title)
+            over EpubFile.title when metadata exists — the OPF title often
+            concatenates the subtitle, so we split them out below. Falls back
+            to the full title for stray books with no metadata row yet.
+          */}
           <h3
+            title={bookTitle}
             className="line-clamp-3 font-serif text-[20px] font-medium leading-[1.2] text-foreground"
             style={{
               letterSpacing: "-0.005em",
               hangingPunctuation: "first last",
+              ...TRIM_STYLE,
             }}
           >
-            {bookTitle}
+            {metadataTitle ?? bookTitle}
           </h3>
+          {subtitle && (
+            <p
+              className="mt-0.5 line-clamp-3 font-serif text-[15px] font-medium leading-[1.3] text-foreground"
+              style={{
+                hangingPunctuation: "first last",
+                ...TRIM_STYLE,
+              }}
+            >
+              {subtitle}
+            </p>
+          )}
           {author && (
             <p
               className="mt-1 truncate font-sans text-[15px] font-semibold leading-[1.35] text-foreground/60"
@@ -242,6 +274,24 @@ export function ReaderPanel({
           Ask the book
         </Button>
       </div>
+
+      {/*
+        ponytail: narrative spoiler advisory. isNarrative is null until the
+        BookMetadata row lands (SSR or lazy ensure-metadata) — only show when
+        the LLM positively flagged it true. Sits under the explainer entry
+        point ("Ask the book") so the warning reads in context.
+      */}
+      {isNarrative === true && (
+        <div className="flex items-start gap-2 px-12">
+          <AlertTriangle
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-peach"
+            aria-hidden
+          />
+          <p className="text-[12px] font-medium leading-[1.4] text-foreground/60">
+            This is a narrative work. Explainers may contain spoilers.
+          </p>
+        </div>
+      )}
 
       {/* Table of contents */}
       {toc.length > 0 && (

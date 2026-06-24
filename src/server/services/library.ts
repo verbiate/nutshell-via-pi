@@ -79,8 +79,10 @@ export async function getBookForUser(bookId: string, userId: string) {
       book: {
         include: {
           // ponytail: 1:1 relation — bookMetadata only exists after admin
-          // extraction. Selecting just `description` keeps the row cheap.
-          bookMetadata: { select: { description: true } },
+          // extraction. Selecting the reader-visible fields keeps the row cheap.
+          bookMetadata: {
+            select: { title: true, subtitle: true, description: true, isNarrative: true },
+          },
         },
       },
     },

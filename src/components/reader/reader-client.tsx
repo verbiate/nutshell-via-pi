@@ -20,7 +20,6 @@ import { ReaderPanel } from "./reader-panel";
 import { BookmarksPanel } from "./bookmarks-panel";
 import { HighlightsPanel } from "./highlights-panel";
 import type { ReaderTool } from "./reader-tools";
-import { SearchPanel } from "./search-panel";
 import {
   BookSettingsPanel,
   DEFAULT_BOOK_SETTINGS,
@@ -56,7 +55,10 @@ export interface ReaderClientProps {
   bookAuthor?: string | null;
   bookCoverPath?: string | null;
   bookLanguage?: string;
+  bookMetadataTitle?: string | null;
+  bookSubtitle?: string | null;
   bookDescription?: string | null;
+  bookIsNarrative?: boolean | null;
   epubUrl: string;
   isAdmin?: boolean;
   bookCreatedAt?: string;
@@ -81,7 +83,10 @@ export function ReaderClient({
   bookAuthor,
   bookCoverPath,
   bookLanguage,
+  bookMetadataTitle,
+  bookSubtitle,
   bookDescription,
+  bookIsNarrative,
   epubUrl,
   isAdmin,
   bookCreatedAt,
@@ -184,6 +189,16 @@ export function ReaderClient({
   );
   const [descriptionLoading, setDescriptionLoading] = useState(
     !bookDescription
+  );
+  // ponytail: the rest of the reader-visible BookMetadata fields. All four
+  // arrive together (SSR row or the lazy ensure-metadata response), so they
+  // share the descriptionLoading flag — no separate spinners needed.
+  const [metadataTitle, setMetadataTitle] = useState<string | null>(
+    bookMetadataTitle ?? null
+  );
+  const [subtitle, setSubtitle] = useState<string | null>(bookSubtitle ?? null);
+  const [isNarrative, setIsNarrative] = useState<boolean | null>(
+    bookIsNarrative ?? null
   );
 
   // ─── Position state ────────────────────────────────────────────────────────────
@@ -770,6 +785,9 @@ export function ReaderClient({
       .then((data) => {
         if (cancelled) return;
         setDescription(data?.metadata?.description ?? null);
+        setMetadataTitle(data?.metadata?.title ?? null);
+        setSubtitle(data?.metadata?.subtitle ?? null);
+        setIsNarrative(data?.metadata?.isNarrative ?? null);
         setDescriptionLoading(false);
       })
       .catch(() => {
@@ -1263,12 +1281,7 @@ export function ReaderClient({
           sidebarOpen={activeTool !== null}
           hidden={activeTool === null && !pointerActive}
           onHideControls={() => setActiveTool(null)}
-          searchTrigger={
-            <SearchPanel
-              bookId={bookId}
-              onResultClick={handleSearchResult}
-            />
-          }
+          // ponytail: find-in-book hidden for now — restore by passing searchTrigger={<SearchPanel .../>}
         />
       )}
 
@@ -1293,8 +1306,11 @@ export function ReaderClient({
                 author={bookAuthor}
                 coverPath={bookCoverPath}
                 language={bookLanguage}
+                metadataTitle={metadataTitle}
+                subtitle={subtitle}
                 description={description}
                 descriptionLoading={descriptionLoading}
+                isNarrative={isNarrative}
                 toc={toc}
                 currentHref={currentHref}
                 onNavigate={handleTocNavigate}
