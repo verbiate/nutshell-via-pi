@@ -53,6 +53,10 @@ interface OrtSession {
 interface OrtSessionOptions {
   executionProviders?: string[];
   graphOptimizationLevel?: string;
+  // ponytail: 3 = error threshold. Suppresses the benign
+  // [W:onnxruntime:...] "VerifyEachNodeIsAssignedToAnEp" hints ORT logs at
+  // session creation (shape ops on CPU is by design). Default 2 = warning.
+  logSeverityLevel?: number;
 }
 interface OrtWasmEnv {
   wasmPaths: string;
@@ -508,11 +512,13 @@ async function createSession(
     return await ort.InferenceSession.create(buffer, {
       executionProviders: ["webgpu"],
       graphOptimizationLevel: "all",
+      logSeverityLevel: 3,
     });
   } catch {
     return await ort.InferenceSession.create(buffer, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
+      logSeverityLevel: 3,
     });
   }
 }

@@ -47,6 +47,7 @@ export function BookCover({
       <img
         src={`/api/files/${coverPath}`}
         alt={title}
+        loading="lazy"
         className={cn(
           "block w-full",
           cover ? "h-full object-cover" : "h-auto",

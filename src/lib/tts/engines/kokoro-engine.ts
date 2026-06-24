@@ -33,8 +33,17 @@ export const kokoroEngine: TtsEngine = (() => {
     if (!ttsPromise) {
       ttsPromise = (async () => {
         const { KokoroTTS } = await import("kokoro-js");
+        // ponytail: transformers.js derives ORT's session logSeverityLevel from
+        // env.logLevel. The default emits the benign "[W:onnxruntime:...]
+        // VerifyEachNodeIsAssignedToAnEp" hints at error level during session
+        // creation (shape ops on CPU is by design) — set to ERROR to suppress.
+        const { env, LogLevel } = await import("@huggingface/transformers");
+        env.logLevel = LogLevel.ERROR;
         return KokoroTTS.from_pretrained(MODEL_ID, {
-          dtype: "q8",
+          // ponytail: was "q8" — q8 + webgpu garbles the waveform. kokoro-js
+          // README: "If using webgpu, we recommend dtype=fp32." fp32 matches the
+          // "Highest Quality" label; costs a one-time ~320MB download on first load.
+          dtype: "fp32",
           device: "webgpu",
           progress_callback: onProgress
             ? (progress: { status: string; file?: string; progress?: number }) => {
@@ -69,6 +78,13 @@ export const kokoroEngine: TtsEngine = (() => {
       const tts = await getTts(onProgress);
       // Validate the full pipeline: server phonemize → tokenize → model.
       const phonemes = await phonemize("test", "af_bella");
+      // ponytail: guard against the phonemize endpoint silently returning
+      // empty (e.g. a Turbopack resolveAlias regression loading the stub).
+      // Empty IPA still yields non-empty audio from the model, so without this
+      // check Kokoro plays gibberish and ensureLoaded appears to succeed.
+      if (!phonemes.trim()) {
+        throw new Error("phonemize returned empty IPA — server stub regression?");
+      }
       const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
       const TEST_TIMEOUT_MS = 15_000;
       const result = await Promise.race([

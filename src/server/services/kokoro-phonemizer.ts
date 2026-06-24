@@ -1,10 +1,19 @@
 import { createRequire } from "module";
 
-// ponytail: Turbopack aliases "phonemizer" to a stub (next.config.ts) to
-// prevent the Emscripten crash in the browser. createRequire bypasses the
-// alias on the server, loading the real CJS build that works in Node.js.
+// ponytail: Turbopack's resolveAlias (next.config.ts) rewrites ANY literal
+// "phonemizer" require/import — even routed through createRequire — to the
+// browser stub (returns []), and throws "too dynamic" for non-literal args.
+// The alias is needed client-side (kokoro-js's top-level import crashes the
+// browser) but clobbers the server too. Building the require call inside
+// new Function() hides the call site from Turbopack's static analyzer (same
+// trick as the old CDN-import hide, commit 2690ob4), so Node resolves the real
+// package from node_modules at runtime.
 const require = createRequire(import.meta.url);
-const { phonemize: espeakPhonemize } = require("phonemizer") as {
+const callRequire = new Function("r", "s", "return r(s)") as (
+  r: NodeRequire,
+  s: string,
+) => unknown;
+const { phonemize: espeakPhonemize } = callRequire(require, "phonemizer") as {
   phonemize: (text: string, lang?: string) => Promise<string[]>;
 };
 
