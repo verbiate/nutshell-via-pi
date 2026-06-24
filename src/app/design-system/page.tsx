@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignJustify, AlignLeft, Bookmark, BookOpen, Copy, Highlighter, Lightbulb, Pause, Play, Plus, Search as SearchIcon, Settings, StickyNote, Volume2, X } from "lucide-react";
+import { AlignJustify, AlignLeft, Bookmark, BookOpen, Copy, Highlighter, Lightbulb, Pause, Play, Plus, Search as SearchIcon, Settings, StickyNote, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -1118,11 +1118,6 @@ export default function DesignSystemPage() {
                       <SearchIcon className="h-4 w-4" />
                     </button>
                   }
-                  ttsTrigger={
-                    <button aria-label="Read aloud" className="flex h-[46px] w-[46px] items-center justify-center bg-transparent text-foreground">
-                      <Volume2 className="h-4 w-4" />
-                    </button>
-                  }
                   sidebarOpen={false}
                 />
                 <ReadingProgress percentage={progressVal[0]} />
@@ -1156,7 +1151,7 @@ export default function DesignSystemPage() {
                     </button>
                     <button
                       type="button"
-                      aria-label="Close audio player"
+                      aria-label="Stop"
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-accent active:scale-[0.96] transition-transform"
                     >
                       <X className="h-4 w-4" />

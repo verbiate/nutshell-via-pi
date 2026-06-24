@@ -32,7 +32,6 @@ import { ExplainerThreadsPanel, type PendingExplainerRequest } from "@/component
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
-import { TtsTrigger } from "./tts-trigger";
 import { TtsPlayer } from "./tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import { useTtsEngine } from "@/hooks/use-tts-engine";
@@ -926,15 +925,19 @@ export function ReaderClient({
   const isCloud = enginePref === "cloud" && userRole !== "regular";
   // ponytail: pull state slices off the hook returns for cleaner JSX reads.
   const cloudState = cloudTts.state.state;
-  const browserPhase = browserTts.state.phase;
 
   // ponytail: resolved once from currentHref (which now tracks every page turn
   // via onSectionChange) so the "now reading" label is the real section title,
   // never the stale "Reading" fallback.
   const listenSectionTitle = currentSectionTitle || bookTitle || "Reading";
 
-  // ponytail: mirrors the chrome TtsTrigger onClick — same action, second entry
-  // point. Dispatches on isCloud so either engine can be started from here.
+  // ponytail: the player card is now the sole TTS surface (no chrome speaker).
+  // It stays visible once the book has rendered; the X/Stop only resets playback.
+  const playerVisible = isLoaded && !entering;
+
+  // ponytail: the single context-aware entry point. IDLE/ENDED → start reading
+  // the current section; PLAYING → pause; PAUSED → resume. Wired to the card's
+  // main button AND the sidebar "Listen from here" button.
   const handleListenFromHere = useCallback(() => {
     if (isCloud) {
       const cs = cloudTts.state.state;
@@ -980,19 +983,14 @@ const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
     };
   }, [browserTts.state, cloudTts.state, isCloud]);
 
-  const handleTtsPlayPause = useCallback(() => {
+  // ponytail: Stop = halt + reset to IDLE, but keep the card visible so the main
+  // button reverts to "Start reading from here". Distinct from a full unmount.
+  const handleTtsStop = useCallback(() => {
     if (isCloud) {
-      cloudTts.togglePlayPause();
+      cloudTts.close();
       return;
     }
-    if (browserTts.state.phase === "PLAYING") {
-      browserTts.pause();
-    } else if (
-      browserTts.state.phase === "PAUSED" ||
-      browserTts.state.phase === "ENDED"
-    ) {
-      browserTts.resume();
-    }
+    browserTts.close();
   }, [browserTts, cloudTts, isCloud]);
 
   // ponytail: active quota for the player badge — null when not on cloud.
@@ -1190,10 +1188,12 @@ const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
               hidden={activeTool === null && !pointerActive}
             />
           )}
+          {playerVisible && (
           <TtsPlayer
             state={ttsPlaybackState}
             loadPct={browserTts.state.loadPct}
-            onPlayPause={handleTtsPlayPause}
+            onPlayPause={handleListenFromHere}
+            onStop={handleTtsStop}
             onScrub={(t) => {
               // ponytail: cloud supports scrub via audio.currentTime; browser v1 doesn't.
               if (isCloud) cloudTts.scrub(t);
@@ -1210,6 +1210,7 @@ const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
             bookAuthor={bookAuthor}
             canScrub={isCloud}
           />
+          )}
         </div>
       )}
 
@@ -1239,25 +1240,6 @@ const ttsPlaybackState: TtsPlaybackState = useMemo(() => {
             <SearchPanel
               bookId={bookId}
               onResultClick={handleSearchResult}
-            />
-          }
-          ttsTrigger={
-            <TtsTrigger
-              state={
-                isCloud
-                  ? cloudState === "GENERATING" || cloudState === "LOADING"
-                    ? "loading"
-                    : cloudState === "IDLE" || cloudState === "ENDED"
-                      ? "idle"
-                      : "disabled"
-                  : browserPhase === "LOADING"
-                    ? "loading"
-                    : browserPhase === "IDLE" ||
-                        browserPhase === "ENDED"
-                      ? "idle"
-                      : "disabled"
-              }
-              onClick={handleListenFromHere}
             />
           }
         />

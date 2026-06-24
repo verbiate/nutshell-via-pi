@@ -69,6 +69,7 @@ const loadingState: TtsPlaybackState = {
 
 const baseProps = {
   onPlayPause: () => {},
+  onStop: () => {},
   onScrub: () => {},
   onEngineChange: (_: EngineId) => {},
   onVoiceChange: (_: string) => {},
@@ -257,5 +258,35 @@ describe("TtsPlayer: scrubber + time readout", () => {
     const html = render(mkPlayer({ canScrub: true }));
     const slider = html.match(/<span[^>]*data-slot="slider"[^>]*>/)?.[0] ?? "";
     expect(slider).not.toContain('aria-disabled="true"');
+  });
+});
+
+describe("TtsPlayer: idle (nothing loaded) state", () => {
+  it("shows the 'Start reading from here' prompt when IDLE", () => {
+    const html = render(mkPlayer({ state: idleState }));
+    expect(html).toContain("Start reading from here");
+  });
+
+  it("main button is labeled 'Read aloud' when IDLE", () => {
+    const html = render(mkPlayer({ state: idleState }));
+    expect(html).toContain('aria-label="Read aloud"');
+  });
+
+  it("hides the Stop button when IDLE (nothing to stop)", () => {
+    const html = render(mkPlayer({ state: idleState }));
+    expect(html).not.toContain('aria-label="Stop"');
+  });
+
+  it("main button is 'Pause' and Stop is visible while PLAYING", () => {
+    const html = render(mkPlayer()); // playingState
+    expect(html).toContain('aria-label="Pause"');
+    expect(html).toContain('aria-label="Stop"');
+  });
+
+  it("main button is 'Resume' when PAUSED/READY", () => {
+    const html = render(
+      mkPlayer({ state: { ...playingState, state: "READY" } }),
+    );
+    expect(html).toContain('aria-label="Resume"');
   });
 });

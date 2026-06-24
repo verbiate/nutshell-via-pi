@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 export interface ReaderChromeProps {
   onBack: () => void;
   searchTrigger?: ReactNode;
-  ttsTrigger?: ReactNode;
   sidebarOpen?: boolean;
   hidden?: boolean;
   onHideControls?: () => void;
@@ -17,7 +16,6 @@ export interface ReaderChromeProps {
 export function ReaderChrome({
   onBack,
   searchTrigger,
-  ttsTrigger,
   sidebarOpen = false,
   hidden = false,
   onHideControls,
@@ -57,7 +55,6 @@ export function ReaderChrome({
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
       <div className={cn("flex items-center gap-1 shrink-0", hidden ? "pointer-events-none" : "pointer-events-auto")}>
         {searchTrigger}
-        {ttsTrigger}
         <div
           aria-hidden={!sidebarOpen}
           className={cn(

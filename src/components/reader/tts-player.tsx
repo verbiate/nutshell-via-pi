@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Play, Pause, Loader2, Minimize2, Maximize2, Settings } from "lucide-react";
+import { Play, Pause, Loader2, Minimize2, Maximize2, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -46,6 +46,8 @@ export interface TtsPlayerProps {
   /** Model-load progress 0–100, surfaced while `state.state === "LOADING"`. */
   loadPct?: number;
   onPlayPause: () => void;
+  /** Stop resets playback to IDLE (nothing loaded) but keeps the card mounted. */
+  onStop: () => void;
   onScrub: (time: number) => void;
   bookLanguage: string;
   enginePref: EngineId;
@@ -89,6 +91,7 @@ export function TtsPlayer({
   state,
   loadPct = 0,
   onPlayPause,
+  onStop,
   onScrub,
   bookLanguage,
   enginePref,
@@ -110,6 +113,9 @@ export function TtsPlayer({
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
+  // ponytail: nothing loaded (IDLE) — e.g. on first show or after Stop. The main
+  // button then acts as "Read aloud from here" instead of resume.
+  const isIdle = state.state === "IDLE";
 
   // ponytail: voice catalog follows the *effective* engine so a WebGPU→browser
   // fallback refreshes the picker to browser voices. The engine radio + cloud
@@ -203,7 +209,7 @@ export function TtsPlayer({
           variant="outline"
           size="icon"
           onClick={onPlayPause}
-          aria-label={isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Play"}
+          aria-label={isIdle ? "Read aloud" : isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Resume"}
           className="h-10 w-10 shrink-0 rounded-full active:scale-[0.96] transition-transform"
         >
           {isLoading || isGenerating ? (
@@ -218,9 +224,9 @@ export function TtsPlayer({
         {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <span className="truncate text-sm font-medium text-foreground">
-            {isGenerating ? "Generating audio..." : state.sectionTitle}
+            {isIdle ? "Start reading from here" : isGenerating ? "Generating audio..." : state.sectionTitle}
           </span>
-          {(bookTitle || bookAuthor) && (
+          {!isIdle && (bookTitle || bookAuthor) && (
             <span className="truncate text-xs text-muted-foreground">
               {bookTitle}
               {bookTitle && bookAuthor ? " · " : ""}
@@ -239,6 +245,18 @@ export function TtsPlayer({
           className="shrink-0 active:scale-[0.96] transition-transform"
         >
           <Settings className="h-4 w-4" />
+        </Button>
+        )}
+
+        {!collapsed && !isIdle && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onStop}
+          aria-label="Stop"
+          className="shrink-0 active:scale-[0.96] transition-transform"
+        >
+          <X className="h-4 w-4" />
         </Button>
         )}
 

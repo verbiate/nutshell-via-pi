@@ -9,7 +9,6 @@ function render(el: React.ReactElement) {
 const baseProps = {
   onBack: () => {},
   searchTrigger: <button aria-label="search">S</button>,
-  ttsTrigger: <button aria-label="read aloud">T</button>,
 };
 
 describe("ReaderChrome: sidebar-aware top bar", () => {
