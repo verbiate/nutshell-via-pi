@@ -154,7 +154,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       sessionRef.current?.bookId ?? openBookRef.current?.bookId;
     if (!bookId) return "";
 
-    const viewer = registeredViewer?.current;
+    // ponytail: use the synced ref, not the closure capture — getText has empty
+    // deps so the closure would freeze registeredViewer at its initial null state
+    // and every section load would hit the fetch fallback. Mirrors lines 346/503/566/646/716.
+    const viewer = registeredViewerRef.current?.current;
     const currentHref = openBookRef.current?.currentHref;
 
     if (viewer) {

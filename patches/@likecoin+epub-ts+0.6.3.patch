@@ -1,0 +1,40 @@
+diff --git a/node_modules/@likecoin/epub-ts/dist/epub.js b/node_modules/@likecoin/epub-ts/dist/epub.js
+index 00b8399..384270f 100644
+--- a/node_modules/@likecoin/epub-ts/dist/epub.js
++++ b/node_modules/@likecoin/epub-ts/dist/epub.js
+@@ -851,6 +851,8 @@ class x {
+   stepsToXpath(t) {
+     const e = [".", "*"];
+     return t.forEach(function(i) {
++      // ponytail: guard undefined step — epub.js upstream fix not in @likecoin fork
++      if (!i) return;
+       const s = i.index + 1;
+       i.id ? e.push("*[position()=" + s + " and @id='" + i.id + "']") : i.type === "text" ? e.push("text()[" + s + "]") : e.push("*[" + s + "]");
+     }), e.join("/");
+@@ -873,6 +875,8 @@ class x {
+   stepsToQuerySelector(t) {
+     const e = ["html"];
+     return t.forEach(function(i) {
++      // ponytail: guard undefined step — epub.js upstream fix not in @likecoin fork
++      if (!i) return;
+       const s = i.index + 1;
+       i.id ? e.push("#" + i.id) : i.type === "text" || e.push("*:nth-child(" + s + ")");
+     }), e.join(">");
+@@ -2869,6 +2873,8 @@ class Ae {
+       styles: r
+     });
+     return this._annotations[o] = c, a in this._annotationsBySectionIndex ? this._annotationsBySectionIndex[a].push(o) : this._annotationsBySectionIndex[a] = [o], this.rendition.views().forEach((u) => {
++      // ponytail: guard undefined view — epub.js upstream fix not in @likecoin fork
++      if (!u) return;
+       c.sectionIndex === u.index && c.attach(u);
+     }), c;
+   }
+@@ -2884,6 +2890,8 @@ class Ae {
+       if (e && s.type !== e)
+         return;
+       this.rendition.views().forEach((r) => {
++        // ponytail: guard undefined view — epub.js upstream fix not in @likecoin fork
++        if (!r) return;
+         this._removeFromAnnotationBySectionIndex(s.sectionIndex, i), s.sectionIndex === r.index && s.detach(r);
+       }), delete this._annotations[i];
+     }

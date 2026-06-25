@@ -51,7 +51,6 @@ export async function extractSectionText(
   if (!match) {
     throw new Error(`Section not found in EPUB spine: ${sectionHref}`);
   }
-
   const fullPath = rootDir + match.href;
   const content = await zip.file(fullPath)?.async("text");
   if (!content) {
@@ -108,7 +107,20 @@ function findManifestEntry(
       if (longer.endsWith(shorter)) return item;
     }
   }
+  // ponytail: basename fallback mirrors spine-playlist.ts:38-42; first match
+  // wins — disambiguate by spine order if a manifest ever has two items with
+  // the same basename in different dirs.
+  const base = basename(decoded);
+  if (base) {
+    for (const item of manifest) {
+      if (basename(safeDecode(item.href)) === base) return item;
+    }
+  }
   return null;
+}
+
+function basename(href: string): string {
+  return href.split("#")[0].split("?")[0].split("/").pop() ?? "";
 }
 
 function safeDecode(s: string): string {

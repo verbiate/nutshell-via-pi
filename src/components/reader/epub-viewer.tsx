@@ -114,7 +114,10 @@ function cfiToRange(rendition: Rendition | null, cfi: string): Range | null {
     const contents = (view as unknown as { contents?: { range?: (cfi: string) => Range } })?.contents;
     if (!contents) return null;
     return contents.range?.(cfi) ?? null;
-  } catch {
+  } catch (e) {
+    // ponytail: log the offending CFI so unresolvable CFI failures surface in dev
+    // instead of silently falling through to the geometric visible-page fallback.
+    console.warn("[epub] cfiToRange failed for cfi:", cfi, e);
     return null;
   }
 }
@@ -753,7 +756,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           scheduleNavSettle();
         } catch (err: any) {
           clearNavInFlight();
-          console.warn("[EpubViewer] showChunk display(chunkCfi) failed:", err);
+          // ponytail: include the offending chunkCfi so unresolvable CFI failures surface
+          console.warn("[EpubViewer] showChunk display(chunkCfi) failed for", chunkCfi, err);
         }
       },
       getTtsStartOffset: (pos?: { elementId?: string; useVisible?: boolean; startCfi?: string }) => {
