@@ -147,6 +147,19 @@ function createGetText(text: string) {
   return vi.fn(async () => text);
 }
 
+// ponytail: a mock EpubViewerHandle that records setTtsPaused calls so the
+// pause/resume/close fade behavior can be asserted without a real iframe.
+function createMockViewerRef() {
+  const viewer = {
+    highlightChunk: vi.fn(async () => {}),
+    clearTtsHighlight: vi.fn(),
+    setTtsPaused: vi.fn(),
+  };
+  return { current: viewer } as unknown as Parameters<
+    typeof useTtsEngine
+  >[0]["viewerRef"];
+}
+
 function Probe(
   props: UseTtsEngineOptions & {
     onApi?: (api: ReturnType<typeof useTtsEngine>) => void;
@@ -470,6 +483,67 @@ describe("useTtsEngine", () => {
 
     expect(getApi().state.phase).toBe("IDLE");
     expect(getApi().state.sectionTitle).toBe("");
+
+    unmount();
+  });
+
+  it("fades the chunk highlight out on pause and back in on resume", async () => {
+    const viewerRef = createMockViewerRef();
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    act(() => {
+      getApi().pause();
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PAUSED"));
+    expect(viewerRef!.current!.setTtsPaused).toHaveBeenCalledWith(true);
+
+    act(() => {
+      getApi().resume();
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+    expect(viewerRef!.current!.setTtsPaused).toHaveBeenCalledWith(false);
+
+    unmount();
+  });
+
+  it("clears the paused highlight state on close", async () => {
+    const viewerRef = createMockViewerRef();
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+    act(() => {
+      getApi().pause();
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PAUSED"));
+
+    act(() => {
+      getApi().close();
+    });
+
+    expect(viewerRef!.current!.setTtsPaused).toHaveBeenLastCalledWith(false);
+    expect(viewerRef!.current!.clearTtsHighlight).toHaveBeenCalled();
 
     unmount();
   });

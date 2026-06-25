@@ -289,6 +289,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     cleanupSource();
     stopTimer();
     cancelBrowserSpeech();
+    viewerRef?.current?.setTtsPaused(false);
     viewerRef?.current?.clearTtsHighlight();
     bufferCacheRef.current.clear();
     if (audioContextRef.current?.state !== "closed") {
@@ -654,10 +655,14 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       audioContextRef.current?.suspend();
     }
     setState((s) => ({ ...s, phase: "PAUSED" }));
-  }, [stopTimer, state.phase]);
+    // ponytail: fade the current chunk highlight out while paused. Marks stay
+    // in the DOM; resume fades them back in.
+    viewerRef?.current?.setTtsPaused(true);
+  }, [stopTimer, state.phase, viewerRef]);
 
   const resume = useCallback(() => {
     if (state.phase !== "PAUSED") return;
+    viewerRef?.current?.setTtsPaused(false);
     runningRef.current = true;
     if (engineRef.current && isBrowserEngine(engineRef.current)) {
       // ponytail: speechSynthesis.resume() restarts the paused utterance
@@ -680,7 +685,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         playChunk(engine, currentIndexRef.current),
       );
     }
-  }, [playChunk, startTimer, state.phase]);
+  }, [playChunk, startTimer, state.phase, viewerRef]);
 
   // Cleanup on unmount
   useEffect(() => {

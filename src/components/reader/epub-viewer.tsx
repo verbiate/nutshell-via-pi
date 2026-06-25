@@ -68,6 +68,12 @@ export interface EpubViewerHandle {
   highlightChunk: (text: string) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
+   * Fade the current chunk highlight out (paused=true → opacity 0) or back in
+   * (paused=false). The marks stay in the DOM, so resume fades them back
+   * without re-running the chunk matcher. No-op when no highlight is present.
+   */
+  setTtsPaused: (paused: boolean) => void;
+  /**
    * Read-only probe: would highlightChunk locate `text` in the current
    * section's DOM? Used to gate re-highlight after an epub.js section re-render
    * so a stale chunk (mid TTS-driven section transition) no-ops instead of
@@ -153,6 +159,9 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const lastCfiRef = useRef<string | null>(null);
     // Guards one-time restore of the saved CFI once the rendition is ready.
     const restoredRef = useRef(false);
+    // ponytail: mirrors the TTS paused state so the content hook can re-apply
+    // the .tts-paused body class after epub.js recreates a section's iframe.
+    const ttsPausedRef = useRef(false);
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
@@ -322,6 +331,11 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           el.classList.remove("tts-active"),
         );
       },
+      setTtsPaused: (paused: boolean) => {
+        ttsPausedRef.current = paused;
+        const iframe = containerRef.current?.querySelector("iframe");
+        iframe?.contentDocument?.body?.classList.toggle("tts-paused", paused);
+      },
       // ponytail: read-only findability probe. Same map+range lookup as
       // highlightChunk, minus the marking + page-advance. Lets the re-highlight
       // path skip when the chunk isn't actually in this section's DOM (stale
@@ -476,14 +490,17 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             // ponytail: themes.register's type/runtime mismatch drops these
             // rules, so inject the highlight CSS directly via the same
             // addStylesheetCss path as the image blend below. Emits both the
-            // block-level fallback (.tts-active) and the per-chunk span (.tts-chunk).
+            // block-level fallback (.tts-active) and the per-chunk span (.tts-chunk),
+            // plus a .tts-paused body-class variant that fades both to opacity 0
+            // when audio is paused (the marks stay in the DOM so resume fades them
+            // back in without re-locating the chunk).
             const ttsHighlightCss = Object.entries(READER_THEMES)
               .flatMap(([name, theme]) => {
                 const rules = theme.rules as unknown as Record<
                   string,
                   Record<string, string>
                 >;
-                return ([".tts-active", ".tts-chunk"] as const)
+                const base = ([".tts-active", ".tts-chunk"] as const)
                   .filter((sel) => rules[sel])
                   .map((sel) => {
                     const declarations = Object.entries(rules[sel])
@@ -491,11 +508,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                       .join(" ");
                     return `.${name} ${sel} { ${declarations} }`;
                   });
+                const paused =
+                  `.${name}.tts-paused .tts-active, ` +
+                  `.${name}.tts-paused .tts-chunk { opacity: 0; }`;
+                return [...base, paused];
               })
               .join("\n");
 
             rendition.hooks.content.register((contents: Contents) => {
               contents.addStylesheetCss(ttsHighlightCss, "br-tts-highlight");
+              // ponytail: re-apply the paused class on every section render —
+              // epub.js rebuilds the iframe body across section boundaries, so a
+              // class toggled on the previous body is lost otherwise.
+              const body = (contents as unknown as { document?: Document })
+                .document?.body;
+              if (body)
+                body.classList.toggle("tts-paused", ttsPausedRef.current);
             });
 
             // ponytail: cream/sepia paper bg makes white-background images

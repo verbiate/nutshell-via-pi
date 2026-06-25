@@ -528,21 +528,39 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const section = s.flatToc[s.currentIndex];
     if (!section) return;
 
-    try {
-      await viewer.navigateTo(section.href);
-    } catch (err) {
-      console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
-      return;
+    // ponytail: only navigate when the viewer isn't already on the TTS section.
+    // display(sectionHref) re-renders a section from its FIRST page, so calling
+    // it when already here would reset the page and clobber the chunk the user
+    // is looking at. When already here, clear stale marks and re-mark in place
+    // (highlightChunk advances pages to the chunk if needed).
+    const onSection = ttsSectionMatches(
+      openBookRef.current?.currentHref ?? "",
+      section.href,
+    );
+    if (!onSection) {
+      try {
+        await viewer.navigateTo(section.href);
+      } catch (err) {
+        console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
+        return;
+      }
+      // ponytail: let the iframe render the target section before marking it,
+      // otherwise highlightChunk reads the previous section's DOM and misses.
+      await new Promise((r) => setTimeout(r, 80));
+    } else {
+      viewer.clearTtsHighlight();
     }
-    // ponytail: let the iframe render the target section before marking it,
-    // otherwise highlightChunk reads the previous section's DOM and misses.
-    await new Promise((r) => setTimeout(r, 80));
 
     // Cloud engine has no chunk-level text; section-level navigation is enough.
     const chunk = browserTtsRef.current?.getCurrentChunk();
     if (chunk?.chunkText) {
       try {
         await viewer.highlightChunk(chunk.chunkText);
+        // ponytail: if playback is paused on remount, fade the freshly-applied
+        // highlight out to match the on-reader paused state.
+        if (browserTtsRef.current?.state.phase === "PAUSED") {
+          viewer.setTtsPaused(true);
+        }
       } catch {
         // non-blocking — next chunk boundary will retry naturally
       }
@@ -601,7 +619,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     const href = overrideHref ?? open.currentHref;
     const flatToc = flattenToc(open.toc);
-    const currentFlat = flatToc.find((i) => i.href === href);
+    // ponytail: tolerant match (strip #fragment/?query + basename fallback) —
+    // the relocated href and the normalized ToC href can drift on fragment or
+    // path encoding, and a strict === silently dropped currentIndex to 0,
+    // making the session think TTS is reading the book's first section.
+    const currentFlat = flatToc.find((i) => ttsSectionMatches(i.href, href));
     const currentIndex = currentFlat?.index ?? 0;
     const title =
       overrideLabel ||
@@ -613,7 +635,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const s = sessionRef.current;
     const sameBook = s?.bookId === open.bookId;
     const sameSection =
-      sameBook && s.flatToc[s.currentIndex]?.href === href;
+      sameBook &&
+      ttsSectionMatches(s.flatToc[s.currentIndex]?.href ?? "", href);
 
     if (sameBook && sameSection) {
       playPause();
