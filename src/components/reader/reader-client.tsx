@@ -317,6 +317,7 @@ export function ReaderClient({
     setReaderControlsHidden,
     startFromHere,
     syncViewerToPlayback,
+    rehighlightCurrentChunk,
     session: audioSession,
     playbackState: audioPlaybackState,
   } = useAudio();
@@ -822,8 +823,17 @@ export function ReaderClient({
       const r = rendition as any;
       renditionRef.current = r;
       attachToDoc(r?.contents?.document);
-      r?.on?.("rendered", (_section: unknown, contents: { document: Document }) => {
+      r?.on?.("rendered", (section: { href?: string } | undefined, contents: { document: Document }) => {
         attachToDoc(contents.document);
+        // ponytail: epub.js destroys+recreates the iframe per section swap,
+        // which drops the imperative <mark class="tts-chunk">. Re-apply it when
+        // the rendered section is the one TTS is reading, so the highlight
+        // survives manual page-flips across section boundaries. No-op (via the
+        // guards inside) when TTS isn't live for this book or the section
+        // differs from the playing one.
+        rehighlightCurrentChunk(section?.href).catch((err) =>
+          console.warn("[ReaderClient] tts rehighlight failed:", err),
+        );
       });
 
       if (highlightsData?.highlights) {
@@ -834,7 +844,7 @@ export function ReaderClient({
         );
       }
     },
-    [highlightsData, handleKeyDown, handlePointerActivity]
+    [highlightsData, handleKeyDown, handlePointerActivity, rehighlightCurrentChunk]
   );
 
   const handleError = useCallback((err: Error) => {

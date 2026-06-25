@@ -73,6 +73,17 @@ export type AudioContextValue = {
    * book, or playback isn't active.
    */
   syncViewerToPlayback: () => Promise<void>;
+  /**
+   * Re-apply the TTS highlight to the chunk currently being spoken, without
+   * navigating. Called by the reader when epub.js recreates a section's iframe
+   * (the `rendered` event, which fires on every chapter swap) — the imperative
+   * <mark class="tts-chunk"> injected into the old iframe is destroyed with it,
+   * so a manual page-flip across a section boundary leaves the playing chunk
+   * unhighlighted when the user pages back. No-op unless a viewer is registered,
+   * playback is active for THIS book, and renderedHref matches the section
+   * currently being read.
+   */
+  rehighlightCurrentChunk: (renderedHref?: string) => Promise<void>;
   /** Open the book-details sidebar (no-op when reader hasn't registered a handler). */
   openBookDetails: () => void;
   /** ReaderClient registers this so the persistent player can open its sidebar. */

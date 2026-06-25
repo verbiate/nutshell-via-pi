@@ -68,6 +68,15 @@ export interface EpubViewerHandle {
   highlightChunk: (text: string) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
+   * Read-only probe: would highlightChunk locate `text` in the current
+   * section's DOM? Used to gate re-highlight after an epub.js section re-render
+   * so a stale chunk (mid TTS-driven section transition) no-ops instead of
+   * clobbering the engine's own highlight via clearTtsHighlight + a wrong
+   * fallback block. Builds the same text map as highlightChunk; does not modify
+   * the DOM.
+   */
+  hasChunkText: (text: string) => boolean;
+  /**
    * Navigate to `sectionHref` and page-advance until the chunk matched by
    * `anchorText` is visible — WITHOUT marking it. Used to restore the last
    * read-aloud position on book reopen (off-reader playback case where no CFI
@@ -312,6 +321,18 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         doc.querySelectorAll(".tts-active").forEach((el) =>
           el.classList.remove("tts-active"),
         );
+      },
+      // ponytail: read-only findability probe. Same map+range lookup as
+      // highlightChunk, minus the marking + page-advance. Lets the re-highlight
+      // path skip when the chunk isn't actually in this section's DOM (stale
+      // chunk during a TTS-driven section swap), so we neither clobber the
+      // engine's correct highlight nor light a wrong fallback block.
+      hasChunkText: (text: string) => {
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
+        if (!doc?.body || !text.trim()) return false;
+        const map = buildTextMap(doc, doc.body);
+        return findChunkRange(text, map.text) !== null;
       },
       showChunk: async (sectionHref: string, anchorText: string) => {
         if (!sectionHref || !anchorText.trim()) return;

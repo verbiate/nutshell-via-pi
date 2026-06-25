@@ -542,6 +542,52 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ponytail: section hrefs can carry a #fragment (or query) that differs
+  // between the rendition `rendered` event and the TOC href stored in
+  // sectionHrefRef. Strip them, then fall back to a basename compare so a path
+  // resolution mismatch (relative vs absolute) doesn't cause a false negative.
+  function ttsSectionMatches(a: string, b: string): boolean {
+    const strip = (h: string) => h.split("#")[0].split("?")[0].trim();
+    const pa = strip(a);
+    const pb = strip(b);
+    if (pa === pb) return true;
+    const base = (h: string) => h.split("/").pop() ?? h;
+    return base(pa) === base(pb);
+  }
+
+  // ponytail: re-apply the TTS highlight after epub.js recreates a section's
+  // iframe on a manual page-flip across a section boundary. Unlike
+  // syncViewerToPlayback this does NOT navigate — the section that just
+  // rendered is already current. Clear-first keeps it idempotent under the
+  // double-fire from the ttsSyncedRef one-shot on initial mount.
+  const rehighlightCurrentChunk = useCallback(async (renderedHref?: string) => {
+    const s = sessionRef.current;
+    const viewer = registeredViewerRef.current?.current;
+    if (!s || !viewer) return;
+    if (openBookRef.current?.bookId !== s.bookId) return;
+    const chunk = browserTtsRef.current?.getCurrentChunk();
+    if (!chunk?.chunkText) return;
+    if (
+      renderedHref &&
+      chunk.sectionHref &&
+      !ttsSectionMatches(renderedHref, chunk.sectionHref)
+    )
+      return;
+    // ponytail: authoritative gate. During a TTS-driven section swap,
+    // sectionHrefRef is updated eagerly (use-tts-engine.ts startSection) while
+    // chunksRef still holds the PREVIOUS section's text — so getCurrentChunk
+    // returns a chunk whose text isn't in the freshly-rendered DOM. Skip in
+    // that case so we don't clear the engine's correct highlight or light a
+    // wrong fallback block. Only re-apply when the chunk is genuinely present.
+    if (!viewer.hasChunkText(chunk.chunkText)) return;
+    try {
+      await viewer.clearTtsHighlight();
+      await viewer.highlightChunk(chunk.chunkText);
+    } catch {
+      // non-blocking — next chunk boundary retries naturally
+    }
+  }, []);
+
   const startFromHere = useCallback((overrideHref?: string, overrideLabel?: string) => {
     const open = openBookRef.current;
     if (!open) return;
@@ -676,6 +722,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
+      rehighlightCurrentChunk,
       openBookDetails,
       playPause,
       stop,
@@ -700,6 +747,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
+      rehighlightCurrentChunk,
       openBookDetails,
       playPause,
       stop,
