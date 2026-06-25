@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { NavItem } from "@likecoin/epub-ts";
 import { AudioContext } from "./audio-context";
 import type {
   AudioContextValue,
@@ -15,6 +14,7 @@ import type {
   BookAudioContext,
   FlatSection,
 } from "./audio-context";
+import { buildSpinePlaylist } from "@/lib/reader/spine-playlist";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
@@ -30,38 +30,6 @@ import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
 import { countWords, estimateSeconds, FALLBACK_WPM } from "@/lib/tts/estimate";
 import { cn } from "@/lib/utils";
 
-function flattenToc(toc: NavItem[]): FlatSection[] {
-  const out: FlatSection[] = [];
-  function walk(items: NavItem[]) {
-    for (const it of items) {
-      out.push({ label: it.label, href: it.href, index: out.length });
-      if (it.subitems?.length) walk(it.subitems);
-    }
-  }
-  walk(toc);
-  return out;
-}
-
-function resolveSectionTitle(toc: NavItem[], href: string): string {
-  const norm = (h: string) => h.split("#")[0].split("?")[0];
-  const target = norm(href);
-  const base = target.split("/").pop() ?? target;
-  const walk = (items: NavItem[]): string => {
-    for (const it of items) {
-      const n = norm(it.href);
-      if (n === target || n === base || (n.split("/").pop() ?? n) === base) {
-        return it.label;
-      }
-      if (it.subitems?.length) {
-        const found = walk(it.subitems);
-        if (found) return found;
-      }
-    }
-    return "";
-  };
-  return walk(toc);
-}
-
 function createSession(
   ctx: BookAudioContext,
   currentIndex = 0,
@@ -72,7 +40,7 @@ function createSession(
     bookAuthor: ctx.bookAuthor,
     bookCoverPath: ctx.bookCoverPath,
     bookLanguage: ctx.bookLanguage,
-    flatToc: flattenToc(ctx.toc),
+    flatToc: buildSpinePlaylist(ctx.spineItems, ctx.toc),
     userRole: ctx.userRole,
     currentIndex,
     voiceSpeed: ctx.voiceSpeed,
@@ -528,17 +496,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // being spoken. Without this, a reader remount (bookshelf → back) lands on the
   // saved position while TTS reads a different section, so highlight-follow-
   // along silently misses until the next section boundary.
-  const syncViewerToPlayback = useCallback(async () => {
+  const syncViewerToPlayback = useCallback(async (): Promise<boolean> => {
     const s = sessionRef.current;
     // ponytail: read via the ref mirror so this callback stays stable (no
     // state in deps) and the React Compiler can preserve the memoization.
     const viewer = registeredViewerRef.current?.current;
-    if (!s || !viewer) return;
+    if (!s || !viewer) return false;
     // ponytail: never hijack a different book's viewer — if the user opened book
     // B while book A's audio plays, B restores its own position and A keeps going.
-    if (openBookRef.current?.bookId !== s.bookId) return;
+    if (openBookRef.current?.bookId !== s.bookId) return false;
     const section = s.flatToc[s.currentIndex];
-    if (!section) return;
+    if (!section) return false;
 
     // ponytail: only navigate when the viewer isn't already on the TTS section.
     // display(sectionHref) re-renders a section from its FIRST page, so calling
@@ -554,27 +522,24 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         await viewer.navigateTo(section.href, { ttsNav: true });
       } catch (err) {
         console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
-        return;
+        return false;
       }
-      // ponytail: let the iframe render the target section before marking it,
+      // ponytail: wait for the iframe DOM of the target section to be ready,
       // otherwise highlightChunk reads the previous section's DOM and misses.
-      await new Promise((r) => setTimeout(r, 80));
+      await viewer.waitForRender();
     } else {
       viewer.clearTtsHighlight();
     }
 
     // Cloud engine has no chunk-level text; section-level navigation is enough.
     const chunk = browserTtsRef.current?.getCurrentChunk();
-    if (chunk?.chunkText) {
-      try {
-        await viewer.highlightChunk(chunk.chunkText);
-        // ponytail: keep the highlight visible on remount so the user can see
-        // the paused chunk immediately. (The on-reader pause path fades the
-        // highlight background; re-entry from the player thumbnail should land
-        // the eye on the exact spoken text, not fade it.)
-      } catch {
-        // non-blocking — next chunk boundary will retry naturally
-      }
+    if (!chunk?.chunkText) return true;
+    try {
+      await viewer.highlightChunk(chunk.chunkText);
+      return true;
+    } catch (err) {
+      console.warn("[AudioProvider] syncViewerToPlayback highlight failed:", err);
+      return false;
     }
   }, []);
 
@@ -633,7 +598,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (!open) return;
 
     const href = overrideHref ?? open.currentHref;
-    const flatToc = flattenToc(open.toc);
+    const flatToc = buildSpinePlaylist(open.spineItems, open.toc);
     // ponytail: tolerant match (strip #fragment/?query + basename fallback) —
     // the relocated href and the normalized ToC href can drift on fragment or
     // path encoding, and a strict === silently dropped currentIndex to 0,
@@ -643,7 +608,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const title =
       overrideLabel ||
       currentFlat?.label ||
-      resolveSectionTitle(open.toc, href) ||
       open.bookTitle ||
       "Reading";
 
@@ -873,7 +837,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             bookCoverPath={session?.bookCoverPath ?? openBook?.bookCoverPath}
             bookId={session?.bookId ?? openBook?.bookId}
             canScrub={isCloud}
-            playlist={session?.flatToc ?? (openBook ? flattenToc(openBook.toc) : undefined)}
+            playlist={session?.flatToc ?? (openBook ? buildSpinePlaylist(openBook.spineItems, openBook.toc) : undefined)}
             currentIndex={session?.currentIndex}
             onJumpTo={jumpTo}
             onOpenBookDetails={openBookDetails}

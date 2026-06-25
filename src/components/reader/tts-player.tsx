@@ -79,7 +79,7 @@ export interface TtsPlayerProps {
    * (section nav + chunk re-highlight). No-op unless the viewer is registered
    * and openBook matches the session. Used for the same-book-on-reader click.
    */
-  onSyncToPlayback?: () => void;
+  onSyncToPlayback?: () => Promise<unknown> | void;
   /**
    * Mark that the next mount of this book's reader should sync to the TTS
    * position even when playback is paused. Set just before off-reader nav.
@@ -201,12 +201,12 @@ export function TtsPlayer({
 
   // ponytail: pure decision so the thumbnail branching is unit-testable without
   // a DOM/router. goToBook below maps each branch to its side effects.
-  function goToBook() {
+  async function goToBook() {
     if (!bookId) return;
     switch (resolveThumbnailNav(pathname, bookId)) {
       case "same-book-on-reader":
         // Jump the viewer to the current TTS page, then surface details.
-        onSyncToPlayback?.();
+        await onSyncToPlayback?.();
         onOpenBookDetails?.();
         return;
       case "other-reader":

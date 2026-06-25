@@ -591,6 +591,10 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       seedRef.current = 0;
       elapsedBeforeRef.current = 0;
       chunkStartedAtRef.current = null;
+      // ponytail: clear stale chunk state immediately so getCurrentChunk() doesn't
+      // return the previous section's last chunk while the new section loads.
+      chunksRef.current = [];
+      currentIndexRef.current = 0;
 
       // ponytail: create AudioContext synchronously within the user gesture,
       // before any await. Browsers gate AudioContext creation/resumption on a

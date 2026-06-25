@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
+import type { SpineItem } from "@/lib/reader/spine-playlist";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
 import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
 import { ReaderChrome } from "./reader-chrome";
@@ -156,6 +157,7 @@ export function ReaderClient({
   );
 
   const [toc, setToc] = useState<NavItem[]>([]);
+  const [spineItems, setSpineItems] = useState<SpineItem[]>([]);
   const [currentHref, setCurrentHref] = useState<string>("");
   const [percentage, setPercentage] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -374,18 +376,41 @@ export function ReaderClient({
   // own highlightChunk path drives the viewer — no sync needed, hence the
   // one-shot ref.
   const ttsSyncedRef = useRef(false);
+  const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (ttsSyncedRef.current) return;
     if (!isLoaded) return;
-    ttsSyncedRef.current = true;
     const shouldSync = ttsLiveForBook || pendingSyncForBook;
     if (!shouldSync) return;
-    // ponytail: consume the one-shot so a later normal entry (e.g. book-card
-    // click) restores saved position instead of re-syncing.
-    if (pendingSyncForBook) clearPendingReaderSync();
-    syncViewerToPlayback().catch((err) =>
-      console.warn("[ReaderClient] syncViewerToPlayback failed:", err),
-    );
+    syncViewerToPlayback()
+      .then((ok) => {
+        if (ok) {
+          ttsSyncedRef.current = true;
+          // ponytail: consume the one-shot so a later normal entry (e.g. book-card
+          // click) restores saved position instead of re-syncing.
+          if (pendingSyncForBook) clearPendingReaderSync();
+          return;
+        }
+        // ponytail: one retry after a short delay in case the chunk/viewer wasn't
+        // ready on the first attempt (section transition, slow iframe render).
+        syncRetryRef.current = setTimeout(() => {
+          syncViewerToPlayback().then((ok2) => {
+            if (ok2) {
+              ttsSyncedRef.current = true;
+              if (pendingSyncForBook) clearPendingReaderSync();
+            }
+          });
+        }, 250);
+      })
+      .catch((err) =>
+        console.warn("[ReaderClient] syncViewerToPlayback failed:", err),
+      );
+    return () => {
+      if (syncRetryRef.current) {
+        clearTimeout(syncRetryRef.current);
+        syncRetryRef.current = null;
+      }
+    };
   }, [isLoaded, ttsLiveForBook, pendingSyncForBook, syncViewerToPlayback, clearPendingReaderSync]);
 
   // ─── Debounced save ──────────────────────────────────────────────────────────
@@ -494,6 +519,10 @@ export function ReaderClient({
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
+  }, []);
+
+  const handleSpineLoaded = useCallback((items: SpineItem[]) => {
+    setSpineItems(items);
   }, []);
 
   // ponytail: epub.js fires `relocated` on every page turn with the spine href
@@ -947,6 +976,7 @@ export function ReaderClient({
       bookCoverPath,
       bookLanguage: bookLanguage ?? "en",
       toc,
+      spineItems,
       userRole,
       currentHref,
       voiceSpeed: bookSettings.voiceSpeed,
@@ -965,6 +995,7 @@ export function ReaderClient({
     bookCoverPath,
     bookLanguage,
     toc,
+    spineItems,
     userRole,
     currentHref,
     bookSettings.voiceSpeed,
@@ -1271,6 +1302,7 @@ export function ReaderClient({
               // syncViewerToPlayback owns the initial navigation in that case.
               initialCfi={ttsLiveForBook ? null : (savedPosition?.cfi ?? null)}
               onTocLoaded={handleTocLoaded}
+              onSpineLoaded={handleSpineLoaded}
               onProgressChange={handleProgressChange}
               onSectionChange={handleSectionChange}
               onPositionChange={handlePositionChange}

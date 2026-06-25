@@ -1,5 +1,8 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createRoot } from "react-dom/client";
+import { act } from "react";
 import type { ReactNode } from "react";
 
 // ponytail: SSR mocks — radix Select/Tooltip/Dialog use portals that don't render
@@ -39,10 +42,12 @@ vi.mock("@/components/ui/scroll-area", () => ({
 }));
 
 // ponytail: TtsPlayer calls useRouter/usePathname at render; bare SSR has no
-// App Router context, so stub them.
+// App Router context, so stub them. pathnameRef lets interaction tests set the
+// current route.
+const pathnameRef = vi.hoisted(() => ({ current: null as string | null }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => null,
-  useRouter: () => ({ push: () => {} }),
+  usePathname: () => pathnameRef.current,
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 import { TtsPlayer } from "../tts-player";
@@ -343,5 +348,50 @@ describe("TtsPlayer: idle (nothing loaded) state", () => {
       mkPlayer({ state: { ...playingState, state: "READY" } }),
     );
     expect(html).toContain('aria-label="Resume"');
+  });
+});
+
+describe("TtsPlayer: thumbnail click", () => {
+  it("awaits onSyncToPlayback before opening details on same-book-on-reader", async () => {
+    pathnameRef.current = `/book/test-book/reader`;
+    const order: string[] = [];
+    const onSyncToPlayback = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      order.push("sync");
+    });
+    const onOpenBookDetails = vi.fn(() => order.push("details"));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        mkPlayer({
+          bookId: "test-book",
+          bookTitle: "Test Book",
+          variant: "floating",
+          onSyncToPlayback,
+          onOpenBookDetails,
+        }),
+      );
+    });
+
+    const thumbnail = container.querySelector(
+      'button[aria-label="Open Test Book"]',
+    );
+    expect(thumbnail).toBeTruthy();
+
+    await act(async () => {
+      (thumbnail as HTMLButtonElement).click();
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(onSyncToPlayback).toHaveBeenCalledTimes(1);
+    expect(onOpenBookDetails).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["sync", "details"]);
+
+    act(() => root.unmount());
+    container.remove();
   });
 });

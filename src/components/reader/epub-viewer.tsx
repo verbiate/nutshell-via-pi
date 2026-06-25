@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
 import type { ParagraphMap } from "@/lib/reader/position-tracking";
 import { computeProgressPercent } from "@/lib/reader/progress";
+import type { SpineItem } from "@/lib/reader/spine-playlist";
 import {
   pickTtsTargetIndex,
   findChunkRange,
@@ -237,6 +238,7 @@ export interface EpubViewerProps {
     percentage: number
   ) => void;
   onTocLoaded?: (toc: NavItem[]) => void;
+  onSpineLoaded?: (items: SpineItem[]) => void;
   onProgressChange?: (percentage: number) => void;
   onSectionChange?: (href: string) => void;
   onRenditionReady?: (rendition: Rendition) => void;
@@ -297,6 +299,12 @@ export interface EpubViewerHandle {
     elementId?: string;
     useVisible?: boolean;
   }) => number;
+  /**
+   * Wait for the next epub.js `rendered` event, i.e. the iframe DOM for the
+   * current section is ready. Resolves immediately if no rendition is available.
+   * Always resolves (never rejects) so callers don't need a catch path.
+   */
+  waitForRender: () => Promise<void>;
 }
 
 // ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
@@ -346,6 +354,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       typography,
       onPositionChange,
       onTocLoaded,
+      onSpineLoaded,
       onProgressChange,
       onSectionChange,
       onRenditionReady,
@@ -418,6 +427,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           if (opts?.ttsNav) clearNavInFlight();
           console.warn("[EpubViewer] navigateTo failed:", err);
         }
+      },
+      waitForRender: async () => {
+        const r = renditionRef.current;
+        if (!r) return;
+        return new Promise<void>((resolve) => {
+          const RENDER_TIMEOUT_MS = 1000;
+          const timer = setTimeout(() => {
+            r.off?.("rendered", onRendered);
+            resolve();
+          }, RENDER_TIMEOUT_MS);
+          const onRendered = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          r.on?.("rendered", onRendered);
+        });
       },
       next: () => {
         if (!renditionRef.current) return Promise.resolve();
@@ -851,6 +876,19 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             if (book.navigation?.toc) {
               onTocLoaded?.(normalizeTocHrefs(book, book.navigation.toc));
             }
+
+            // Extract and expose spine order so the audio layer can build the
+            // true reading playlist (handles multi-file chapters like New Power).
+            const spineItems: SpineItem[] = [];
+            book.spine.each((section) => {
+              if (section.href == null || section.index == null) return;
+              spineItems.push({
+                href: section.href,
+                index: section.index,
+                linear: section.linear,
+              });
+            });
+            onSpineLoaded?.(spineItems);
 
             // Render to container iframe
             const rendition = book.renderTo(containerRef.current, buildRenditionOptions());

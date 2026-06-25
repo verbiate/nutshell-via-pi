@@ -552,6 +552,54 @@ describe("useTtsEngine", () => {
     unmount();
   });
 
+  it("returns null from getCurrentChunk during a section transition", async () => {
+    // ponytail: stall getText so we can inspect the window between startSection
+    // clearing the old chunks and the new section's chunks being computed.
+    const getText = vi.fn(() => new Promise<string>(() => {}));
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText,
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+
+    expect(getApi().getCurrentChunk()).toBeNull();
+
+    unmount();
+  });
+
+  it("returns the current chunk while paused", async () => {
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    act(() => {
+      getApi().pause();
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PAUSED"));
+
+    expect(getApi().getCurrentChunk()).toEqual({
+      sectionHref: "xhtml/chapter1.xhtml",
+      chunkText: "chunk one",
+    });
+
+    unmount();
+  });
+
   it("fades the chunk highlight out on pause and back in on resume", async () => {
     const viewerRef = createMockViewerRef();
     const { getApi, unmount } = renderHook({

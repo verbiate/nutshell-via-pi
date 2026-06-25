@@ -7,12 +7,8 @@ import type { EngineId } from "@/lib/tts/languages";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { CloudQuota } from "@/hooks/use-tts-cloud";
 import type { UserRole } from "@/types/book";
-
-export type FlatSection = {
-  label: string;
-  href: string;
-  index: number;
-};
+import type { FlatSection, SpineItem } from "@/lib/reader/spine-playlist";
+export type { FlatSection } from "@/lib/reader/spine-playlist";
 
 export type BookAudioContext = {
   bookId: string;
@@ -21,6 +17,7 @@ export type BookAudioContext = {
   bookCoverPath?: string | null;
   bookLanguage: string;
   toc: NavItem[];
+  spineItems: SpineItem[];
   userRole: UserRole;
   currentHref: string;
   voiceSpeed: number;
@@ -82,8 +79,11 @@ export type AudioContextValue = {
    * TTS reads a different section, so the live highlight never lands.
    * No-op when no session, no viewer, the open book differs from the session
    * book, or playback isn't active.
+   * Returns true when the section (and chunk, if available) was successfully
+   * highlighted; false if preconditions weren't met or the chunk highlight
+   * failed and should be retried.
    */
-  syncViewerToPlayback: () => Promise<void>;
+  syncViewerToPlayback: () => Promise<boolean>;
   /**
    * Re-apply the TTS highlight to the chunk currently being spoken, without
    * navigating. Called by the reader when epub.js recreates a section's iframe
