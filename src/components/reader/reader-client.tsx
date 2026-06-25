@@ -757,6 +757,17 @@ export function ReaderClient({
     viewerRef.current?.navigateTo(cfi);
   }, []);
 
+  // ponytail: shared by bookmarks & highlights ⋯ menus. Pass sectionHref as
+  // overrideHref so startFromHere navigates the viewer to the right section
+  // before resolving startCfi (mirrors ToC onPlaySection). Legacy rows with
+  // null sectionHref fall back to the current-section path.
+  const handleStartReadingFromCfi = useCallback(
+    (cfi: string, sectionHref: string | null) => {
+      startFromHere(sectionHref ?? undefined, undefined, { startCfi: cfi });
+    },
+    [startFromHere]
+  );
+
   const handleSaveBookmark = useCallback(
     async (cfi: string) => {
       // ponytail: derive the synthetic page from epub.js locations (the same
@@ -1426,6 +1437,7 @@ export function ReaderClient({
                 toc={toc}
                 onBookmarkClick={handleNavigateToCfi}
                 onSaveBookmark={handleSaveBookmark}
+                onStartReading={handleStartReadingFromCfi}
               />
             ),
             pen: (
@@ -1433,6 +1445,7 @@ export function ReaderClient({
                 bookId={bookId}
                 toc={toc}
                 onHighlightClick={handleNavigateToCfi}
+                onStartReading={handleStartReadingFromCfi}
               />
             ),
             bulb: (

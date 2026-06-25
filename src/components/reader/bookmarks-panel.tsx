@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronDown, MoreHorizontal, Trash2 } from "lucide-react";
+import { BookmarkPlus, ChevronDown, MoreHorizontal, Play, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export interface BookmarksPanelProps {
   toc: NavItem[];
   onBookmarkClick: (cfi: string) => void;
   onSaveBookmark: (cfi: string) => Promise<void> | void;
+  onStartReading: (cfi: string, sectionHref: string | null) => void;
 }
 
 function flattenToc(
@@ -48,6 +50,7 @@ export function BookmarksPanel({
   toc,
   onBookmarkClick,
   onSaveBookmark,
+  onStartReading,
 }: BookmarksPanelProps) {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -227,7 +230,14 @@ export function BookmarksPanel({
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="min-w-52">
+                          <DropdownMenuItem
+                            onClick={() => onStartReading(b.cfi, b.sectionHref)}
+                          >
+                            <Play className="h-4 w-4" />
+                            Start reading from here
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDelete(b.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                             Delete bookmark

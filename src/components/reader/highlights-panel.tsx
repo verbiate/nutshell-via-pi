@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, MoreHorizontal, Trash2, StickyNote } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Play, Trash2, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ export interface HighlightsPanelProps {
   bookId: string;
   toc: NavItem[];
   onHighlightClick: (cfi: string) => void;
+  onStartReading: (cfi: string, sectionHref: string | null) => void;
 }
 
 function flattenToc(
@@ -70,11 +72,13 @@ function HighlightRow({
   onNavigate,
   onDelete,
   onNoteSave,
+  onStartReading,
 }: {
   highlight: HighlightItem;
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
+  onStartReading: (cfi: string, sectionHref: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(highlight.note ?? "");
@@ -168,7 +172,16 @@ function HighlightRow({
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="min-w-52">
+          <DropdownMenuItem
+            onClick={() =>
+              onStartReading(highlight.cfi, highlight.sectionHref)
+            }
+          >
+            <Play className="h-4 w-4" />
+            Start reading from here
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onDelete(highlight.id)}>
             <Trash2 className="h-4 w-4 text-destructive" />
             Delete highlight
@@ -189,6 +202,7 @@ function GroupBlock({
   onNavigate,
   onDelete,
   onNoteSave,
+  onStartReading,
 }: {
   label: string;
   count: number;
@@ -199,6 +213,7 @@ function GroupBlock({
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
+  onStartReading: (cfi: string, sectionHref: string | null) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -245,6 +260,7 @@ function GroupBlock({
               onNavigate={onNavigate}
               onDelete={onDelete}
               onNoteSave={onNoteSave}
+              onStartReading={onStartReading}
             />
           ))}
         </div>
@@ -257,6 +273,7 @@ export function HighlightsPanel({
   bookId,
   toc,
   onHighlightClick,
+  onStartReading,
 }: HighlightsPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("date");
@@ -405,6 +422,7 @@ export function HighlightsPanel({
           onNavigate={onHighlightClick}
           onDelete={handleDelete}
           onNoteSave={handleNoteSave}
+          onStartReading={onStartReading}
         />
       ))}
     </div>
