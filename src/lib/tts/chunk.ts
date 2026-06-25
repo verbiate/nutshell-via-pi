@@ -12,7 +12,7 @@ export const CHUNK_LIMITS = {
 
 const SENTENCE_RE = /.*?(?:[.!?]+["')\]]*(?=\s|$)|$)/gs;
 
-function splitSentences(text: string): string[] {
+export function splitSentences(text: string): string[] {
   return Array.from(text.matchAll(SENTENCE_RE))
     .map((m) => m[0].trim())
     .filter(Boolean);

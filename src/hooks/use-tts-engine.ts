@@ -144,14 +144,18 @@ function cancelBrowserSpeech(): void {
 // cumulative length comparison suffices. Ceiling: chunk granularity — if the
 // offset lands mid-chunk, that whole chunk is the start unit. Upgrade path:
 // split the chunk at the offset for char-level precision.
+// ponytail: first chunk whose START (cumulative offset) is >= targetOffset.
+// Forward-snap: when the page-top char lands inside a chunk that began on the
+// previous page, skip it and start at the next chunk boundary — i.e. the first
+// sentence BEGINNING on the current page.
 function findStartChunkIndex(chunks: string[], targetOffset: number): number {
   if (targetOffset <= 0) return 0;
   let acc = 0;
   for (let i = 0; i < chunks.length; i++) {
+    if (acc >= targetOffset) return i;
     acc += chunks[i].length;
-    if (acc > targetOffset) return i;
   }
-  return 0;
+  return Math.max(0, chunks.length - 1);
 }
 
 export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
@@ -777,11 +781,11 @@ function _findStartChunkIndexDemo(): void {
   const chunks = ["AAAA", "BBBB", "CCCC"];
   const checks: Array<[number, number, string]> = [
     [0, 0, "offset 0 → chunk 0"],
-    [3, 0, "offset 3 → chunk 0 (inside AAAA)"],
-    [4, 1, "offset 4 → chunk 1 (start of BBBB)"],
-    [7, 1, "offset 7 → chunk 1 (inside BBBB)"],
-    [8, 2, "offset 8 → chunk 2 (start of CCCC)"],
-    [99, 0, "offset 99 → chunk 0 (out of range, fallback)"],
+    [3, 1, "offset 3 (inside AAAA) → chunk 1 (first start ≥3)"],
+    [4, 1, "offset 4 (start of BBBB) → chunk 1"],
+    [7, 2, "offset 7 (inside BBBB) → chunk 2 (first start ≥7)"],
+    [8, 2, "offset 8 (start of CCCC) → chunk 2"],
+    [99, 2, "offset 99 → last chunk (out of range, clamp)"],
   ];
   for (const [offset, expected, label] of checks) {
     const got = findStartChunkIndex(chunks, offset);

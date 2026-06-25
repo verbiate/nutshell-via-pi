@@ -15,7 +15,9 @@ import {
   wrapRangePerBlock,
   positionBlock,
   TTS_BLOCK_SELECTOR,
+  type TextMap,
 } from "@/lib/reader/tts-highlight-match";
+import { splitSentences } from "@/lib/tts/chunk";
 import {
   applyRelocated,
   DEFAULT_FOLLOW_STATE,
@@ -136,6 +138,89 @@ function resolveStartBlockFromLocation(
     // fall through to rect heuristic
   }
   return null;
+}
+
+// ponytail: char offset of `el`'s start within the section's TTS-normalized
+// text. Clones body→el, serializes, runs the SAME htmlToTtsText transform the
+// chunker uses — deterministic, no string matching.
+function prefixTextOffset(doc: Document, el: Element): number {
+  try {
+    const range = doc.createRange();
+    range.setStart(doc.body, 0);
+    range.setEndBefore(el);
+    const fragment = range.cloneContents();
+    const wrapper = doc.createElement("div");
+    wrapper.appendChild(fragment);
+    return htmlToTtsText(wrapper.innerHTML).length;
+  } catch {
+    return 0;
+  }
+}
+
+// ponytail: rendition.currentLocation().start.displayed.page as a number, 0 on
+// failure. Used as a fallback when the iframe isn't actually translated.
+function readDisplayedPage(rendition: unknown): number {
+  try {
+    const p = (
+      rendition as {
+        currentLocation?: () => {
+          start?: { displayed?: { page?: string | number } };
+        };
+      }
+    ).currentLocation?.()?.start?.displayed?.page;
+    return typeof p === "number" ? p : parseInt(String(p ?? "0"), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ponytail: TTS-text offset of an arbitrary DOM point (body start → (node,
+// offset)). Used to turn a per-sentence caret position into the absolute char
+// offset the chunker consumes.
+function prefixOffsetTo(
+  doc: Document,
+  endNode: Node,
+  endOffset: number,
+): number {
+  try {
+    const range = doc.createRange();
+    range.setStart(doc.body, 0);
+    range.setEnd(endNode, endOffset);
+    const fragment = range.cloneContents();
+    const wrapper = doc.createElement("div");
+    wrapper.appendChild(fragment);
+    return htmlToTtsText(wrapper.innerHTML).length;
+  } catch {
+    return 0;
+  }
+}
+
+// ponytail: bounding rect of a single character at `index` in the map. Used to
+// tell which paginated column a chunk/sentence character lives in (a fragmented
+// block's own rect spans columns and is useless for this). Null if the range
+// can't be formed.
+function charRectAt(
+  doc: Document,
+  map: TextMap,
+  index: number,
+): DOMRect | null {
+  const startPos = map.positions[index];
+  if (!startPos) return null;
+  try {
+    const range = doc.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    const nodeLen = startPos.node.nodeValue?.length ?? 0;
+    if (startPos.offset + 1 <= nodeLen) {
+      range.setEnd(startPos.node, startPos.offset + 1);
+    } else {
+      const np = map.positions[index + 1];
+      range.setEnd(np ? np.node : startPos.node, np ? np.offset : startPos.offset);
+    }
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 ? rect : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface EpubViewerProps {
@@ -470,24 +555,36 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           }
         }
 
-        // ponytail: visibility safety net. epub.js's display(cfi) does not
-        // reliably advance columns for a same-section target in the paginated
-        // manager — the chunk gets marked on the next page but the viewport
-        // never follows. Verify the start block is actually on screen and
-        // advance with next() until it is. Cheap no-op when display() already
-        // landed on the right page (rect.left < vw → loop never fires). Gated
-        // on !userBrowsedAway so a browsing user isn't yanked back. Within-
-        // section next() is just a column translation, so the text map/range
-        // above stay valid for the wrapping that follows.
-        if (startBlock && !followStateRef.current.userBrowsedAway) {
+        // ponytail: visibility safety net. display(blockCfi) lands on the
+        // block's START page — correct for normal blocks, but a block fragmented
+        // across a page boundary starts on the previous page while the chunk's
+        // spoken text is on this one. Advance columns until the chunk's START
+        // CHARACTER is on the displayed page. We can't use the block's rect
+        // (fragmented blocks span columns and never read as "visible"), and
+        // doc.defaultView.innerWidth here is the full N×pageWidth strip, not one
+        // page — so use the container width and the chunk char's own rect vs the
+        // rendition's current displayed page. Cheap no-op when display() already
+        // landed on the right page. Gated on !userBrowsedAway so a browsing user
+        // isn't yanked back. next() is just a column translation, so the text
+        // map/range above stay valid for the wrapping that follows.
+        if (
+          startBlock &&
+          range &&
+          !followStateRef.current.userBrowsedAway
+        ) {
           const rendition = renditionRef.current;
-          const vw = doc.defaultView?.innerWidth ?? 800;
+          const pageW =
+            containerRef.current?.getBoundingClientRect().width ??
+            doc.defaultView?.innerWidth ??
+            800;
           let safety = 0;
-          while (
-            rendition &&
-            startBlock.getBoundingClientRect().left >= vw - 2 &&
-            safety < 4
-          ) {
+          while (rendition && safety < 4) {
+            const cr = charRectAt(doc, map, range.start);
+            if (!cr) break;
+            const page = readDisplayedPage(rendition);
+            const visLeft = page > 0 ? (page - 1) * pageW : 0;
+            // char already on the displayed page (or before it) → done
+            if (cr.left < visLeft + pageW) break;
             markNavInFlight();
             try {
               await rendition.next();
@@ -599,36 +696,89 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const doc = iframe?.contentDocument;
         if (!doc?.body) return 0;
 
-        let targetEl: Element | null = null;
         if (pos?.elementId) {
-          targetEl = doc.getElementById(pos.elementId);
+          const el = doc.getElementById(pos.elementId);
+          if (el) return prefixTextOffset(doc, el);
         }
-        if (!targetEl) {
-          // ponytail: authoritative first — ask epub.js where the current page
-          // starts, then fall back to the rect heuristic if it can't tell us.
-          targetEl = resolveStartBlockFromLocation(renditionRef.current, doc);
-          if (!targetEl) {
-            // ponytail: elementId miss or useVisible → first visible leaf block.
-            targetEl = getFirstVisibleBlock(doc);
+
+        // ponytail: GEOMETRIC visible-page resolution. epub.js paginated lays
+        // the whole section in one wide iframe (innerWidth = N × pageWidth)
+        // translated inside the container (= one pageWidth); currentLocation's
+        // start.cfi resolves ~one page off on this layout, so use the geometry:
+        // the container is a pageWidth window into the translated iframe, and
+        // container.left − iframe.left tells us how far in we are. Falls back to
+        // displayed.page when the iframe isn't translated (scroll manager) or
+        // we're on page 1.
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        const iframeRect = iframe?.getBoundingClientRect();
+        const pageW = containerRect?.width ?? doc.defaultView?.innerWidth ?? 800;
+
+        let visLeft = -1;
+        if (containerRect && iframeRect) {
+          const t = containerRect.left - iframeRect.left;
+          if (t > 1) visLeft = t;
+        }
+        if (visLeft < 0) {
+          const page = readDisplayedPage(renditionRef.current);
+          visLeft = page > 0 ? (page - 1) * pageW : 0;
+        }
+
+        // ponytail: first leaf block whose rect OVERLAPS the visible window.
+        // A block fragmented across the page boundary (starts on the previous
+        // page, continues onto this one) is included so its on-page sentences
+        // aren't skipped.
+        const visRight = visLeft + pageW;
+        const blocks = Array.from(
+          doc.querySelectorAll<HTMLElement>(TTS_BLOCK_SELECTOR),
+        ).filter((el) => !hasTextBlockDescendant(el));
+        let vi = -1;
+        for (let i = 0; i < blocks.length; i++) {
+          const r = blocks[i].getBoundingClientRect();
+          if (r.width === 0) continue;
+          if (r.right > visLeft && r.left < visRight) {
+            vi = i;
+            break;
           }
         }
-        if (!targetEl) return 0;
-
-        try {
-          // ponytail: clone everything from body start up to (not including)
-          // the target, serialize, and run the SAME htmlToTtsText transform
-          // the chunker uses. The resulting length is a character offset into
-          // the section's TTS text — deterministic, no string matching.
-          const range = doc.createRange();
-          range.setStart(doc.body, 0);
-          range.setEndBefore(targetEl);
-          const fragment = range.cloneContents();
-          const wrapper = doc.createElement("div");
-          wrapper.appendChild(fragment);
-          return htmlToTtsText(wrapper.innerHTML).length;
-        } catch {
-          return 0;
+        if (vi < 0) {
+          // last-resort fallback (CFI is off-by-one on this layout, but > 0)
+          const fb =
+            resolveStartBlockFromLocation(renditionRef.current, doc) ??
+            getFirstVisibleBlock(doc);
+          return fb ? prefixTextOffset(doc, fb) : 0;
         }
+
+        const block = blocks[vi];
+        const br = block.getBoundingClientRect();
+
+        // Block STARTS on the visible page → its start offset.
+        if (br.left >= visLeft - 1) {
+          return prefixTextOffset(doc, block);
+        }
+
+        // Block spans from a previous page → find the first SENTENCE within it
+        // whose rendered start is on the visible page. buildTextMap gives a
+        // per-char DOM position; per-sentence ranges read their column via
+        // getBoundingClientRect without trusting caretRangeFromPoint (which is
+        // unreliable on this translated-iframe layout).
+        const map = buildTextMap(doc, block);
+        const sentences = splitSentences(map.text);
+        let searchFrom = 0;
+        for (const sentence of sentences) {
+          if (sentence.length < 2) continue;
+          const s = map.text.indexOf(sentence, searchFrom);
+          if (s < 0) break;
+          searchFrom = s + sentence.length;
+          const rect = charRectAt(doc, map, s);
+          if (!rect) continue;
+          if (rect.left >= visLeft - 1 && rect.left < visRight) {
+            const startPos = map.positions[s];
+            return prefixOffsetTo(doc, startPos.node, startPos.offset);
+          }
+        }
+
+        // every sentence failed to resolve (rare) → block start (prev page)
+        return prefixTextOffset(doc, block);
       },
     }));
 
