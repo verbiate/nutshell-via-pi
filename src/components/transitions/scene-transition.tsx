@@ -180,13 +180,13 @@ function zeroScrollOffsets(clone: HTMLElement) {
 // covers both.
 //
 // ponytail: reparents the cloned bar to the library-clone root and pins it
-// absolutely at its captured viewport-relative offset. The clone becomes the
-// containing block via position:relative (transform alone only catches fixed
-// descendants, not absolute). Captured ONCE at forward nav; persists through
-// the back-direction reuse — inline styles survive cloneNode reuse and the
-// scroll-zeroing, since absolute positioning is scroll-independent. Ceiling: a
-// vertical resize between forward and back stale the captured top — the bar's
-// bottom-pinned role makes the drift imperceptible in practice.
+// absolutely at the viewport bottom. The clone becomes the containing block via
+// position:relative (transform alone only catches fixed descendants, not
+// absolute). Captured ONCE at forward nav; persists through the back-direction
+// reuse — inline styles survive cloneNode reuse and the scroll-zeroing, since
+// absolute positioning is scroll-independent. We use bottom:0 rather than the
+// live bar's getBoundingClientRect().top because the live bar may not have
+// reached its sticky-bottom position when content is shorter than the viewport.
 function freezeShelfBar(library: HTMLElement, clone: HTMLElement) {
   const bar = library.querySelector("[data-shelf-bar]") as HTMLElement | null;
   if (!bar) return;
@@ -208,8 +208,8 @@ function freezeShelfBar(library: HTMLElement, clone: HTMLElement) {
   clonedBar.style.left = `${barRect.left - libraryRect.left}px`;
   clonedBar.style.width = `${barRect.width}px`;
   clonedBar.style.right = "auto";
-  clonedBar.style.bottom = "auto";
-  clonedBar.style.top = `${barRect.top - libraryRect.top}px`;
+  clonedBar.style.bottom = "0px";
+  clonedBar.style.top = "auto";
   clonedBar.style.height = `${barRect.height}px`;
   clonedBar.style.margin = "0px";
   // Hide the SmoothScrollArea custom scrollbar thumb in the clone — its inline
@@ -990,7 +990,11 @@ export function _demoFreezeShelfBar() {
     clonedBar.style.position === "absolute",
     "cloned bar must be position:absolute",
   );
-  assert(clonedBar.style.top === "662px", "top must be 662px (662 - 0)");
+  assert(
+    clonedBar.style.bottom === "0px",
+    "bottom must be 0px (pinned to viewport bottom)",
+  );
+  assert(clonedBar.style.top === "auto", "top must be auto (override)");
   assert(
     clonedBar.style.left === "504px",
     "left must be 504px (captured from right column, not 0)",
@@ -1004,7 +1008,6 @@ export function _demoFreezeShelfBar() {
     clonedBar.style.right === "auto",
     "right must be auto (left+width pin, not left+right stretch)",
   );
-  assert(clonedBar.style.bottom === "auto", "bottom must be auto (override)");
   assert(
     clone.style.position === "relative",
     "clone must be position:relative (containing block for the absolute bar)",
@@ -1072,9 +1075,10 @@ export function _demoFreezeShelfBarSnapshot() {
     "snapshot bar must be position:absolute after self-freeze",
   );
   assert(
-    bar.style.top === "662px",
-    "snapshot bar top must be 662px (662 - 0)",
+    bar.style.bottom === "0px",
+    "snapshot bar bottom must be 0px (pinned to viewport bottom)",
   );
+  assert(bar.style.top === "auto", "snapshot bar top must be auto");
   assert(
     bar.style.left === "504px",
     "snapshot bar left must be 504px (offset from snapshot root)",

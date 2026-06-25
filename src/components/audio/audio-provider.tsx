@@ -69,6 +69,7 @@ function createSession(
     bookId: ctx.bookId,
     bookTitle: ctx.bookTitle,
     bookAuthor: ctx.bookAuthor,
+    bookCoverPath: ctx.bookCoverPath,
     bookLanguage: ctx.bookLanguage,
     flatToc: flattenToc(ctx.toc),
     userRole: ctx.userRole,
@@ -98,6 +99,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // ReaderClient registers this so the persistent player can reopen its sidebar.
+  const detailsOpenerRef = useRef<(() => void) | null>(null);
 
   // Viewer ref holder: the reader registers its EpubViewer ref here so
   // highlight-follow-along works when on-reader; off-reader it is null.
@@ -355,7 +359,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         isCloudNow &&
         openBookRef.current?.currentHref !== href
       ) {
-        registeredViewer?.current?.navigateTo(href).catch(() => {});
+        // ponytail: use the mirrored ref so React Compiler's inferred deps
+        // (registeredViewerRef.current) match the source; the ref itself is
+        // stable, so the callback doesn't need registeredViewer in deps.
+        registeredViewerRef.current?.current?.navigateTo(href).catch(() => {});
       }
       if (isCloudNow) {
         cloudTtsRef.current?.startSection(href, title);
@@ -367,7 +374,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // the browser path, onChunkAdvance overrides with chunk precision next.
       scheduleTtsPosSave({ sectionHref: href });
     },
-    [enginePref, registeredViewer, scheduleTtsPosSave],
+    [enginePref, scheduleTtsPosSave],
   );
 
   // ─── Cloud generation duration estimate ────────────────────────────────────
@@ -454,6 +461,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // ─── Actions exposed to consumers ──────────────────────────────────────────
   const registerBook = useCallback((ctx: BookAudioContext) => {
     setOpenBook(ctx);
+  }, []);
+
+  const registerDetailsOpener = useCallback((fn: () => void) => {
+    detailsOpenerRef.current = fn;
+  }, []);
+
+  const openBookDetails = useCallback(() => {
+    detailsOpenerRef.current?.();
   }, []);
 
   const registerViewer = useCallback(
@@ -656,10 +671,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       onReader,
       setReaderControlsHidden,
       registerBook,
+      registerDetailsOpener,
       registerViewer,
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
+      openBookDetails,
       playPause,
       stop,
       scrub,
@@ -678,10 +695,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       onReader,
       setReaderControlsHidden,
       registerBook,
+      registerDetailsOpener,
       registerViewer,
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
+      openBookDetails,
       playPause,
       stop,
       scrub,
@@ -718,10 +737,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             quota={isCloud ? cloudTts.quota : null}
             bookTitle={session?.bookTitle ?? openBook?.bookTitle}
             bookAuthor={session?.bookAuthor ?? openBook?.bookAuthor}
+            bookCoverPath={session?.bookCoverPath ?? openBook?.bookCoverPath}
+            bookId={session?.bookId ?? openBook?.bookId}
             canScrub={isCloud}
             playlist={session?.flatToc ?? (openBook ? flattenToc(openBook.toc) : undefined)}
             currentIndex={session?.currentIndex}
             onJumpTo={jumpTo}
+            onOpenBookDetails={openBookDetails}
             hidden={cardHidden}
           />
         </div>

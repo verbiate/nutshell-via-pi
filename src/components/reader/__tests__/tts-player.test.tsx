@@ -38,6 +38,13 @@ vi.mock("@/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// ponytail: TtsPlayer calls useRouter/usePathname at render; bare SSR has no
+// App Router context, so stub them.
+vi.mock("next/navigation", () => ({
+  usePathname: () => null,
+  useRouter: () => ({ push: () => {} }),
+}));
+
 import { TtsPlayer } from "../tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { EngineId } from "@/lib/tts/languages";

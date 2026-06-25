@@ -48,6 +48,25 @@ interface SavedPosition {
   ttsChunkAnchor?: string;
 }
 
+// Book-to-book swap: a frozen snapshot of the sidebar panel's display props,
+// captured at the moment bookId changes so the closing sidebar still shows the
+// outgoing book. Cleared at reopen-settle, at which point the panel flips to
+// the new book's (live) props.
+interface PanelSnapshot {
+  bookTitle: string;
+  author?: string | null;
+  coverPath?: string | null;
+  language?: string;
+  metadataTitle?: string | null;
+  subtitle?: string | null;
+  description?: string | null;
+  descriptionLoading: boolean;
+  isNarrative?: boolean | null;
+  toc: NavItem[];
+  currentHref: string;
+  bookCreatedAt?: string;
+}
+
 export interface ReaderClientProps {
   bookId: string;
   bookTitle?: string;
@@ -58,7 +77,7 @@ export interface ReaderClientProps {
   bookSubtitle?: string | null;
   bookDescription?: string | null;
   bookIsNarrative?: boolean | null;
-  epubUrl: string;
+  epubUrl?: string;
   isAdmin?: boolean;
   bookCreatedAt?: string;
   // ponytail: initial library snapshot for BookshelfSnapshot — the back-nav
@@ -102,6 +121,13 @@ export function ReaderClient({
   const [librarySnapshot, setLibrarySnapshot] =
     useState<LibraryBook[]>(initialLibrary);
   const viewerRef = useRef<EpubViewerHandle>(null);
+  // Book-to-book swap detection. prevBookId is null on first mount so we don't
+  // treat the initial shelf->reader arrival as a swap.
+  const prevBookIdRef = useRef<string | null>(null);
+  const swapStartRef = useRef(0);
+  // Mirror of the sidebar panel's display props from the previous commit, so
+  // Phase 1 can snapshot the outgoing book before props flip to the new one.
+  const outgoingPanelRef = useRef<PanelSnapshot | null>(null);
   // Wraps the EpubViewer; its width animates with the sidebar. We listen to
   // transitionend on this element to trigger epub.js re-pagination.
   const epubWrapperRef = useRef<HTMLDivElement>(null);
@@ -177,8 +203,18 @@ export function ReaderClient({
   // it (fires the create-thread API) and calls onConsumed to clear it.
   const [pendingRequest, setPendingRequest] = useState<PendingExplainerRequest | null>(null);
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
+  type SwapPhase = "idle" | "closing" | "placeholder" | "opening" | "revealed";
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
+  // ponytail: ref mirror so Phase 1's bookId effect can read activeTool without
+  // listing it as a dep (including it causes the effect to re-run when Phase 1
+  // itself sets activeTool(null), which cancels the close-duration timeout).
+  const activeToolRef = useRef(activeTool);
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  });
   const [sidebarAnimating, setSidebarAnimating] = useState(false);
+  const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
+  const [frozenPanel, setFrozenPanel] = useState<PanelSnapshot | null>(null);
 
   // ─── Book description (LLM-extracted, may load after first paint) ────────────
   // ponytail: initial value comes from the server (already-extracted row).
@@ -277,6 +313,7 @@ export function ReaderClient({
     registerBook,
     registerViewer,
     unregisterViewer,
+    registerDetailsOpener,
     setReaderControlsHidden,
     startFromHere,
     syncViewerToPlayback,
@@ -884,6 +921,7 @@ export function ReaderClient({
       bookId,
       bookTitle,
       bookAuthor,
+      bookCoverPath,
       bookLanguage: bookLanguage ?? "en",
       toc,
       userRole,
@@ -901,12 +939,19 @@ export function ReaderClient({
     bookId,
     bookTitle,
     bookAuthor,
+    bookCoverPath,
     bookLanguage,
     toc,
     userRole,
     currentHref,
     bookSettings.voiceSpeed,
   ]);
+
+  // Register a handler so the persistent player can reopen this sidebar when
+  // the user clicks the current book's thumbnail while already reading it.
+  useEffect(() => {
+    registerDetailsOpener(() => setActiveTool("reader"));
+  }, [registerDetailsOpener]);
 
   // ponytail: idle-fade predicate shared by chrome, progress, and the right
   // rail, and pushed to AudioProvider so the floating TTS card mirrors it.
@@ -982,6 +1027,138 @@ export function ReaderClient({
     setActiveTool((prev) => prev ?? "reader");
   }, [entering, isLoaded]);
 
+  // ─── Book-to-book swap choreography (reader → different book via thumbnail) ─
+  // ReaderClient stays mounted when the [id] param changes. The swap sequence:
+  // close sidebar (still showing the outgoing book via frozenPanel) → show the
+  // placeholder once the sidebar is fully closed → load new EPUB → reopen the
+  // sidebar with the destination book already in the panel → at reopen-settle,
+  // drop the placeholder to reveal the new book. First mount is skipped
+  // (prevBookIdRef starts null).
+  // Phase 1 runs BEFORE the outgoingPanel mirror effect below, so it reads the
+  // outgoing book's snapshot before that ref is overwritten with the new props.
+  useEffect(() => {
+    const prev = prevBookIdRef.current;
+    prevBookIdRef.current = bookId;
+    if (prev === null || prev === bookId) return;
+
+    // ponytail: read activeTool via ref — NOT as a dep. Including it causes the
+    // effect to re-run when setActiveTool(null) fires below, which cancels the
+    // close-duration timeout via cleanup, stranding swapPhase at "closing".
+    const wasOpen = activeToolRef.current !== null;
+    setFrozenPanel(outgoingPanelRef.current);
+    setSwapPhase(wasOpen ? "closing" : "placeholder");
+    setActiveTool(null);
+    setIsLoaded(false);
+    setContentRevealed(false);
+    setError(null);
+    setSavedPosition(null);
+    setToc([]);
+    setCurrentHref("");
+    chunkRestoredRef.current = false;
+    ttsSyncedRef.current = false;
+    swapStartRef.current = Date.now();
+
+    if (wasOpen) {
+      const closeDur = reducedMotion ? 0 : 250;
+      const t = setTimeout(() => {
+        setSwapPhase("placeholder");
+        setFrozenPanel(null);
+      }, closeDur);
+      return () => clearTimeout(t);
+    } else {
+      setFrozenPanel(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
+
+  // Mirror the sidebar panel's display props each commit. Declared after Phase
+  // 1 so the snapshot it reads is still the outgoing book's on the swap commit.
+  useEffect(() => {
+    outgoingPanelRef.current = {
+      bookTitle: bookTitle ?? "",
+      author: bookAuthor,
+      coverPath: bookCoverPath,
+      language: bookLanguage,
+      metadataTitle,
+      subtitle,
+      description,
+      descriptionLoading,
+      isNarrative,
+      toc,
+      currentHref,
+      bookCreatedAt,
+    };
+  });
+
+  // ponytail: sync metadata state when bookId or metadata props change. With
+  // keepPreviousData in ReaderMount, this fires twice on swap: first with the
+  // outgoing book's stale props (harmless — frozenPanel covers the sidebar),
+  // then with the destination book's real props when the query resolves.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setDescription(bookDescription ?? null);
+    setMetadataTitle(bookMetadataTitle ?? null);
+    setSubtitle(bookSubtitle ?? null);
+    setIsNarrative(bookIsNarrative ?? null);
+    setDescriptionLoading(!bookDescription);
+  }, [bookDescription, bookMetadataTitle, bookSubtitle, bookIsNarrative]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Phase 2: the sidebar has closed and the new book has loaded → reopen it.
+  useEffect(() => {
+    if (swapPhase !== "placeholder") return;
+    if (!isLoaded && !error) return;
+    const dwell = reducedMotion ? 0 : 250;
+    const remain = dwell - (Date.now() - swapStartRef.current);
+    const reopen = () => {
+      setActiveTool("reader");
+      setSwapPhase("opening");
+    };
+    if (remain <= 0) {
+      reopen();
+      return;
+    }
+    const t = setTimeout(reopen, remain);
+    return () => clearTimeout(t);
+  }, [swapPhase, isLoaded, error, reducedMotion]);
+
+  // Phase 3: the sidebar has finished reopening → drop the placeholder and
+  // complete the swap. A small pad after the CSS duration lets the width
+  // transitionend (which restores book opacity) fire before the skeleton fades.
+  useEffect(() => {
+    if (swapPhase !== "opening") return;
+    const openDur = reducedMotion ? 0 : 250;
+    const t = setTimeout(() => {
+      setSwapPhase("revealed");
+    }, openDur + 50);
+    return () => clearTimeout(t);
+  }, [swapPhase, reducedMotion]);
+
+  // During a book-to-book swap the sidebar shows the outgoing book (frozen)
+  // while closing; once closed it switches to the destination book's live props
+  // so the reopen already shows the new book.
+  const panel: PanelSnapshot = frozenPanel ?? {
+    bookTitle: bookTitle ?? "",
+    author: bookAuthor,
+    coverPath: bookCoverPath,
+    language: bookLanguage,
+    metadataTitle,
+    subtitle,
+    description,
+    descriptionLoading,
+    isNarrative,
+    toc,
+    currentHref,
+    bookCreatedAt,
+  };
+
+  const skeletonVisible =
+    entering ||
+    swapPhase === "closing" ||
+    swapPhase === "placeholder" ||
+    swapPhase === "opening" ||
+    (!isLoaded && swapPhase === "idle");
+
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
@@ -1041,10 +1218,10 @@ export function ReaderClient({
               thing that moves — then fades out to expose the page beneath.
               Reduced motion → instant reveal. */}
           {reducedMotion
-            ? (!isLoaded || entering) && <ReaderSkeleton />
+            ? skeletonVisible && <ReaderSkeleton />
             : !contentRevealed && (
                 <ReaderSkeleton
-                  visible={!isLoaded || entering}
+                  visible={skeletonVisible}
                   onFadeOut={() => setContentRevealed(true)}
                 />
               )}
@@ -1061,7 +1238,7 @@ export function ReaderClient({
               slide-in settles (entering===false). During the slide-in only the
               cheap ReaderSkeleton paints, so the animation isn't fighting the
               EPUB fetch/parse/iframe-render on the main thread + compositor. */}
-          {!entering && (
+          {!entering && epubUrl && (
             <EpubViewer
               ref={viewerRef}
               url={epubUrl}
@@ -1137,21 +1314,21 @@ export function ReaderClient({
             reader: (
               <ReaderPanel
                 bookId={bookId}
-                bookTitle={bookTitle ?? ""}
-                author={bookAuthor}
-                coverPath={bookCoverPath}
-                language={bookLanguage}
-                metadataTitle={metadataTitle}
-                subtitle={subtitle}
-                description={description}
-                descriptionLoading={descriptionLoading}
-                isNarrative={isNarrative}
-                toc={toc}
-                currentHref={currentHref}
+                bookTitle={panel.bookTitle}
+                author={panel.author}
+                coverPath={panel.coverPath}
+                language={panel.language}
+                metadataTitle={panel.metadataTitle}
+                subtitle={panel.subtitle}
+                description={panel.description}
+                descriptionLoading={panel.descriptionLoading}
+                isNarrative={panel.isNarrative}
+                toc={panel.toc}
+                currentHref={panel.currentHref}
                 onNavigate={handleTocNavigate}
                 initialLanguage={initialLanguage}
                 isAdmin={isAdmin}
-                bookCreatedAt={bookCreatedAt}
+                bookCreatedAt={panel.bookCreatedAt}
                 coverHidden={forwardFlyActive}
                 onAskAboutSection={handleAskAboutSection}
                 onPlaySection={startFromHere}

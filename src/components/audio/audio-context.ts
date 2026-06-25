@@ -18,6 +18,7 @@ export type BookAudioContext = {
   bookId: string;
   bookTitle?: string;
   bookAuthor?: string | null;
+  bookCoverPath?: string | null;
   bookLanguage: string;
   toc: NavItem[];
   userRole: UserRole;
@@ -29,6 +30,7 @@ export type AudioSession = {
   bookId: string;
   bookTitle?: string;
   bookAuthor?: string | null;
+  bookCoverPath?: string | null;
   bookLanguage: string;
   flatToc: FlatSection[];
   userRole: UserRole;
@@ -71,6 +73,10 @@ export type AudioContextValue = {
    * book, or playback isn't active.
    */
   syncViewerToPlayback: () => Promise<void>;
+  /** Open the book-details sidebar (no-op when reader hasn't registered a handler). */
+  openBookDetails: () => void;
+  /** ReaderClient registers this so the persistent player can open its sidebar. */
+  registerDetailsOpener: (fn: () => void) => void;
   playPause: () => void;
   stop: () => void;
   scrub: (time: number) => void;

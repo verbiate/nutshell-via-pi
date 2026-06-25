@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -33,6 +34,8 @@ import type { TtsVoice } from "@/lib/tts/types";
 import type { UserRole } from "@/types/book";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { CloudQuota } from "@/hooks/use-tts-cloud";
+import { BookCover } from "@/components/library/book-cover";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 
 // ponytail: the three user-facing engine choices. cloud/browser aren't pickable
 // here — cloud maps to "Premium", browser has no slot in the UI.
@@ -67,6 +70,10 @@ export interface TtsPlayerProps {
   /** Optional book metadata shown below the section title. */
   bookTitle?: string;
   bookAuthor?: string | null;
+  bookCoverPath?: string | null;
+  bookId?: string;
+  /** Clicking the cover opens the current book's details sidebar (same book only). */
+  onOpenBookDetails?: () => void;
   /**
    * Whether the scrubber can seek. Only the cloud `<audio>` path supports
    * scrubbing; the chunked AudioBuffer path is read-only progress. Defaults
@@ -138,6 +145,9 @@ export function TtsPlayer({
   quota = null,
   bookTitle,
   bookAuthor,
+  bookCoverPath,
+  bookId,
+  onOpenBookDetails,
   canScrub = false,
   hidden = false,
   variant = "reader",
@@ -147,10 +157,31 @@ export function TtsPlayer({
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
-  // ponytail: player is a permanent fixture in the bottom-left corner. The
-  // minimize toggle collapses to a mini form (play + expand) instead of
-  // unmounting — preserves state, avoids re-show affordances.
   const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const { navigate } = useSceneTransition();
+
+  function goToBook() {
+    if (!bookId) return;
+    // Same book, already reading: reopen the details sidebar in place.
+    if (pathname === `/book/${bookId}/reader`) {
+      onOpenBookDetails?.();
+      return;
+    }
+    // Book-to-book (already on a reader route): plain nav. ReaderClient stays
+    // mounted and runs its close -> placeholder -> reopen swap. Bypassing scene
+    // navigate is required -- the reader keeps a BookshelfSnapshot
+    // (data-scene="library") in the DOM that scene navigate would detect and
+    // animate as a full shelf -> reader slide-in.
+    if (pathname?.startsWith("/book/")) {
+      router.push(`/book/${bookId}/reader`);
+      return;
+    }
+    // Shelf / profile / elsewhere: full scene transition (no cover fly).
+    navigate(`/book/${bookId}/reader`, "forward", { bookId });
+  }
+
   const isLoading = state.state === "LOADING";
   const isGenerating = state.state === "GENERATING";
   const isPlaying = state.state === "PLAYING";
@@ -263,6 +294,19 @@ export function TtsPlayer({
             <PlaySolid className="h-4 w-4 text-blue" />
           )}
         </Button>
+
+        {!collapsed && bookId && (
+          <button
+            type="button"
+            onClick={goToBook}
+            aria-label={`Open ${bookTitle ?? "book"}`}
+            className="shrink-0 rounded-md outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <div className="w-[30px] overflow-hidden rounded-md bg-paper-deep shadow-book">
+              <BookCover coverPath={bookCoverPath} title={bookTitle ?? "book"} />
+            </div>
+          </button>
+        )}
 
         {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col justify-center">
