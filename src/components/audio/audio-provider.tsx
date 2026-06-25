@@ -16,6 +16,7 @@ import type {
   FlatSection,
 } from "./audio-context";
 import { TtsPlayer } from "@/components/reader/tts-player";
+import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import { useTtsEngine } from "@/hooks/use-tts-engine";
 import { useTtsCloud } from "@/hooks/use-tts-cloud";
@@ -84,6 +85,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     defaultEngineForLanguage("en"),
   );
   const [voicePref, setVoicePref] = useState<string>("");
+  const { leavingReader, entering } = useSceneTransition();
 
   // The currently open book (reader mounted) and the active playback session
   // (may be a different book when the user keeps audio playing while browsing).
@@ -556,11 +558,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (chunk?.chunkText) {
       try {
         await viewer.highlightChunk(chunk.chunkText);
-        // ponytail: if playback is paused on remount, fade the freshly-applied
-        // highlight out to match the on-reader paused state.
-        if (browserTtsRef.current?.state.phase === "PAUSED") {
-          viewer.setTtsPaused(true);
-        }
+        // ponytail: keep the highlight visible on remount so the user can see
+        // the paused chunk immediately. (The on-reader pause path fades the
+        // mark; re-entry from the player thumbnail should land the eye on the
+        // exact spoken text, not fade it.)
       } catch {
         // non-blocking — next chunk boundary will retry naturally
       }
@@ -738,6 +739,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // ponytail: mirror the reader's chrome-hidden flag; always show while audio is
   // actively playing. Off-reader the reader never pushes → stays false → visible.
   const cardHidden = readerControlsHidden && !isActivelyPlaying;
+  // Fade the idle player during the reader→library back transition so it
+  // doesn't pop at route swap. Active sessions (playing/paused) keep it visible.
+  const exitingIdle = leavingReader && session === null;
+  // Fade the idle player in after the library→reader slide-in so it doesn't
+  // snap in mid-transition. Mounts hidden because entering is set in the
+  // provider's layout effect before the reader's registerBook passive effect.
+  const enteringIdle = entering && session === null;
   // ponytail: show on-reader (idle + playing) or off-reader while a session
   // exists (keep-playing-while-browsing). Idle card surfaces the Start affordance.
   const showCard = !!openBook && (onReader || session !== null);
@@ -809,8 +817,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       {showCard && (
         <div
           className={cn(
-            "fixed bottom-12 left-12 z-[60] w-[calc(100%-6rem)] max-w-[640px] transition-opacity duration-300",
-            cardHidden && "opacity-0 pointer-events-none",
+            "fixed bottom-12 left-12 z-[60] w-[calc(100%-6rem)] max-w-[640px] transition-opacity",
+            (exitingIdle || enteringIdle) ? "duration-500" : "duration-300",
+            (cardHidden || exitingIdle || enteringIdle) && "opacity-0 pointer-events-none",
           )}
         >
           <TtsPlayer

@@ -60,6 +60,10 @@ interface SceneTransitionApi {
   // Bookshelf calls this once it has measured the hero cover rect (fly:true)
   // or immediately (fly:false). Drives the back fly + clears returningHero.
   settleHero: (rect: DOMRect | null) => void;
+  // True while a back navigation from the reader to the library is in
+  // progress. Used by the persistent TTS player to fade out an idle player
+  // during the slide-out rather than popping at route swap.
+  leavingReader: boolean;
 }
 
 // ponytail: default context value throws lazily — only when navigate() is
@@ -76,6 +80,7 @@ const NOT_PROVIDED: SceneTransitionApi = {
   suppressShelfReveal: false,
   returningHero: null,
   settleHero: () => {},
+  leavingReader: false,
 };
 
 const SceneTransitionContext = createContext<SceneTransitionApi>(NOT_PROVIDED);
@@ -334,6 +339,11 @@ export function SceneTransitionProvider({
   // Set on back-nav, cleared on forward-nav or a non-back library arrival.
   const [suppressShelfReveal, setSuppressShelfReveal] = useState(false);
 
+  // True while a back navigation from the reader to the library is in
+  // progress. Used by AudioProvider to fade out the idle TTS player during
+  // the slide-out rather than popping at route swap.
+  const [leavingReader, setLeavingReader] = useState(false);
+
   // ponytail: imperative nav state in refs (not state) so animations don't
   // trigger React re-renders mid-transition. Read by the pathname effect.
   const pendingRef = useRef<{ url: string; direction: Direction } | null>(null);
@@ -431,7 +441,13 @@ export function SceneTransitionProvider({
       // opened another book) is now irrelevant.
       if (direction === "forward" && returningHero) setReturningHero(null);
       // Leaving the library → this library visit's suppression ends.
-      if (direction === "forward") setSuppressShelfReveal(false);
+      if (direction === "forward") {
+        setSuppressShelfReveal(false);
+        setLeavingReader(false);
+      }
+      // Back nav: signal that the reader is exiting so dependents (e.g. the
+      // idle TTS player) can fade out during the slide-out rather than at swap.
+      if (direction === "back") setLeavingReader(true);
 
       if (reducedMotion) {
         // No fly, no slide. Back still suppresses the shelf ripple this visit.
@@ -476,7 +492,10 @@ export function SceneTransitionProvider({
         // book "leaves" the shelf (visibility:hidden retains the grid cell). The
         // real shelf unmounts; this clone is what's seen receding during the
         // slide-in, and it should show an empty slot where the book was.
-        if (opts?.bookId) {
+        // Only do this when a cover fly is inbound (opts.hero present) —
+        // otherwise (e.g. player-thumbnail nav) the book has no visual leaving
+        // motion and vacating it just makes it pop out of the shelf.
+        if (opts?.hero && opts?.bookId) {
           const departing = clone.querySelector(
             `[data-book-card][data-book-id="${CSS.escape(opts.bookId)}"]`,
           ) as HTMLElement | null;
@@ -829,6 +848,7 @@ export function SceneTransitionProvider({
           // Bookshelf to trigger via settleHero().
           pendingRef.current = null;
           setEntering(false);
+          setLeavingReader(false);
           clearLayer();
           unlockScroll();
         }
@@ -840,6 +860,7 @@ export function SceneTransitionProvider({
       if (pending.direction === "forward" && !onReader) {
         pendingRef.current = null;
         setEntering(false);
+        setLeavingReader(false);
         clearLayer();
         clearFly();
         setReturningHero(null);
@@ -857,6 +878,7 @@ export function SceneTransitionProvider({
       if (layer && layer.childElementCount > 0) clearLayer();
       if (forwardFlyRef.current || backFlyRef.current) clearFly();
       setSuppressShelfReveal(false);
+      setLeavingReader(false);
       // Defensive: a previous transition may have locked scroll and crashed
       // before unlocking. Idempotent restore here keeps the page scrollable.
       unlockScroll();
@@ -879,8 +901,9 @@ export function SceneTransitionProvider({
       suppressShelfReveal,
       returningHero,
       settleHero,
+      leavingReader,
     }),
-    [navigate, entering, forwardFlyActive, suppressShelfReveal, returningHero, settleHero],
+    [navigate, entering, forwardFlyActive, suppressShelfReveal, returningHero, settleHero, leavingReader],
   );
 
   return (
