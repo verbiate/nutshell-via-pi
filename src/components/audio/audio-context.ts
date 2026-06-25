@@ -38,6 +38,13 @@ export type AudioSession = {
   voiceSpeed: number;
 };
 
+export type TtsStartPos = {
+  /** Resolve this element id in the section DOM to find the start offset. */
+  elementId?: string;
+  /** When true, use the viewer's first visible block (current reading page). */
+  useVisible?: boolean;
+};
+
 export type AudioContextValue = {
   session: AudioSession | null;
   playbackState: TtsPlaybackState;
@@ -62,7 +69,11 @@ export type AudioContextValue = {
   /** Unregister the viewer when the reader unmounts (does not stop audio). */
   unregisterViewer: () => void;
   /** Start playing from the open book's current section, or from the given section. */
-  startFromHere: (overrideHref?: string, overrideLabel?: string) => void;
+  startFromHere: (
+    overrideHref?: string,
+    overrideLabel?: string,
+    startPos?: TtsStartPos,
+  ) => void;
   /**
    * Navigate the registered viewer to the section currently being read and
    * highlight the chunk now being spoken. Used when the reader re-mounts while

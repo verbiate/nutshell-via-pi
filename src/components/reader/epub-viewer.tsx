@@ -30,6 +30,46 @@ function hasTextBlockDescendant(el: HTMLElement): boolean {
   );
 }
 
+// ponytail: navigate by block element, not text offset. wrapRangePerBlock
+// extracts/wraps text nodes, which detaches/reindexes them and makes a
+// text-offset CFI point at a node that no longer lives where its path claims
+// → display() aborts ("No startContainer found"). A block element's position
+// among its siblings is untouched by wrapping its *contents*, so its CFI
+// resolves correctly pre- or post-wrap. Paragraphs are short, so the block
+// start is on the chunk's page — this is how the page turns to follow the read.
+function nodeToCfi(
+  rendition: Rendition,
+  node: Node,
+): string | null {
+  const view = rendition.manager?.current();
+  const contents = view?.contents;
+  if (!contents) return null;
+  try {
+    return contents.cfiFromNode(node, "tts-chunk");
+  } catch (err: any) {
+    console.warn("[EpubViewer] cfiFromNode failed:", err);
+    return null;
+  }
+}
+
+// ponytail: first leaf text-block whose bounding rect overlaps the iframe's
+// visible column. In epub.js's CSS-column manager, each "page" is one column;
+// getBoundingClientRect inside the iframe is relative to that viewport, so
+// blocks in the current column have left < innerWidth and right > 0. Falls
+// back to the first leaf block if none qualify (edge: column boundary drift).
+function getFirstVisibleBlock(doc: Document): Element | null {
+  const win = doc.defaultView;
+  const vw = win?.innerWidth ?? 800;
+  const blocks = Array.from(
+    doc.querySelectorAll<HTMLElement>(TTS_BLOCK_SELECTOR),
+  ).filter((el) => !hasTextBlockDescendant(el));
+  for (const block of blocks) {
+    const rect = block.getBoundingClientRect();
+    if (rect.right > 2 && rect.left < vw - 2) return block;
+  }
+  return blocks[0] ?? null;
+}
+
 export interface EpubViewerProps {
   url: string;
   theme: "light" | "dark" | "sepia";
@@ -89,6 +129,21 @@ export interface EpubViewerHandle {
    * was captured). Mirrors highlightChunk's locate + advance loop, minus marks.
    */
   showChunk: (sectionHref: string, anchorText: string) => Promise<void>;
+  /**
+   * Resolve a start position within the currently-rendered section to a
+   * character offset in the section's TTS-normalized text. Used so TTS can
+   * begin reading from a subsection heading or the current page instead of
+   * always at the section head.
+   *
+   * - `elementId`: resolve `getElementById`, return prefix length up to it.
+   * - `useVisible` (or no hint): use the first block visible in the iframe.
+   *
+   * Returns 0 when the target can't be resolved (no iframe, element missing).
+   */
+  getTtsStartOffset: (pos?: {
+    elementId?: string;
+    useVisible?: boolean;
+  }) => number;
 }
 
 // ponytail: @likecoin/epub-ts returns nav-document hrefs RAW (relative to the
@@ -162,6 +217,18 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     // ponytail: mirrors the TTS paused state so the content hook can re-apply
     // the .tts-paused body class after epub.js recreates a section's iframe.
     const ttsPausedRef = useRef(false);
+    // ponytail: follow-along state. Tracks whether the user has manually
+    // navigated away from the TTS position so we don't yank them back. The
+    // relocated event tags our own display() calls via ourNavInFlight; any
+    // other relocated means the user drove the change. When their page/section
+    // differs from where TTS left off, userBrowsedAway suppresses auto-advance
+    // until they navigate back to the TTS page.
+    const followStateRef = useRef({
+      ourNavInFlight: false,
+      userBrowsedAway: false,
+      lastTtsPage: null as number | null,
+      lastTtsHref: null as string | null,
+    });
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
@@ -277,12 +344,43 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const map = buildTextMap(doc, doc.body);
         const range = findChunkRange(text, map.text);
 
-        let marksCreated = 0;
         let startBlock: HTMLElement | null = null;
         if (range) {
-          marksCreated = wrapRangePerBlock(doc, map, range.start, range.end);
+          // ponytail: resolve the START BLOCK from the LIVE text map, before
+          // any DOM mutation. Cross-realm: iframe elements fail instanceof
+          // HTMLElement against the main window; null check instead.
           const ob = positionBlock(map, range.start);
-          if (ob instanceof HTMLElement) startBlock = ob;
+          if (ob) startBlock = ob as HTMLElement;
+        }
+
+        // ponytail: auto-advance BEFORE wrapping marks. display()'s CFI
+        // resolution walks the DOM tree; <mark> elements inserted by
+        // wrapRangePerBlock shift child offsets and cause setEnd errors
+        // (contents.ts:locationOf → Range.setEnd: "no child at offset N").
+        // Calling display() on a clean DOM (marks already cleared by
+        // clearTtsHighlight) avoids this. Within-section display is just a
+        // column scroll — the iframe DOM doesn't change, so the text map
+        // and range stay valid for the wrapping that follows.
+        if (startBlock && !followStateRef.current.userBrowsedAway) {
+          const rendition = renditionRef.current;
+          if (rendition) {
+            const chunkCfi = nodeToCfi(rendition, startBlock);
+            if (chunkCfi) {
+              followStateRef.current.ourNavInFlight = true;
+              try {
+                await rendition.display(chunkCfi);
+              } catch (err: any) {
+                followStateRef.current.ourNavInFlight = false;
+                console.warn("[EpubViewer] display(chunkCfi) failed:", err);
+              }
+            }
+          }
+        }
+
+        // ponytail: NOW wrap marks on the (possibly just-scrolled) page.
+        let marksCreated = 0;
+        if (range) {
+          marksCreated = wrapRangePerBlock(doc, map, range.start, range.end);
         }
 
         // ponytail: fallback when the matcher misses entirely (htmlToTtsText
@@ -297,28 +395,6 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           if (target) {
             target.classList.add("tts-active");
             if (!startBlock) startBlock = target;
-          }
-        }
-
-        // ponytail: scroll the chunk's START block into view. In epub.js
-        // paginated mode the DOM persists across column shifts, so reading the
-        // start block's geometry around next() stays valid.
-        if (startBlock) {
-          const isVisible = (): boolean => {
-            const rect = startBlock!.getBoundingClientRect();
-            const vw = iframe?.clientWidth ?? 0;
-            const vh = iframe?.clientHeight ?? 0;
-            return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
-          };
-          if (!isVisible()) {
-            const rendition = renditionRef.current;
-            if (rendition) {
-              for (let i = 0; i < 8 && !isVisible(); i++) {
-                rendition.next();
-                // ponytail: let the column layout settle before re-checking.
-                await new Promise((r) => setTimeout(r, 60));
-              }
-            }
           }
         }
       },
@@ -353,47 +429,74 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // ponytail: jump to the section first. navigateTo is display(href); it
         // no-ops cleanly if the section is already current. Await a short settle
         // so the iframe DOM for the target section is present before we map it.
+        followStateRef.current.ourNavInFlight = true;
         try {
           await renditionRef.current?.display(sectionHref);
         } catch (err: any) {
+          followStateRef.current.ourNavInFlight = false;
           console.warn("[EpubViewer] showChunk section nav failed:", err);
           return;
         }
-        await new Promise((r) => setTimeout(r, 60));
+        await new Promise((r) => setTimeout(r, 120));
 
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body) return;
 
         // ponytail: reuse the same chunk-location machinery as highlightChunk,
-        // but only to find the START block — we advance pages until it's
-        // visible and stop. No marks, no tts-active class.
+        // then jump directly to the START BLOCK's CFI. No marks, no tts-active.
         const map = buildTextMap(doc, doc.body);
         const range = findChunkRange(anchorText, map.text);
-        let startBlock: HTMLElement | null = null;
-        if (range) {
-          const ob = positionBlock(map, range.start);
-          if (ob instanceof HTMLElement) startBlock = ob;
-        }
-
-        if (!startBlock) {
+        if (!range) {
           // Anchor couldn't be re-located (engine/text drift). The section's
           // first page is already on screen from the display() above — leave it.
           return;
         }
 
-        const isVisible = (): boolean => {
-          const rect = startBlock!.getBoundingClientRect();
-          const vw = iframe?.clientWidth ?? 0;
-          const vh = iframe?.clientHeight ?? 0;
-          return rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0;
-        };
-        if (isVisible()) return;
+        const startBlock = positionBlock(map, range.start);
+        if (!startBlock) return;
+
         const rendition = renditionRef.current;
         if (!rendition) return;
-        for (let i = 0; i < 8 && !isVisible(); i++) {
-          rendition.next();
-          await new Promise((r) => setTimeout(r, 60));
+        const chunkCfi = nodeToCfi(rendition, startBlock);
+        if (!chunkCfi) return;
+        followStateRef.current.ourNavInFlight = true;
+        try {
+          await rendition.display(chunkCfi);
+        } catch (err: any) {
+          followStateRef.current.ourNavInFlight = false;
+          console.warn("[EpubViewer] showChunk display(chunkCfi) failed:", err);
+        }
+      },
+      getTtsStartOffset: (pos?: { elementId?: string; useVisible?: boolean }) => {
+        const iframe = containerRef.current?.querySelector("iframe");
+        const doc = iframe?.contentDocument;
+        if (!doc?.body) return 0;
+
+        let targetEl: Element | null = null;
+        if (pos?.elementId) {
+          targetEl = doc.getElementById(pos.elementId);
+        }
+        if (!targetEl) {
+          // ponytail: elementId miss or useVisible → first visible leaf block.
+          targetEl = getFirstVisibleBlock(doc);
+        }
+        if (!targetEl) return 0;
+
+        try {
+          // ponytail: clone everything from body start up to (not including)
+          // the target, serialize, and run the SAME htmlToTtsText transform
+          // the chunker uses. The resulting length is a character offset into
+          // the section's TTS text — deterministic, no string matching.
+          const range = doc.createRange();
+          range.setStart(doc.body, 0);
+          range.setEndBefore(targetEl);
+          const fragment = range.cloneContents();
+          const wrapper = doc.createElement("div");
+          wrapper.appendChild(fragment);
+          return htmlToTtsText(wrapper.innerHTML).length;
+        } catch {
+          return 0;
         }
       },
     }));
@@ -491,9 +594,9 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             // rules, so inject the highlight CSS directly via the same
             // addStylesheetCss path as the image blend below. Emits both the
             // block-level fallback (.tts-active) and the per-chunk span (.tts-chunk),
-            // plus a .tts-paused body-class variant that fades both to opacity 0
-            // when audio is paused (the marks stay in the DOM so resume fades them
-            // back in without re-locating the chunk).
+            // plus a .tts-paused body-class variant that fades the highlight
+            // background/box-shadow out when audio is paused (the marks stay in
+            // the DOM so resume fades them back in without re-locating the chunk).
             const ttsHighlightCss = Object.entries(READER_THEMES)
               .flatMap(([name, theme]) => {
                 const rules = theme.rules as unknown as Record<
@@ -510,7 +613,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                   });
                 const paused =
                   `.${name}.tts-paused .tts-active, ` +
-                  `.${name}.tts-paused .tts-chunk { opacity: 0; }`;
+                  `.${name}.tts-paused .tts-chunk { background-color: transparent; box-shadow: none; }`;
                 return [...base, paused];
               })
               .join("\n");
@@ -557,6 +660,26 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                 // drives the TTS "now reading" label and the active ToC row.
                 if (location.start?.href) onSectionChange?.(location.start.href);
                 onPositionChange?.({ paragraphIndex: 0, charOffset: 0 }, cfi ?? "", percentage);
+
+                // ponytail: follow-along tracking. If ourNavInFlight is set,
+                // this relocated came from our own display() — record where TTS
+                // landed and clear the browsed-away flag. Otherwise the user
+                // drove the navigation: if their page or section differs from
+                // where TTS left off, they've browsed away (suppress auto-advance
+                // until they return). If they're back on the TTS page, resume.
+                const fs = followStateRef.current;
+                const page = location.start.displayed?.page ?? null;
+                const href = location.start.href ?? null;
+                if (fs.ourNavInFlight) {
+                  fs.ourNavInFlight = false;
+                  fs.lastTtsPage = page;
+                  fs.lastTtsHref = href;
+                  fs.userBrowsedAway = false;
+                } else if (fs.lastTtsPage !== null) {
+                  const sameSection = href === fs.lastTtsHref;
+                  const samePage = page === fs.lastTtsPage;
+                  fs.userBrowsedAway = !(sameSection && samePage);
+                }
               }
             );
 

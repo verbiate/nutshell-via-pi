@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { BookCover } from "@/components/library/book-cover";
+import type { TtsStartPos } from "@/components/audio/audio-context";
 
 // ponytail: leading-trim/text-edge are draft CSS (css-inline-3) that crop the
 // half-leading inset so the cap-height box matches the Figma box exactly.
@@ -26,7 +27,11 @@ interface TocEntryProps {
   level?: number;
   currentHref?: string;
   onAskAboutSection?: (href: string, label: string) => void;
-  onPlaySection?: (href: string, label: string) => void;
+  onPlaySection?: (
+    href: string,
+    label: string,
+    startPos?: TtsStartPos,
+  ) => void;
 }
 
 function TocEntry({
@@ -73,7 +78,16 @@ function TocEntry({
           size="icon-sm"
           className="h-6 w-6 opacity-100 transition-opacity shrink-0 hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
           aria-label={`Play ${item.label}`}
-          onClick={() => onPlaySection?.(item.href, item.label)}
+          onClick={() => {
+            // ponytail: parse #fragment so the engine can resolve the exact
+            // subsection element. No fragment → undefined (section head).
+            const hashIdx = item.href.indexOf("#");
+            const startPos: TtsStartPos | undefined =
+              hashIdx >= 0
+                ? { elementId: item.href.slice(hashIdx + 1) }
+                : undefined;
+            onPlaySection?.(item.href, item.label, startPos);
+          }}
         >
           <Play className="h-4 w-4" />
         </Button>
@@ -139,7 +153,11 @@ export interface ReaderPanelProps {
   onNavigate: (href: string) => void;
   initialLanguage: string;
   onAskAboutSection?: (href: string, label: string) => void;
-  onPlaySection?: (href: string, label: string) => void;
+  onPlaySection?: (
+    href: string,
+    label: string,
+    startPos?: TtsStartPos,
+  ) => void;
   onAskAboutBook?: () => void;
   isAdmin?: boolean;
   bookCreatedAt?: string;

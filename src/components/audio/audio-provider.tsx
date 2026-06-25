@@ -219,6 +219,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
     const next = s.flatToc[nextIndex];
     setSession((prev) => (prev ? { ...prev, currentIndex: nextIndex } : prev));
+    // ponytail: navigate the viewer to the new section BEFORE starting TTS.
+    // Without this, highlightChunk is called for text that isn't in the
+    // displayed section's DOM — matcher fails, no marks, no page turn.
+    registeredViewerRef.current?.current?.navigateTo(next.href);
     const isCloudNow = enginePref === "cloud" && s.userRole !== "regular";
     if (isCloudNow) {
       cloudTtsRef.current?.startSection(next.href, next.label);
@@ -357,7 +361,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   });
 
   const startSection = useCallback(
-    (href: string, title: string) => {
+    (
+      href: string,
+      title: string,
+      startPos?: { elementId?: string; useVisible?: boolean },
+    ) => {
       const s = sessionRef.current;
       const isCloudNow = enginePref === "cloud" && s?.userRole !== "regular";
       // ponytail: cloud doesn't go through getText, so navigate the reader's
@@ -374,9 +382,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         registeredViewerRef.current?.current?.navigateTo(href).catch(() => {});
       }
       if (isCloudNow) {
-        cloudTtsRef.current?.startSection(href, title);
+        cloudTtsRef.current?.startSection(href, title, startPos);
       } else {
-        browserTtsRef.current?.startSection(href, title);
+        browserTtsRef.current?.startSection(href, title, startPos);
       }
       // ponytail: persist the section being read. For cloud (section-level
       // audio, no chunk highlighting) this is the finest precision we get; for
@@ -560,8 +568,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         await viewer.highlightChunk(chunk.chunkText);
         // ponytail: keep the highlight visible on remount so the user can see
         // the paused chunk immediately. (The on-reader pause path fades the
-        // mark; re-entry from the player thumbnail should land the eye on the
-        // exact spoken text, not fade it.)
+        // highlight background; re-entry from the player thumbnail should land
+        // the eye on the exact spoken text, not fade it.)
       } catch {
         // non-blocking — next chunk boundary will retry naturally
       }
@@ -614,7 +622,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const startFromHere = useCallback((overrideHref?: string, overrideLabel?: string) => {
+  const startFromHere = useCallback((
+    overrideHref?: string,
+    overrideLabel?: string,
+    startPos?: { elementId?: string; useVisible?: boolean },
+  ) => {
     const open = openBookRef.current;
     if (!open) return;
 
@@ -655,7 +667,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         prev ? { ...prev, currentIndex } : prev,
       );
     }
-    startSection(href, title);
+    startSection(href, title, startPos);
   }, [
     enginePref,
     browserTts.close,
@@ -664,10 +676,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     startSection,
   ]);
 
-  // ponytail: idle card's play button. No session yet → start; otherwise toggle.
+  // ponytail: idle card's play button. No session yet → start from the current
+  // reading position (useVisible so the engine resolves the viewer's first
+  // visible block); otherwise toggle.
   const handlePlayPause = useCallback(() => {
     if (!sessionRef.current) {
-      startFromHere();
+      startFromHere(undefined, undefined, { useVisible: true });
       return;
     }
     playPause();

@@ -74,7 +74,11 @@ export interface UseTtsEngineReturn {
   state: TtsEngineState;
   /** Engine actually in use after any runtime fallback (e.g. WebGPU → browser). */
   effectiveEngineId: EngineId;
-  startSection: (href: string, title: string) => void;
+  startSection: (
+    href: string,
+    title: string,
+    startPos?: { elementId?: string; useVisible?: boolean },
+  ) => void;
   pause: () => void;
   resume: () => void;
   close: () => void;
@@ -133,6 +137,21 @@ function cancelBrowserSpeech(): void {
       // ignore
     }
   }
+}
+
+// ponytail: given chunked text and a target character offset, find the chunk
+// that contains that offset. Chunks are consecutive slices of the TTS text, so
+// cumulative length comparison suffices. Ceiling: chunk granularity — if the
+// offset lands mid-chunk, that whole chunk is the start unit. Upgrade path:
+// split the chunk at the offset for char-level precision.
+function findStartChunkIndex(chunks: string[], targetOffset: number): number {
+  if (targetOffset <= 0) return 0;
+  let acc = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    acc += chunks[i].length;
+    if (acc > targetOffset) return i;
+  }
+  return 0;
 }
 
 export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
@@ -544,7 +563,11 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   }, []);
 
   const startSection = useCallback(
-    async (href: string, title: string) => {
+    async (
+      href: string,
+      title: string,
+      startPos?: { elementId?: string; useVisible?: boolean },
+    ) => {
       abortRef.current = false;
       runningRef.current = true;
       cleanupSource();
@@ -609,8 +632,30 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
 
         chunksRef.current = chunkText(text, limits);
-        currentIndexRef.current = 0;
-        console.log("[TTS] Chunked into", chunksRef.current.length, "pieces, starting playback");
+
+        // ponytail: resolve startPos → character offset → start chunk index.
+        // Must happen AFTER getText (which navigates the viewer to the target
+        // section), so the viewer's DOM has the right content loaded.
+        let startIndex = 0;
+        if (startPos && viewerRef?.current) {
+          const offset = viewerRef.current.getTtsStartOffset(startPos);
+          if (offset > 0) {
+            startIndex = findStartChunkIndex(chunksRef.current, offset);
+            console.log(
+              "[TTS] startPos resolved to offset",
+              offset,
+              "→ chunk",
+              startIndex,
+            );
+          }
+        }
+        currentIndexRef.current = startIndex;
+        console.log(
+          "[TTS] Chunked into",
+          chunksRef.current.length,
+          "pieces, starting at chunk",
+          startIndex,
+        );
 
         // ponytail: seed the section-duration estimate from a per-voice WPM rate
         // (cached from a prior section's first chunk, else a generic fallback).
@@ -625,7 +670,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         seedRef.current = estimateSeconds(totalWordsRef.current, cachedWpm, speed);
         setState((s) => ({ ...s, duration: seedRef.current }));
 
-        await playChunk(engine, 0);
+        await playChunk(engine, startIndex);
       } catch (err) {
         if (!abortRef.current) {
           console.error("[TTS] Failed to start section:", err);
@@ -723,4 +768,32 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       return { sectionHref: sectionHrefRef.current, chunkText: text };
     },
   };
+}
+
+// ─── Self-check ───────────────────────────────────────────────────────────
+// ponytail: smallest thing that fails if findStartChunkIndex breaks. Run with:
+//   TTS_ENGINE_DEMO=1 npx tsx src/hooks/use-tts-engine.ts
+function _findStartChunkIndexDemo(): void {
+  const chunks = ["AAAA", "BBBB", "CCCC"];
+  const checks: Array<[number, number, string]> = [
+    [0, 0, "offset 0 → chunk 0"],
+    [3, 0, "offset 3 → chunk 0 (inside AAAA)"],
+    [4, 1, "offset 4 → chunk 1 (start of BBBB)"],
+    [7, 1, "offset 7 → chunk 1 (inside BBBB)"],
+    [8, 2, "offset 8 → chunk 2 (start of CCCC)"],
+    [99, 0, "offset 99 → chunk 0 (out of range, fallback)"],
+  ];
+  for (const [offset, expected, label] of checks) {
+    const got = findStartChunkIndex(chunks, offset);
+    if (got !== expected) {
+      throw new Error(
+        `findStartChunkIndex ${label}: expected ${expected}, got ${got}`,
+      );
+    }
+  }
+  console.log("findStartChunkIndex self-check passed (6 cases)");
+}
+
+if (process.env.TTS_ENGINE_DEMO) {
+  _findStartChunkIndexDemo();
 }

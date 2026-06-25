@@ -306,6 +306,42 @@ describe("useTtsEngine", () => {
     unmount();
   });
 
+  it("highlights each chunk in the viewer and clears the prior mark", async () => {
+    const viewerRef = createMockViewerRef();
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world. This is a test."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    expect(viewerRef!.current?.clearTtsHighlight).toHaveBeenCalled();
+    expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledWith("chunk one");
+
+    act(() => {
+      const ctx = FakeAudioContext.instances[0];
+      const source = ctx?.lastSource;
+      expect(source).toBeTruthy();
+      (source as any).onended?.(new Event("ended"));
+    });
+
+    await vi.waitFor(() =>
+      expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledTimes(2),
+    );
+    expect(viewerRef!.current?.highlightChunk).toHaveBeenLastCalledWith(
+      "chunk two",
+    );
+
+    unmount();
+  });
+
   it("prefetches the next chunk while the current chunk plays", async () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",

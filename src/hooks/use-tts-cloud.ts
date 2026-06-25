@@ -49,7 +49,14 @@ export interface UseTtsCloudOptions {
 export interface UseTtsCloudReturn {
   state: TtsPlaybackState;
   quota: CloudQuota | null;
-  startSection: (href: string, title: string) => void;
+  // ponytail: startPos accepted for parity with the browser engine but ignored
+  // — cloud generates full-section audio server-side. Upgrade path: pass the
+  // offset to /api/tts/generate and trim source text before synthesis.
+  startSection: (
+    href: string,
+    title: string,
+    startPos?: { elementId?: string; useVisible?: boolean },
+  ) => void;
   togglePlayPause: () => void;
   scrub: (time: number) => void;
   close: () => void;
@@ -180,7 +187,12 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
   }, []);
 
   const startSection = useCallback(
-    async (href: string, title: string) => {
+    async (
+      href: string,
+      title: string,
+      // ponytail: accepted for parity, ignored — cloud generates full-section audio.
+      _startPos?: { elementId?: string; useVisible?: boolean },
+    ) => {
       if (abortRef.current) abortRef.current.abort();
 
       setState({
