@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
@@ -189,6 +189,14 @@ export function ReaderClient({
   // ─── Selection / floating toolbar state ────────────────────────────────────────
   const [toolbarVisible, setToolbarVisible] = useState(false);
   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+  // ponytail: selection anchor (parent-viewport coords). Final toolbar
+  // placement is computed in a layout effect that measures the toolbar's real
+  // height, so adding/removing buttons can never make it overlap the selection.
+  const [toolbarAnchor, setToolbarAnchor] = useState<{
+    top: number;
+    bottom: number;
+    centerX: number;
+  } | null>(null);
   const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState("");
   // ponytail: auto-hide reader chrome (top bar + progress + right rail + TTS
@@ -620,38 +628,50 @@ export function ReaderClient({
       setSelectedCfi(cfiRange);
       setSelectedText(text);
 
-      // Compute position from iframe.
-      // ponytail: menu is now ~168px tall / 220px wide; keep it inside the
-      // viewport so it never renders completely off-screen.
+      // Store the selection anchor (parent-viewport coords); the layout effect
+      // below measures the toolbar's real height and computes final placement.
       const iframe = document.querySelector("iframe");
       if (iframe) {
         const rect = realRange.getBoundingClientRect();
         const iframeRect = iframe.getBoundingClientRect();
-        const toolbarWidth = 220;
-        const toolbarHeight = 168;
-        let top = iframeRect.top + rect.top - toolbarHeight - 8;
-        if (top < toolbarHeight + 16) {
-          top = iframeRect.top + rect.bottom + 8;
-        }
-        top = Math.max(8, top);
-        top = Math.min(top, window.innerHeight - toolbarHeight - 8);
-        let left =
-          iframeRect.left + rect.left + rect.width / 2 - toolbarWidth / 2;
-        left = Math.max(
-          8,
-          Math.min(left, window.innerWidth - toolbarWidth - 8)
-        );
-        setToolbarPos({ top, left });
+        setToolbarAnchor({
+          top: iframeRect.top + rect.top,
+          bottom: iframeRect.top + rect.bottom,
+          centerX: iframeRect.left + rect.left + rect.width / 2,
+        });
         setToolbarVisible(true);
       }
     },
     []
   );
 
+  // ponytail: place the floating toolbar using its MEASURED height so the
+  // "above" placement never overlaps the selection. The old hardcoded height
+  // drifted too small after buttons were added, letting the toolbar extend down
+  // into the first line. Runs before paint → no flicker.
+  useLayoutEffect(() => {
+    if (!toolbarVisible || !toolbarAnchor) return;
+    const el = document.querySelector(
+      "[data-floating-toolbar]",
+    ) as HTMLElement | null;
+    if (!el) return;
+    const h = el.offsetHeight;
+    const w = 220;
+    // ponytail: default to BELOW the selection; flip above only when there
+    // isn't room beneath (within 8px of the viewport bottom).
+    let top = toolbarAnchor.bottom + 8;
+    if (top + h > window.innerHeight - 8) top = toolbarAnchor.top - h - 8;
+    top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+    let left = toolbarAnchor.centerX - w / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+    setToolbarPos({ top, left });
+  }, [toolbarVisible, toolbarAnchor]);
+
   const handleSelectionCleared = useCallback(() => {
     setToolbarVisible(false);
     setSelectedCfi(null);
     setSelectedText("");
+    setToolbarAnchor(null);
   }, []);
 
   // ─── Floating toolbar actions ────────────────────────────────────────────────
