@@ -88,6 +88,17 @@ export type AudioContextValue = {
   openBookDetails: () => void;
   /** ReaderClient registers this so the persistent player can open its sidebar. */
   registerDetailsOpener: (fn: () => void) => void;
+  /**
+   * Set when the floating player's book thumbnail is clicked off-reader. The
+   * reader consumes it on mount to syncViewerToPlayback even when playback is
+   * paused/idle (the normal ttsLiveForBook auto-sync only fires while actively
+   * PLAYING/LOADING). Null once consumed. ponytail: ref-backed one-shot, no re-render needed.
+   */
+  pendingReaderSyncBookId: string | null;
+  /** Record that the next mount of this book's reader should sync to the TTS position. */
+  markPendingReaderSync: (bookId: string) => void;
+  /** Reader calls this once it has consumed the pending flag. */
+  clearPendingReaderSync: () => void;
   playPause: () => void;
   stop: () => void;
   scrub: (time: number) => void;

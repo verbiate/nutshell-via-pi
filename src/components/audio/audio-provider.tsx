@@ -90,6 +90,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [openBook, setOpenBook] = useState<BookAudioContext | null>(null);
   const [session, setSession] = useState<AudioSession | null>(null);
 
+  // ponytail: one-shot flag set by the floating player's thumbnail click when
+  // the user is off-reader, so the reader syncs to the TTS position on mount
+  // even if playback is paused (the normal auto-sync only fires while PLAYING).
+  const [pendingReaderSyncBookId, setPendingReaderSyncBookId] = useState<
+    string | null
+  >(null);
+
   // Ref mirrors for stable callbacks wired to audio events.
   const openBookRef = useRef(openBook);
   const sessionRef = useRef(session);
@@ -692,6 +699,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [startSection],
   );
 
+  const markPendingReaderSync = useCallback((bookId: string) => {
+    setPendingReaderSyncBookId(bookId);
+  }, []);
+
+  const clearPendingReaderSync = useCallback(() => {
+    setPendingReaderSyncBookId(null);
+  }, []);
+
   const onReader = registeredViewer !== null;
   const isActivelyPlaying =
     playbackState.state === "PLAYING" ||
@@ -730,6 +745,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setEngine,
       setVoice,
       jumpTo,
+      pendingReaderSyncBookId,
+      markPendingReaderSync,
+      clearPendingReaderSync,
     }),
     [
       session,
@@ -755,6 +773,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setEngine,
       setVoice,
       jumpTo,
+      pendingReaderSyncBookId,
+      markPendingReaderSync,
+      clearPendingReaderSync,
     ],
   );
 
@@ -792,6 +813,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             currentIndex={session?.currentIndex}
             onJumpTo={jumpTo}
             onOpenBookDetails={openBookDetails}
+            onSyncToPlayback={syncViewerToPlayback}
+            onMarkPendingReaderSync={markPendingReaderSync}
             hidden={cardHidden}
           />
         </div>

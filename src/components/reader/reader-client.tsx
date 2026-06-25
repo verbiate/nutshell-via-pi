@@ -320,6 +320,8 @@ export function ReaderClient({
     rehighlightCurrentChunk,
     session: audioSession,
     playbackState: audioPlaybackState,
+    pendingReaderSyncBookId,
+    clearPendingReaderSync,
   } = useAudio();
   // ponytail: when the reader re-mounts while TTS is already playing THIS book
   // (user left for the bookshelf, audio kept going, came back), the viewer must
@@ -329,6 +331,10 @@ export function ReaderClient({
     audioSession?.bookId === bookId &&
     (audioPlaybackState.state === "PLAYING" ||
       audioPlaybackState.state === "LOADING");
+  // ponytail: set by the floating player's thumbnail click off-reader, so the
+  // reader also syncs to the TTS position when playback is PAUSED (the
+  // ttsLiveForBook path only covers PLAYING/LOADING). One-shot — consumed below.
+  const pendingSyncForBook = pendingReaderSyncBookId === bookId;
 
   // ponytail: restore the last read-aloud position when no CFI was captured
   // (off-reader playback kept going on the bookshelf). The cfi path is handled
@@ -339,9 +345,10 @@ export function ReaderClient({
   useEffect(() => {
     if (chunkRestoredRef.current) return;
     if (!isLoaded) return;
-    // ponytail: defer to live playback sync when TTS is active on this book —
-    // it navigates to the section being read and shows the live highlight.
-    if (ttsLiveForBook) {
+    // ponytail: defer to live playback sync when TTS is active on this book, OR
+    // when the floating player's thumbnail just navigated here (pendingSync) —
+    // either way syncViewerToPlayback owns the initial nav + chunk highlight.
+    if (ttsLiveForBook || pendingSyncForBook) {
       chunkRestoredRef.current = true;
       return;
     }
@@ -357,23 +364,29 @@ export function ReaderClient({
     viewerRef.current?.showChunk(pos.sectionHref, pos.ttsChunkAnchor).catch(
       (err) => console.warn("[ReaderClient] showChunk restore failed:", err),
     );
-  }, [isLoaded, savedPosition, ttsLiveForBook]);
+  }, [isLoaded, savedPosition, ttsLiveForBook, pendingSyncForBook]);
 
   // ponytail: catch the viewer up to LIVE playback on remount. Fires once per
   // mount, at the moment the rendition becomes ready, ONLY when TTS is already
-  // playing this book (bookshelf → back while audio continued). If playback
-  // starts later while on-reader, the engine's own highlightChunk path drives
-  // the viewer — no sync needed, hence the one-shot ref.
+  // playing this book (bookshelf → back while audio continued), OR when the
+  // floating player's thumbnail just navigated here while playback is paused
+  // (pendingSyncForBook). If playback starts later while on-reader, the engine's
+  // own highlightChunk path drives the viewer — no sync needed, hence the
+  // one-shot ref.
   const ttsSyncedRef = useRef(false);
   useEffect(() => {
     if (ttsSyncedRef.current) return;
     if (!isLoaded) return;
     ttsSyncedRef.current = true;
-    if (!ttsLiveForBook) return;
+    const shouldSync = ttsLiveForBook || pendingSyncForBook;
+    if (!shouldSync) return;
+    // ponytail: consume the one-shot so a later normal entry (e.g. book-card
+    // click) restores saved position instead of re-syncing.
+    if (pendingSyncForBook) clearPendingReaderSync();
     syncViewerToPlayback().catch((err) =>
       console.warn("[ReaderClient] syncViewerToPlayback failed:", err),
     );
-  }, [isLoaded, ttsLiveForBook, syncViewerToPlayback]);
+  }, [isLoaded, ttsLiveForBook, pendingSyncForBook, syncViewerToPlayback, clearPendingReaderSync]);
 
   // ─── Debounced save ──────────────────────────────────────────────────────────
   const savePosition = useCallback(

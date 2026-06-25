@@ -75,6 +75,17 @@ export interface TtsPlayerProps {
   /** Clicking the cover opens the current book's details sidebar (same book only). */
   onOpenBookDetails?: () => void;
   /**
+   * Jump the registered viewer to the section currently being read by TTS
+   * (section nav + chunk re-highlight). No-op unless the viewer is registered
+   * and openBook matches the session. Used for the same-book-on-reader click.
+   */
+  onSyncToPlayback?: () => void;
+  /**
+   * Mark that the next mount of this book's reader should sync to the TTS
+   * position even when playback is paused. Set just before off-reader nav.
+   */
+  onMarkPendingReaderSync?: (bookId: string) => void;
+  /**
    * Whether the scrubber can seek. Only the cloud `<audio>` path supports
    * scrubbing; the chunked AudioBuffer path is read-only progress. Defaults
    * false.
@@ -109,6 +120,30 @@ function voiceLabel(v: TtsVoice): string {
   // ponytail: Kokoro English voices carry region (US/GB) → "Bella (US)".
   // Supertonic + non-en Kokoro have none → plain label. One rule covers both.
   return v.region ? `${v.label} (${v.region})` : v.label;
+}
+
+/**
+ * Branch the floating player's book-thumbnail click into one of three nav
+ * strategies. Extracted pure so it is unit-testable without a DOM/router.
+ *
+ * - `same-book-on-reader`: already on `/book/{id}/reader` → sync viewer + open
+ *   details in place (no route change).
+ * - `other-reader`: on a different `/book/...` reader route → plain router.push
+ *   (the reader stays mounted and swaps books).
+ * - `scene-nav`: shelf/profile/elsewhere → full scene transition.
+ */
+export type ThumbnailNavTarget =
+  | "same-book-on-reader"
+  | "other-reader"
+  | "scene-nav";
+
+export function resolveThumbnailNav(
+  pathname: string | null,
+  bookId: string,
+): ThumbnailNavTarget {
+  if (pathname === `/book/${bookId}/reader`) return "same-book-on-reader";
+  if (pathname?.startsWith("/book/")) return "other-reader";
+  return "scene-nav";
 }
 
 // ponytail: solid play/pause as inline SVG (heroicons paths) — avoids pulling a
@@ -148,6 +183,8 @@ export function TtsPlayer({
   bookCoverPath,
   bookId,
   onOpenBookDetails,
+  onSyncToPlayback,
+  onMarkPendingReaderSync,
   canScrub = false,
   hidden = false,
   variant = "reader",
@@ -162,24 +199,34 @@ export function TtsPlayer({
   const router = useRouter();
   const { navigate } = useSceneTransition();
 
+  // ponytail: pure decision so the thumbnail branching is unit-testable without
+  // a DOM/router. goToBook below maps each branch to its side effects.
   function goToBook() {
     if (!bookId) return;
-    // Same book, already reading: reopen the details sidebar in place.
-    if (pathname === `/book/${bookId}/reader`) {
-      onOpenBookDetails?.();
-      return;
+    switch (resolveThumbnailNav(pathname, bookId)) {
+      case "same-book-on-reader":
+        // Jump the viewer to the current TTS page, then surface details.
+        onSyncToPlayback?.();
+        onOpenBookDetails?.();
+        return;
+      case "other-reader":
+        // Book-to-book: plain nav. ReaderClient stays mounted and runs its
+        // close -> placeholder -> reopen swap. Bypassing scene navigate is
+        // required -- the reader keeps a BookshelfSnapshot (data-scene="library")
+        // in the DOM that scene navigate would detect and animate as a full
+        // shelf -> reader slide-in. Mark pending so the reader syncs to the TTS
+        // position on mount even when playback is paused.
+        onMarkPendingReaderSync?.(bookId);
+        router.push(`/book/${bookId}/reader`);
+        return;
+      case "scene-nav":
+        // Shelf / profile / elsewhere: full scene transition (no cover fly).
+        // Mark pending so the reader syncs to the TTS position on mount even
+        // when playback is paused.
+        onMarkPendingReaderSync?.(bookId);
+        navigate(`/book/${bookId}/reader`, "forward", { bookId });
+        return;
     }
-    // Book-to-book (already on a reader route): plain nav. ReaderClient stays
-    // mounted and runs its close -> placeholder -> reopen swap. Bypassing scene
-    // navigate is required -- the reader keeps a BookshelfSnapshot
-    // (data-scene="library") in the DOM that scene navigate would detect and
-    // animate as a full shelf -> reader slide-in.
-    if (pathname?.startsWith("/book/")) {
-      router.push(`/book/${bookId}/reader`);
-      return;
-    }
-    // Shelf / profile / elsewhere: full scene transition (no cover fly).
-    navigate(`/book/${bookId}/reader`, "forward", { bookId });
   }
 
   const isLoading = state.state === "LOADING";
