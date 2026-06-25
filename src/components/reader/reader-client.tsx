@@ -706,6 +706,14 @@ export function ReaderClient({
     setToolbarVisible(false);
   }, [selectedText, selectedCfi]);
 
+  const handleReadFromHere = useCallback(() => {
+    // ponytail: floating toolbar → start TTS from the selection's first full
+    // word. startCfi is resolved by the viewer into a TTS-text char offset.
+    if (!selectedCfi) return;
+    startFromHere(undefined, undefined, { startCfi: selectedCfi });
+    setToolbarVisible(false);
+  }, [selectedCfi, startFromHere]);
+
   const handleAskAboutSection = useCallback((href: string, _label: string) => {
     // ponytail: ToC ⋯ menu → section thread. _label reserved for future
     // UI affordance (e.g. toast "Asking about <chapter>"); not currently used.
@@ -1332,6 +1340,7 @@ export function ReaderClient({
         selectedText={selectedText}
         onHighlight={handleHighlight}
         onAsk={handleExplainPassage}
+        onReadFromHere={handleReadFromHere}
         onDismiss={handleSelectionCleared}
       />
 

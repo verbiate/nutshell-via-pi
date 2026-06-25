@@ -40,6 +40,8 @@ export type TtsStartPos = {
   elementId?: string;
   /** When true, use the viewer's first visible block (current reading page). */
   useVisible?: boolean;
+  /** Resolve this CFI range's start to a character offset, expanding a partial first word to the full word. */
+  startCfi?: string;
 };
 
 export type AudioContextValue = {

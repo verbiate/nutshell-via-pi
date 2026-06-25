@@ -77,7 +77,7 @@ export interface UseTtsEngineReturn {
   startSection: (
     href: string,
     title: string,
-    startPos?: { elementId?: string; useVisible?: boolean },
+    startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
   ) => void;
   pause: () => void;
   resume: () => void;
@@ -577,7 +577,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     async (
       href: string,
       title: string,
-      startPos?: { elementId?: string; useVisible?: boolean },
+      startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
     ) => {
       abortRef.current = false;
       runningRef.current = true;

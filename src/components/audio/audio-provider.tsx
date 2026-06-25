@@ -332,17 +332,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     (
       href: string,
       title: string,
-      startPos?: { elementId?: string; useVisible?: boolean },
+      startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
     ) => {
       const s = sessionRef.current;
       const isCloudNow = enginePref === "cloud" && s?.userRole !== "regular";
       if (isCloudNow) {
         // ponytail: cloud audio is one blob per section. When starting from the
-        // current page, approximate the audio seek point by the visible block's
+        // current page or a selection, approximate the audio seek point by the
         // character offset / total section characters. Proportional, so it may
         // land within a sentence; upgrade path is server-side time mapping.
         let seekRatio: number | undefined;
-        if (startPos?.useVisible) {
+        if (startPos && (startPos.useVisible || startPos.startCfi)) {
           const viewer = registeredViewerRef.current?.current;
           if (viewer) {
             const offset = viewer.getTtsStartOffset(startPos);
@@ -592,7 +592,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const startFromHere = useCallback(async (
     overrideHref?: string,
     overrideLabel?: string,
-    startPos?: { elementId?: string; useVisible?: boolean },
+    startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
   ) => {
     const open = openBookRef.current;
     if (!open) return;
@@ -617,7 +617,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       sameBook &&
       ttsSectionMatches(s.flatToc[s.currentIndex]?.href ?? "", href);
 
-    if (sameBook && sameSection) {
+    // ponytail: when a concrete startPos is supplied, the caller explicitly
+    // wants to (re)start at that point (e.g. selection → "Start reading from
+    // here"), so skip the same-section play/pause toggle and fall through.
+    if (sameBook && sameSection && !startPos) {
       playPause();
       return;
     }

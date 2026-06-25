@@ -107,6 +107,18 @@ function getFirstVisibleBlock(doc: Document): Element | null {
 // can fall back to blocks[0] (the chapter's first block) when the column
 // transform state doesn't match the viewport. Falls back to null so callers can
 // use getFirstVisibleBlock.
+function cfiToRange(rendition: Rendition | null, cfi: string): Range | null {
+  if (!rendition) return null;
+  try {
+    const view = rendition.manager?.current();
+    const contents = (view as unknown as { contents?: { range?: (cfi: string) => Range } })?.contents;
+    if (!contents) return null;
+    return contents.range?.(cfi) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveStartBlockFromLocation(
   rendition: Rendition | null,
   doc: Document,
@@ -116,10 +128,7 @@ function resolveStartBlockFromLocation(
     const loc = (rendition as unknown as { currentLocation?: () => { start?: { cfi?: string } } }).currentLocation?.();
     const startCfi = loc?.start?.cfi;
     if (!startCfi) return null;
-    const view = rendition.manager?.current();
-    const contents = (view as unknown as { contents?: { range?: (cfi: string) => Range } })?.contents;
-    if (!contents) return null;
-    const range = contents.range?.(startCfi);
+    const range = cfiToRange(rendition, startCfi);
     if (!range?.startContainer) return null;
     let node: Node | null = range.startContainer;
     if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
@@ -194,6 +203,28 @@ function prefixOffsetTo(
   } catch {
     return 0;
   }
+}
+
+// ponytail: given a selection start point that may land inside a word, walk
+// back to the word boundary so TTS reads the full word rather than the
+// fragment. Operates on the live DOM text before TTS normalization; downstream
+// findStartChunkIndex contains-snaps to the chunk, so this mainly matters when
+// the caret sits right on a chunk boundary. Does not cross text-node
+// boundaries; upgrade path if inline markup splits words.
+export function expandCaretToWordStart(
+  node: Node,
+  offset: number,
+): { node: Node; offset: number } {
+  // Node.TEXT_NODE === 3; keep the literal so the helper stays testable in a
+  // Node (non-DOM) test environment.
+  if (node.nodeType !== 3) return { node, offset };
+  const text = node.nodeValue ?? "";
+  let i = Math.min(offset, text.length);
+  // Walk back over letters and digits until we hit whitespace or punctuation.
+  while (i > 0 && /[\p{L}\p{N}]/u.test(text[i - 1])) {
+    i--;
+  }
+  return { node, offset: i };
 }
 
 // ponytail: bounding rect of a single character at `index` in the map. Used to
@@ -298,6 +329,7 @@ export interface EpubViewerHandle {
   getTtsStartOffset: (pos?: {
     elementId?: string;
     useVisible?: boolean;
+    startCfi?: string;
   }) => number;
   /**
    * Wait for the next epub.js `rendered` event, i.e. the iframe DOM for the
@@ -370,6 +402,14 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const bookRef = useRef<Book | null>(null);
     const renditionRef = useRef<Rendition | null>(null);
     const paragraphMapRef = useRef<ParagraphMap | null>(null);
+    // ponytail: suppress the floating toolbar while the selecting mouse button
+    // is still down. epub.js can fire "selected" mid-drag; we hold the latest
+    // selection in pendingSelectionRef and emit it on mouseup instead.
+    const mouseDownRef = useRef(false);
+    const pendingSelectionRef = useRef<{
+      cfiRange: string;
+      contents: unknown;
+    } | null>(null);
 
     const [isLoaded, setIsLoaded] = useState(false);
     // Track last known CFI for getCurrentCfi()
@@ -716,7 +756,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           console.warn("[EpubViewer] showChunk display(chunkCfi) failed:", err);
         }
       },
-      getTtsStartOffset: (pos?: { elementId?: string; useVisible?: boolean }) => {
+      getTtsStartOffset: (pos?: { elementId?: string; useVisible?: boolean; startCfi?: string }) => {
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body) return 0;
@@ -724,6 +764,17 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         if (pos?.elementId) {
           const el = doc.getElementById(pos.elementId);
           if (el) return prefixTextOffset(doc, el);
+        }
+
+        if (pos?.startCfi) {
+          const range = cfiToRange(renditionRef.current, pos.startCfi);
+          if (range?.startContainer) {
+            const { node, offset } = expandCaretToWordStart(
+              range.startContainer,
+              range.startOffset,
+            );
+            return prefixOffsetTo(doc, node, offset);
+          }
         }
 
         // ponytail: GEOMETRIC visible-page resolution. epub.js paginated lays
@@ -959,6 +1010,44 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               );
             });
 
+            // ponytail: selection lifecycle inside the iframe.
+            //  - mouseup flushes a selection made while the button was down (so
+            //    the toolbar appears after the drag ends, not during it);
+            //  - selectionchange clears the toolbar (and any pending drag
+            //    selection) when the selection becomes empty (click-away).
+            // Re-registered per section render: epub.js rebuilds the iframe body
+            // across boundaries, and the old document is GC'd with its listeners.
+            rendition.hooks.content.register((contents: Contents) => {
+              const doc = (contents as unknown as { document?: Document })
+                .document;
+              if (!doc) return;
+              doc.addEventListener("mousedown", () => {
+                mouseDownRef.current = true;
+              });
+              doc.addEventListener("mouseup", () => {
+                mouseDownRef.current = false;
+                if (!mounted) return;
+                const pending = pendingSelectionRef.current;
+                if (pending) {
+                  pendingSelectionRef.current = null;
+                  onTextSelected?.(pending.cfiRange, pending.contents);
+                }
+              });
+              doc.addEventListener("selectionchange", () => {
+                if (!mounted) return;
+                const sel = doc.defaultView?.getSelection?.();
+                if (
+                  !sel ||
+                  sel.isCollapsed ||
+                  sel.rangeCount === 0 ||
+                  sel.toString().length === 0
+                ) {
+                  pendingSelectionRef.current = null;
+                  onSelectionCleared?.();
+                }
+              });
+            });
+
             // Wire relocated event for progress and position
             rendition.on(
               "relocated",
@@ -999,6 +1088,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             // Wire text selection events
             rendition.on("selected", (cfiRange: string, contents: unknown) => {
               if (!mounted) return;
+              // ponytail: hold the selection until mouseup so the toolbar
+              // doesn't pop in mid-drag.
+              if (mouseDownRef.current) {
+                pendingSelectionRef.current = { cfiRange, contents };
+                return;
+              }
               onTextSelected?.(cfiRange, contents);
             });
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Lightbulb, Copy, Highlighter } from "lucide-react";
+import { Lightbulb, Copy, Highlighter, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HIGHLIGHT_COLORS, highlightSwatchStyle } from "./highlight-colors";
 
@@ -12,6 +12,7 @@ export interface FloatingToolbarProps {
   selectedText: string;
   onHighlight: (color: string) => void;
   onAsk: () => void;
+  onReadFromHere: () => void;
   onDismiss: () => void;
 }
 
@@ -21,6 +22,7 @@ export function FloatingToolbar({
   selectedText,
   onHighlight,
   onAsk,
+  onReadFromHere,
   onDismiss,
 }: FloatingToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -72,6 +74,16 @@ export function FloatingToolbar({
       >
         <Lightbulb className="h-4 w-4 text-lav" />
         Ask about this
+      </button>
+
+      <button
+        type="button"
+        onClick={onReadFromHere}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        aria-label="Start reading from here"
+      >
+        <Play className="h-4 w-4 fill-current" />
+        Start reading from here
       </button>
 
       <button
