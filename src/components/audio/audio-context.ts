@@ -73,7 +73,7 @@ export type AudioContextValue = {
     overrideHref?: string,
     overrideLabel?: string,
     startPos?: TtsStartPos,
-  ) => void;
+  ) => Promise<void>;
   /**
    * Navigate the registered viewer to the section currently being read and
    * highlight the chunk now being spoken. Used when the reader re-mounts while

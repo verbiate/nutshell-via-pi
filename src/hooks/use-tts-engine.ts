@@ -584,6 +584,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       cleanupSource();
       stopTimer();
       cancelBrowserSpeech();
+      bufferCacheRef.current.clear();
       durationsRef.current = [];
       chunkWordCountsRef.current = [];
       totalWordsRef.current = 0;
@@ -602,6 +603,15 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
           // ponytail: AudioContext unavailable (SSR / very old browser) — browser
           // speech path doesn't need it, so this is non-fatal.
         }
+      }
+      // ponytail: resume within the user gesture, before any await. Starting a
+      // section while one is PAUSED leaves the context suspended (pause() keeps
+      // the source alive and suspends the graph for sample-accurate resume).
+      // Browsers only honor resume() near a gesture; deferring it to playChunk
+      // (after getText + resolveEngine awaits) loses the gesture and the new
+      // section's source starts against a suspended graph → silent playback.
+      if (audioContextRef.current?.state === "suspended") {
+        void audioContextRef.current.resume();
       }
 
       setState({

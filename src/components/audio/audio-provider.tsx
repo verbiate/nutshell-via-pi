@@ -368,19 +368,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     ) => {
       const s = sessionRef.current;
       const isCloudNow = enginePref === "cloud" && s?.userRole !== "regular";
-      // ponytail: cloud doesn't go through getText, so navigate the reader's
-      // viewer here to keep it in sync on auto-advance / playlist jumps. Skip
-      // when already on the section (initial "Listen from here"). The browser
-      // path navigates via getText instead.
-      if (
-        isCloudNow &&
-        openBookRef.current?.currentHref !== href
-      ) {
-        // ponytail: use the mirrored ref so React Compiler's inferred deps
-        // (registeredViewerRef.current) match the source; the ref itself is
-        // stable, so the callback doesn't need registeredViewer in deps.
-        registeredViewerRef.current?.current?.navigateTo(href, { ttsNav: true }).catch(() => {});
-      }
       if (isCloudNow) {
         // ponytail: cloud audio is one blob per section. When starting from the
         // current page, approximate the audio seek point by the visible block's
@@ -637,7 +624,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const startFromHere = useCallback((
+  const startFromHere = useCallback(async (
     overrideHref?: string,
     overrideLabel?: string,
     startPos?: { elementId?: string; useVisible?: boolean },
@@ -682,6 +669,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         prev ? { ...prev, currentIndex } : prev,
       );
     }
+
+    // ponytail: sidebar "play this section" should behave like "click to visit
+    // the chapter" + "start reading from here". Always navigate the viewer to
+    // the chosen href first (even if already on the same section, so we land at
+    // its head/fragment), then start TTS. When overrideHref is undefined we're
+    // starting from the current visible page — don't navigate.
+    if (overrideHref) {
+      await registeredViewerRef.current?.current
+        ?.navigateTo(href, { ttsNav: true })
+        .catch(() => {});
+    }
+
     startSection(href, title, startPos);
   }, [
     enginePref,
@@ -741,12 +740,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const jumpTo = useCallback(
-    (index: number) => {
+    async (index: number) => {
       const s = sessionRef.current;
       if (!s) return;
       const section = s.flatToc[index];
       if (!section) return;
       setSession((prev) => (prev ? { ...prev, currentIndex: index } : prev));
+      await registeredViewerRef.current?.current
+        ?.navigateTo(section.href, { ttsNav: true })
+        .catch(() => {});
       startSection(section.href, section.label);
     },
     [startSection],
