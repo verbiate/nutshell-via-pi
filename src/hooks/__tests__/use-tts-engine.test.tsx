@@ -178,20 +178,24 @@ function renderHook(props: UseTtsEngineOptions) {
   document.body.appendChild(container);
   const root = createRoot(container);
 
-  act(() => {
-    root.render(
-      <Probe
-        {...props}
-        onApi={(api) => {
-          apiRef = api;
-        }}
-      />,
-    );
-  });
+  const renderProbe = (p: UseTtsEngineOptions) =>
+    act(() => {
+      root.render(
+        <Probe
+          {...p}
+          onApi={(api) => {
+            apiRef = api;
+          }}
+        />,
+      );
+    });
+
+  renderProbe(props);
 
   return {
     getApi: () => apiRef!,
     unmount: () => act(() => root.unmount()),
+    rerender: renderProbe,
   };
 }
 
@@ -366,6 +370,49 @@ describe("useTtsEngine", () => {
     );
     expect(viewerRef!.current?.highlightChunk).toHaveBeenLastCalledWith(
       "chunk two",
+    );
+
+    unmount();
+  });
+
+  it("highlights on a newly registered viewer after playback started off-reader", async () => {
+    const { getApi, rerender, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world. This is a test."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      // ponytail: audio starts while no viewer is registered (bookshelf or
+      // another book). The running playChunk chain must still pick up the
+      // viewer when we later return to this book's reader.
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    const viewerRef = createMockViewerRef();
+    rerender({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world. This is a test."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    });
+
+    act(() => {
+      const ctx = FakeAudioContext.instances[0];
+      const source = ctx?.lastSource;
+      expect(source).toBeTruthy();
+      (source as any).onended?.(new Event("ended"));
+    });
+
+    await vi.waitFor(() =>
+      expect(viewerRef!.current?.highlightChunk).toHaveBeenLastCalledWith(
+        "chunk two",
+      ),
     );
 
     unmount();

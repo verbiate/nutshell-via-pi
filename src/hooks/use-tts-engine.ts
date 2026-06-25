@@ -193,6 +193,16 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     sectionHrefRef.current = state.sectionHref;
   }, [state.sectionHref]);
 
+  // ponytail: mirror viewerRef into a ref so the memoized playChunk chain
+  // (driven by source.onended recursion) always highlights on the *latest*
+  // registered viewer. Without this, returning to a playing book leaves the
+  // chain closed over the off-reader viewerRef (undefined) and the indicator
+  // never advances even though audio keeps playing.
+  const viewerRefRef = useRef(viewerRef);
+  useEffect(() => {
+    viewerRefRef.current = viewerRef;
+  });
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const chunksRef = useRef<string[]>([]);
@@ -401,8 +411,10 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // ponytail: follow-along highlight — clear previous chunk's highlight,
       // then highlight the current chunk's text in the reader iframe. If the
       // text is on a later page, highlightChunk advances pages automatically.
-      viewerRef?.current?.clearTtsHighlight();
-      await viewerRef?.current?.highlightChunk(chunksRef.current[index]);
+      // Read viewerRef through viewerRefRef so the running source.onended chain
+      // always sees the latest registered viewer (e.g. after return-to-playing).
+      viewerRefRef.current?.current?.clearTtsHighlight();
+      await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index]);
 
       // ponytail: persist the spoken position. Fires whether or not the viewer
       // is mounted — off-reader the anchor is the only signal that survives,
@@ -531,7 +543,6 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       stopTimer,
       synthesizeCached,
       voiceId,
-      viewerRef,
     ],
   );
 
