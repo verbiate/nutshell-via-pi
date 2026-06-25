@@ -48,8 +48,33 @@ function nodeToCfi(
   const view = rendition.manager?.current();
   const contents = view?.contents;
   if (!contents) return null;
+  // ponytail: descend to the first non-empty text node before generating the
+  // CFI. epub.js's locationOf builds a Range from the CFI and, when that range
+  // is collapsed, defensively extends the end via setEnd(startContainer, r)
+  // where r is a *character* offset derived from textContent. On an Element
+  // startContainer (what cfiFromNode(block) yields), setEnd treats the offset
+  // as a *child* index → IndexSizeError ("no child at offset N"). On a Text
+  // node the offset is a character offset, which is what locationOf intends,
+  // so the error never fires. The text node lives inside the block, so it's
+  // in the same column → display() lands on the same page. nodeToCfi runs on
+  // a clean DOM (marks cleared, before wrapping) and the CFI is consumed by
+  // display() before any wrapping, so the text-node staleness the block-level
+  // comment above guards against doesn't apply on this path.
+  let target: Node = node;
+  const doc = node.ownerDocument;
+  if (doc && node.nodeType === 1) {
+    const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let tn = walker.nextNode() as Text | null;
+    while (tn) {
+      if ((tn.nodeValue ?? "").trim().length > 0) {
+        target = tn;
+        break;
+      }
+      tn = walker.nextNode() as Text | null;
+    }
+  }
   try {
-    return contents.cfiFromNode(node, "tts-chunk");
+    return contents.cfiFromNode(target, "tts-chunk");
   } catch (err: any) {
     console.warn("[EpubViewer] cfiFromNode failed:", err);
     return null;
@@ -72,6 +97,45 @@ function getFirstVisibleBlock(doc: Document): Element | null {
     if (rect.right > 2 && rect.left < vw - 2) return block;
   }
   return blocks[0] ?? null;
+}
+
+// ponytail: ask epub.js for the current page's start CFI and resolve it back to
+// a leaf text block. More reliable than getBoundingClientRect heuristics, which
+// can fall back to blocks[0] (the chapter's first block) when the column
+// transform state doesn't match the viewport. Falls back to null so callers can
+// use getFirstVisibleBlock.
+function resolveStartBlockFromLocation(
+  rendition: Rendition | null,
+  doc: Document,
+): Element | null {
+  if (!rendition) return null;
+  try {
+    const loc = (rendition as unknown as { currentLocation?: () => { start?: { cfi?: string } } }).currentLocation?.();
+    const startCfi = loc?.start?.cfi;
+    if (!startCfi) return null;
+    const view = rendition.manager?.current();
+    const contents = (view as unknown as { contents?: { range?: (cfi: string) => Range } })?.contents;
+    if (!contents) return null;
+    const range = contents.range?.(startCfi);
+    if (!range?.startContainer) return null;
+    let node: Node | null = range.startContainer;
+    if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+      node = node.parentElement;
+    }
+    while (node && node !== doc.body) {
+      if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        (node as Element).matches(TTS_BLOCK_SELECTOR) &&
+        !hasTextBlockDescendant(node as HTMLElement)
+      ) {
+        return node as Element;
+      }
+      node = (node as Element).parentElement ?? null;
+    }
+  } catch {
+    // fall through to rect heuristic
+  }
+  return null;
 }
 
 export interface EpubViewerProps {
@@ -100,7 +164,7 @@ export interface EpubViewerProps {
 }
 
 export interface EpubViewerHandle {
-  navigateTo: (href: string) => Promise<void>;
+  navigateTo: (href: string, opts?: { ttsNav?: boolean }) => Promise<void>;
   next: () => Promise<void>;
   prev: () => Promise<void>;
   getCurrentCfi: () => string | null;
@@ -254,13 +318,19 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
-      navigateTo: async (href: string) => {
+      navigateTo: async (href: string, opts?: { ttsNav?: boolean }) => {
         // Hrefs are normalized at ToC-load time (see resolveSpineHref), so this
         // is just display() + a catch for "No Section Found" rejections so they
         // don't surface as unhandled rejections in Next.js's error overlay.
+        // ttsNav: TTS-driven section changes must be tagged as our-nav so the
+        // follow-state reducer doesn't mark them as the user browsing away —
+        // otherwise auto-page-turn dies after page 1 of the new section.
+        if (opts?.ttsNav) markNavInFlight();
         try {
           await renditionRef.current?.display(href);
+          if (opts?.ttsNav) scheduleNavSettle();
         } catch (err: any) {
+          if (opts?.ttsNav) clearNavInFlight();
           console.warn("[EpubViewer] navigateTo failed:", err);
         }
       },
@@ -534,8 +604,13 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           targetEl = doc.getElementById(pos.elementId);
         }
         if (!targetEl) {
-          // ponytail: elementId miss or useVisible → first visible leaf block.
-          targetEl = getFirstVisibleBlock(doc);
+          // ponytail: authoritative first — ask epub.js where the current page
+          // starts, then fall back to the rect heuristic if it can't tell us.
+          targetEl = resolveStartBlockFromLocation(renditionRef.current, doc);
+          if (!targetEl) {
+            // ponytail: elementId miss or useVisible → first visible leaf block.
+            targetEl = getFirstVisibleBlock(doc);
+          }
         }
         if (!targetEl) return 0;
 

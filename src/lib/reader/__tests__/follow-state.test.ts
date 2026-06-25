@@ -91,4 +91,21 @@ describe("applyRelocated", () => {
     });
     expect(s).toEqual(DEFAULT_FOLLOW_STATE);
   });
+
+  it("treats a TTS-driven section change as ours (the auto-page-turn fix)", () => {
+    // When TTS auto-advances to a new section, navigateTo({ttsNav:true}) wraps
+    // display() in markNavInFlight(), so the section-change relocated arrives
+    // with ourNav=true. This must NOT set userBrowsedAway (which would kill
+    // auto-page-turn after page 1 of the new section), and must update
+    // lastTtsHref/lastTtsPage so subsequent chunks compare correctly.
+    const s = applyRelocated(stateOnPage5, {
+      ourNav: true,
+      page: 1,
+      href: "chapter2.xhtml",
+    });
+    expect(s.userBrowsedAway).toBe(false);
+    expect(s.lastTtsHref).toBe("chapter2.xhtml");
+    expect(s.lastTtsPage).toBe(1);
+    expect(s.ourNavInFlight).toBe(true);
+  });
 });

@@ -129,8 +129,16 @@ class FakeHTMLAudioElement {
   playbackRate = 1;
   play = vi.fn(() => Promise.resolve());
   pause = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
+  private listeners: Record<string, Array<(...args: any[]) => void>> = {};
+  addEventListener = vi.fn((type: string, fn: (...args: any[]) => void) => {
+    (this.listeners[type] ??= []).push(fn);
+  });
+  removeEventListener = vi.fn((type: string, fn: (...args: any[]) => void) => {
+    this.listeners[type] = (this.listeners[type] ?? []).filter((f) => f !== fn);
+  });
+  dispatchEvent(type: string, ...args: any[]) {
+    [...(this.listeners[type] ?? [])].forEach((fn) => fn(...args));
+  }
 }
 
 function installGlobals() {
@@ -269,6 +277,28 @@ describe("useTtsCloud", () => {
     expect(getApi().quota?.used).toBe(5);
     expect(getApi().state.audioUrl).toBe("https://cdn/audio.mp3");
     expect(getApi().state.audioId).toBe("aud-1");
+    unmount();
+  });
+
+  it("seeks cloud audio to seekRatio once metadata loads", async () => {
+    setResponses([
+      usageCheck(true, 0, 50),
+      generate("https://cdn/audio.mp3", "aud-1"),
+    ]);
+    const props = baseProps();
+    const { getApi, unmount } = renderHook(props);
+
+    await act(async () => {
+      getApi().startSection("ch1.xhtml", "Chapter 1", { seekRatio: 0.3 });
+    });
+
+    await vi.waitFor(() => expect(getApi().state.state).toBe("READY"));
+    const audio = props.audioRef.current as unknown as FakeHTMLAudioElement;
+    expect(audio.play).not.toHaveBeenCalled();
+    audio.duration = 100;
+    await act(async () => audio.dispatchEvent("loadedmetadata"));
+    expect(audio.currentTime).toBe(30);
+    expect(audio.play).toHaveBeenCalledTimes(1);
     unmount();
   });
 

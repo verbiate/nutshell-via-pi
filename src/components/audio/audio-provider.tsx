@@ -191,7 +191,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     if (viewer) {
       if (currentHref !== href) {
-        await viewer.navigateTo(href);
+        await viewer.navigateTo(href, { ttsNav: true });
       }
       return viewer.getSectionText() ?? "";
     }
@@ -222,7 +222,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     // ponytail: navigate the viewer to the new section BEFORE starting TTS.
     // Without this, highlightChunk is called for text that isn't in the
     // displayed section's DOM — matcher fails, no marks, no page turn.
-    registeredViewerRef.current?.current?.navigateTo(next.href);
+    registeredViewerRef.current?.current?.navigateTo(next.href, { ttsNav: true });
     const isCloudNow = enginePref === "cloud" && s.userRole !== "regular";
     if (isCloudNow) {
       cloudTtsRef.current?.startSection(next.href, next.label);
@@ -379,10 +379,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         // ponytail: use the mirrored ref so React Compiler's inferred deps
         // (registeredViewerRef.current) match the source; the ref itself is
         // stable, so the callback doesn't need registeredViewer in deps.
-        registeredViewerRef.current?.current?.navigateTo(href).catch(() => {});
+        registeredViewerRef.current?.current?.navigateTo(href, { ttsNav: true }).catch(() => {});
       }
       if (isCloudNow) {
-        cloudTtsRef.current?.startSection(href, title, startPos);
+        // ponytail: cloud audio is one blob per section. When starting from the
+        // current page, approximate the audio seek point by the visible block's
+        // character offset / total section characters. Proportional, so it may
+        // land within a sentence; upgrade path is server-side time mapping.
+        let seekRatio: number | undefined;
+        if (startPos?.useVisible) {
+          const viewer = registeredViewerRef.current?.current;
+          if (viewer) {
+            const offset = viewer.getTtsStartOffset(startPos);
+            const total = viewer.getSectionText().length;
+            if (total > 0) {
+              seekRatio = Math.min(Math.max(offset / total, 0), 0.999);
+            }
+          }
+        }
+        cloudTtsRef.current?.startSection(href, title, { seekRatio });
       } else {
         browserTtsRef.current?.startSection(href, title, startPos);
       }
@@ -549,7 +564,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     );
     if (!onSection) {
       try {
-        await viewer.navigateTo(section.href);
+        await viewer.navigateTo(section.href, { ttsNav: true });
       } catch (err) {
         console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
         return;

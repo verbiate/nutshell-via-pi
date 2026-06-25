@@ -49,13 +49,14 @@ export interface UseTtsCloudOptions {
 export interface UseTtsCloudReturn {
   state: TtsPlaybackState;
   quota: CloudQuota | null;
-  // ponytail: startPos accepted for parity with the browser engine but ignored
-  // — cloud generates full-section audio server-side. Upgrade path: pass the
-  // offset to /api/tts/generate and trim source text before synthesis.
+  // ponytail: seekRatio lets the caller start the section-level cloud audio
+  // somewhere other than 0. Approximate — based on the visible block's char
+  // offset / total section chars. Cloud still generates the full section; we
+  // just jump playback after it loads.
   startSection: (
     href: string,
     title: string,
-    startPos?: { elementId?: string; useVisible?: boolean },
+    opts?: { seekRatio?: number },
   ) => void;
   togglePlayPause: () => void;
   scrub: (time: number) => void;
@@ -95,6 +96,11 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
   // ponytail: latest quota in a ref so the startSection closure (memoized on
   // bookId/toc only) sees fresh values without re-creating per fetch.
   const quotaRef = useRef<CloudQuota | null>(initialQuota);
+  // ponytail: cloud audio is one section-level blob; when starting from the
+  // current page, stash the proportional seek target and apply it once the
+  // audio metadata loads. Approximate (char offset / total chars), so it may
+  // land within a sentence of the visible block.
+  const pendingSeekRatioRef = useRef<number>(0);
   const onQuotaExhaustedRef = useRef(onQuotaExhausted);
   useEffect(() => {
     onQuotaExhaustedRef.current = onQuotaExhausted;
@@ -190,9 +196,15 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
     async (
       href: string,
       title: string,
-      // ponytail: accepted for parity, ignored — cloud generates full-section audio.
-      _startPos?: { elementId?: string; useVisible?: boolean },
+      opts?: { seekRatio?: number },
     ) => {
+      // ponytail: stash the proportional seek target. Applied after the audio
+      // element loads metadata so playback starts near the visible block.
+      pendingSeekRatioRef.current = Math.min(
+        Math.max(opts?.seekRatio ?? 0, 0),
+        0.999,
+      );
+
       if (abortRef.current) abortRef.current.abort();
 
       setState({
@@ -283,7 +295,21 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
 
         if (audioRef.current) {
           audioRef.current.src = data.url;
-          audioRef.current.play().catch(() => {});
+          const ratio = pendingSeekRatioRef.current;
+          pendingSeekRatioRef.current = 0;
+          if (ratio > 0) {
+            // ponytail: defer play until metadata loads so we can seek before
+            // any audio reaches the speaker. { once: true } prevents a stale
+            // listener from firing on a later section.
+            const audio = audioRef.current;
+            const onMeta = () => {
+              audio.currentTime = ratio * (audio.duration || 0);
+              audio.play().catch(() => {});
+            };
+            audio.addEventListener("loadedmetadata", onMeta, { once: true });
+          } else {
+            audioRef.current.play().catch(() => {});
+          }
         }
 
         // 3) Optimistically bump local count — server already incremented.
@@ -343,6 +369,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
       audio.pause();
       audio.src = "";
     }
+    pendingSeekRatioRef.current = 0;
     setState(IDLE_STATE);
   }, []);
 
