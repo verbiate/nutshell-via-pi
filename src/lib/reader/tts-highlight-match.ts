@@ -223,3 +223,38 @@ export function wrapRangePerBlock(
   flush(e);
   return count;
 }
+
+// ponytail: index of the first character whose rect overlaps the visible page
+// window [visLeft, visRight), or -1 if none. rect.left wraps at each CSS column
+// so it isn't globally monotonic — can't binary-search. Step-sample (stride) to
+// bracket the page boundary, then linear-scan that window for the true first
+// on-page char. Caps rectAt calls at ~n/stride + stride even for long
+// paragraphs. Used by the reader's "Start reading from here" to land on the
+// sentence/clause actually visible at the page top (the chunk containing this
+// char is where playback begins), instead of the next sentence start or — for a
+// single long sentence spanning the boundary — a whole page back.
+export function findFirstVisibleCharIndex(
+  n: number,
+  rectAt: (i: number) => DOMRect | null,
+  visLeft: number,
+  visRight: number,
+  stride = 16,
+): number {
+  if (n <= 0) return -1;
+  const onVis = (r: DOMRect | null): boolean =>
+    !!r && r.right > visLeft && r.left < visRight;
+  let sampled = -1;
+  for (let i = 0; i < n; i += stride) {
+    if (onVis(rectAt(i))) {
+      sampled = i;
+      break;
+    }
+  }
+  if (sampled < 0) return -1;
+  // Refine: the true first on-page char is in [sampled - stride, sampled]; scan
+  // that window forward to find the earliest one.
+  for (let i = Math.max(0, sampled - stride); i < sampled; i++) {
+    if (onVis(rectAt(i))) return i;
+  }
+  return sampled;
+}

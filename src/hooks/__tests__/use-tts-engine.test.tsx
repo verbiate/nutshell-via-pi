@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
-import { useTtsEngine, _resetKokoroKnownBroken, type UseTtsEngineOptions } from "../use-tts-engine";
+import { useTtsEngine, _resetKokoroKnownBroken, findStartChunkIndex, type UseTtsEngineOptions } from "../use-tts-engine";
 
 vi.mock("@/lib/tts/engines", () => ({
   getEngine: vi.fn(),
@@ -194,6 +194,35 @@ function renderHook(props: UseTtsEngineOptions) {
     unmount: () => act(() => root.unmount()),
   };
 }
+
+describe("findStartChunkIndex", () => {
+  // ponytail: locks in contain-snap semantics. The old forward-snap returned
+  // the chunk AFTER the one containing the offset, which — combined with
+  // getTtsStartOffset returning a mid-sentence visible char — would skip the
+  // sentence actually at the top of the page.
+  const chunks = ["AAAA", "BBBB", "CCCC"]; // spans [0,4), [4,8), [8,12)
+
+  it("returns the chunk containing the offset, not the next one", () => {
+    expect(findStartChunkIndex(chunks, 3)).toBe(0); // inside AAAA, not BBBB
+    expect(findStartChunkIndex(chunks, 7)).toBe(1); // inside BBBB, not CCCC
+  });
+
+  it("returns the chunk starting exactly at the offset", () => {
+    expect(findStartChunkIndex(chunks, 0)).toBe(0);
+    expect(findStartChunkIndex(chunks, 4)).toBe(1); // start of BBBB
+    expect(findStartChunkIndex(chunks, 8)).toBe(2); // start of CCCC
+  });
+
+  it("clamps to the last chunk when the offset is out of range", () => {
+    expect(findStartChunkIndex(chunks, 99)).toBe(2);
+    expect(findStartChunkIndex(["AAAA", "BBBB"], 999)).toBe(1);
+  });
+
+  it("returns 0 for non-positive offsets", () => {
+    expect(findStartChunkIndex(chunks, 0)).toBe(0);
+    expect(findStartChunkIndex(chunks, -5)).toBe(0);
+  });
+});
 
 describe("useTtsEngine", () => {
   let mockEngine: ReturnType<typeof createMockEngine>;

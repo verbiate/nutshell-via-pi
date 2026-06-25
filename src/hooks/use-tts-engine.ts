@@ -148,12 +148,19 @@ function cancelBrowserSpeech(): void {
 // Forward-snap: when the page-top char lands inside a chunk that began on the
 // previous page, skip it and start at the next chunk boundary — i.e. the first
 // sentence BEGINNING on the current page.
-function findStartChunkIndex(chunks: string[], targetOffset: number): number {
+// ponytail: map a raw character offset to the chunk that CONTAINS it. Used by
+// the "Start reading from here" path, where getTtsStartOffset returns the
+// offset of the first VISIBLE character — which usually falls mid-chunk
+// (inside the sentence/clause straddling the page top). Contain-snap lands on
+// that chunk so playback begins at its natural start; forward-snap would skip
+// past it. For offsets past the end, clamp to the last chunk.
+export function findStartChunkIndex(chunks: string[], targetOffset: number): number {
   if (targetOffset <= 0) return 0;
   let acc = 0;
   for (let i = 0; i < chunks.length; i++) {
-    if (acc >= targetOffset) return i;
-    acc += chunks[i].length;
+    const end = acc + chunks[i].length;
+    if (targetOffset < end) return i;
+    acc = end;
   }
   return Math.max(0, chunks.length - 1);
 }
@@ -781,9 +788,9 @@ function _findStartChunkIndexDemo(): void {
   const chunks = ["AAAA", "BBBB", "CCCC"];
   const checks: Array<[number, number, string]> = [
     [0, 0, "offset 0 → chunk 0"],
-    [3, 1, "offset 3 (inside AAAA) → chunk 1 (first start ≥3)"],
+    [3, 0, "offset 3 (inside AAAA) → chunk 0 (containing)"],
     [4, 1, "offset 4 (start of BBBB) → chunk 1"],
-    [7, 2, "offset 7 (inside BBBB) → chunk 2 (first start ≥7)"],
+    [7, 1, "offset 7 (inside BBBB) → chunk 1 (containing)"],
     [8, 2, "offset 8 (start of CCCC) → chunk 2"],
     [99, 2, "offset 99 → last chunk (out of range, clamp)"],
   ];

@@ -14,10 +14,10 @@ import {
   unwrapMarks,
   wrapRangePerBlock,
   positionBlock,
+  findFirstVisibleCharIndex,
   TTS_BLOCK_SELECTOR,
   type TextMap,
 } from "@/lib/reader/tts-highlight-match";
-import { splitSentences } from "@/lib/tts/chunk";
 import {
   applyRelocated,
   DEFAULT_FOLLOW_STATE,
@@ -722,12 +722,11 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           const page = readDisplayedPage(renditionRef.current);
           visLeft = page > 0 ? (page - 1) * pageW : 0;
         }
-
-        // ponytail: first leaf block whose rect OVERLAPS the visible window.
-        // A block fragmented across the page boundary (starts on the previous
-        // page, continues onto this one) is included so its on-page sentences
-        // aren't skipped.
         const visRight = visLeft + pageW;
+
+        // ponytail: first leaf block whose rect OVERLAPS the visible window —
+        // including a block fragmented across the page boundary (starts on the
+        // previous page, continues onto this one).
         const blocks = Array.from(
           doc.querySelectorAll<HTMLElement>(TTS_BLOCK_SELECTOR),
         ).filter((el) => !hasTextBlockDescendant(el));
@@ -756,29 +755,29 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           return prefixTextOffset(doc, block);
         }
 
-        // Block spans from a previous page → find the first SENTENCE within it
-        // whose rendered start is on the visible page. buildTextMap gives a
-        // per-char DOM position; per-sentence ranges read their column via
-        // getBoundingClientRect without trusting caretRangeFromPoint (which is
-        // unreliable on this translated-iframe layout).
+        // ponytail: Block spans from a previous page. Resolve the FIRST VISIBLE
+        // CHARACTER on the page and return its text offset — NOT a sentence
+        // start. Downstream, findStartChunkIndex snaps to the chunk CONTAINING
+        // that char, so playback begins at the natural start of the sentence
+        // (or clause, for long cascade-split sentences) actually visible at the
+        // page top. This fixes two prior failure modes: picking the 2nd
+        // sentence (the 1st started off-page but its tail is what's visible),
+        // and — for one long sentence spanning the boundary — jumping a whole
+        // page back to the block start.
         const map = buildTextMap(doc, block);
-        const sentences = splitSentences(map.text);
-        let searchFrom = 0;
-        for (const sentence of sentences) {
-          if (sentence.length < 2) continue;
-          const s = map.text.indexOf(sentence, searchFrom);
-          if (s < 0) break;
-          searchFrom = s + sentence.length;
-          const rect = charRectAt(doc, map, s);
-          if (!rect) continue;
-          if (rect.left >= visLeft - 1 && rect.left < visRight) {
-            const startPos = map.positions[s];
-            return prefixOffsetTo(doc, startPos.node, startPos.offset);
-          }
+        const hit = findFirstVisibleCharIndex(
+          map.positions.length,
+          (i) => charRectAt(doc, map, i),
+          visLeft,
+          visRight,
+        );
+        if (hit < 0) {
+          // No on-page char in this block (shouldn't happen for an overlapping
+          // block) → block start as a safe fallback.
+          return prefixTextOffset(doc, block);
         }
-
-        // every sentence failed to resolve (rare) → block start (prev page)
-        return prefixTextOffset(doc, block);
+        const p = map.positions[hit];
+        return prefixOffsetTo(doc, p.node, p.offset);
       },
     }));
 

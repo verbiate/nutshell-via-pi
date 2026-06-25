@@ -8,6 +8,7 @@ import {
   wrapMark,
   unwrapMarks,
   wrapRangePerBlock,
+  findFirstVisibleCharIndex,
 } from "../tts-highlight-match";
 
 describe("pickTtsTargetIndex", () => {
@@ -144,5 +145,58 @@ describe("multi-block chunk wrapping (happy-dom)", () => {
     unwrapMarks(document);
     expect(document.querySelector("mark.tts-chunk")).toBeNull();
     expect(h1.textContent).toBe("Chapter Four");
+  });
+});
+
+describe("findFirstVisibleCharIndex", () => {
+  // ponytail: simulates a paginated column layout. visLeft=728, visRight=1456
+  // (one 728px page). Chars [0,b) live in the PREVIOUS column — left wraps
+  // 30→697 across the column (non-monotonic globally) but stays < visLeft so
+  // always off-page. Chars [b,n) live in the VISIBLE column (left 758→1425),
+  // always on-page. This is the shape that broke "Start reading from here":
+  // a block spanning the boundary, where the visible text is a sentence tail.
+  const visLeft = 728;
+  const visRight = 1456;
+  const makeRectAt = (b: number) => (i: number): DOMRect => {
+    const left = i < b ? 30 + (i % 668) : 758 + ((i - b) % 668);
+    return new DOMRect(left, 0, 1, 1); // right = left + 1
+  };
+
+  it("returns the boundary char when it falls between stride samples", () => {
+    // boundary 50, stride 16: first on-page sample is 64; refine window
+    // [48,64) contains the true first on-page char at 50.
+    expect(
+      findFirstVisibleCharIndex(100, makeRectAt(50), visLeft, visRight, 16),
+    ).toBe(50);
+  });
+
+  it("returns the sample itself when the boundary lands exactly on a sample", () => {
+    expect(
+      findFirstVisibleCharIndex(100, makeRectAt(48), visLeft, visRight, 16),
+    ).toBe(48);
+  });
+
+  it("returns 0 when the whole block is on the visible page", () => {
+    expect(
+      findFirstVisibleCharIndex(100, makeRectAt(0), visLeft, visRight, 16),
+    ).toBe(0);
+  });
+
+  it("returns -1 when no char is on the visible page", () => {
+    expect(
+      findFirstVisibleCharIndex(40, makeRectAt(50), visLeft, visRight, 16),
+    ).toBe(-1);
+  });
+
+  it("returns -1 for an empty range", () => {
+    expect(
+      findFirstVisibleCharIndex(0, makeRectAt(0), visLeft, visRight, 16),
+    ).toBe(-1);
+  });
+
+  it("finds a boundary inside the very first refine window", () => {
+    expect(
+      findFirstVisibleCharIndex(20, makeRectAt(3), visLeft, visRight, 16),
+    ).toBe(3);
   });
 });
