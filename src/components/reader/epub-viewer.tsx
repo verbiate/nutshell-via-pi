@@ -400,6 +400,37 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           }
         }
 
+        // ponytail: visibility safety net. epub.js's display(cfi) does not
+        // reliably advance columns for a same-section target in the paginated
+        // manager — the chunk gets marked on the next page but the viewport
+        // never follows. Verify the start block is actually on screen and
+        // advance with next() until it is. Cheap no-op when display() already
+        // landed on the right page (rect.left < vw → loop never fires). Gated
+        // on !userBrowsedAway so a browsing user isn't yanked back. Within-
+        // section next() is just a column translation, so the text map/range
+        // above stay valid for the wrapping that follows.
+        if (startBlock && !followStateRef.current.userBrowsedAway) {
+          const rendition = renditionRef.current;
+          const vw = doc.defaultView?.innerWidth ?? 800;
+          let safety = 0;
+          while (
+            rendition &&
+            startBlock.getBoundingClientRect().left >= vw - 2 &&
+            safety < 4
+          ) {
+            markNavInFlight();
+            try {
+              await rendition.next();
+              scheduleNavSettle();
+            } catch (err: any) {
+              clearNavInFlight();
+              console.warn("[EpubViewer] next() follow-along failed:", err);
+              break;
+            }
+            safety++;
+          }
+        }
+
         // ponytail: NOW wrap marks on the (possibly just-scrolled) page.
         let marksCreated = 0;
         if (range) {
