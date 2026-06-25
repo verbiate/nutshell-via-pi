@@ -837,6 +837,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           )}
         >
           <TtsPlayer
+            variant="floating"
             state={playbackState}
             loadPct={browserTts.state.loadPct}
             onPlayPause={handlePlayPause}

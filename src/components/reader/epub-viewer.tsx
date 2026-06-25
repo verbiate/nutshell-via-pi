@@ -16,6 +16,10 @@ import {
   positionBlock,
   TTS_BLOCK_SELECTOR,
 } from "@/lib/reader/tts-highlight-match";
+import {
+  applyRelocated,
+  DEFAULT_FOLLOW_STATE,
+} from "@/lib/reader/follow-state";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
 import { buildRenditionOptions } from "./rendition-options";
 import { highlightFill } from "./highlight-colors";
@@ -223,12 +227,30 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     // other relocated means the user drove the change. When their page/section
     // differs from where TTS left off, userBrowsedAway suppresses auto-advance
     // until they navigate back to the TTS page.
-    const followStateRef = useRef({
-      ourNavInFlight: false,
-      userBrowsedAway: false,
-      lastTtsPage: null as number | null,
-      lastTtsHref: null as string | null,
-    });
+    const followStateRef = useRef(DEFAULT_FOLLOW_STATE);
+    // ponytail: epub.js fires relocated 2-3× per display() (post-display,
+    // SCROLLED, RESIZED), and the later fires can carry transient wrong-page
+    // values. Clearing ourNavInFlight on the first relocated misattributes the
+    // siblings to the user and sticks userBrowsedAway=true. Keep the flag true
+    // for a short settle window after display() resolves so all sibling events
+    // are absorbed as our own.
+    const NAV_SETTLE_MS = 400;
+    const navSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const markNavInFlight = () => {
+      if (navSettleRef.current) clearTimeout(navSettleRef.current);
+      followStateRef.current.ourNavInFlight = true;
+    };
+    const clearNavInFlight = () => {
+      if (navSettleRef.current) clearTimeout(navSettleRef.current);
+      navSettleRef.current = null;
+      followStateRef.current.ourNavInFlight = false;
+    };
+    const scheduleNavSettle = () => {
+      if (navSettleRef.current) clearTimeout(navSettleRef.current);
+      navSettleRef.current = setTimeout(() => {
+        followStateRef.current.ourNavInFlight = false;
+      }, NAV_SETTLE_MS);
+    };
 
     // Navigate method exposed via ref
     useImperativeHandle(ref, () => ({
@@ -366,11 +388,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           if (rendition) {
             const chunkCfi = nodeToCfi(rendition, startBlock);
             if (chunkCfi) {
-              followStateRef.current.ourNavInFlight = true;
+              markNavInFlight();
               try {
                 await rendition.display(chunkCfi);
+                scheduleNavSettle();
               } catch (err: any) {
-                followStateRef.current.ourNavInFlight = false;
+                clearNavInFlight();
                 console.warn("[EpubViewer] display(chunkCfi) failed:", err);
               }
             }
@@ -429,11 +452,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // ponytail: jump to the section first. navigateTo is display(href); it
         // no-ops cleanly if the section is already current. Await a short settle
         // so the iframe DOM for the target section is present before we map it.
-        followStateRef.current.ourNavInFlight = true;
+        markNavInFlight();
         try {
           await renditionRef.current?.display(sectionHref);
+          scheduleNavSettle();
         } catch (err: any) {
-          followStateRef.current.ourNavInFlight = false;
+          clearNavInFlight();
           console.warn("[EpubViewer] showChunk section nav failed:", err);
           return;
         }
@@ -460,11 +484,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         if (!rendition) return;
         const chunkCfi = nodeToCfi(rendition, startBlock);
         if (!chunkCfi) return;
-        followStateRef.current.ourNavInFlight = true;
+        markNavInFlight();
         try {
           await rendition.display(chunkCfi);
+          scheduleNavSettle();
         } catch (err: any) {
-          followStateRef.current.ourNavInFlight = false;
+          clearNavInFlight();
           console.warn("[EpubViewer] showChunk display(chunkCfi) failed:", err);
         }
       },
@@ -666,20 +691,15 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                 // landed and clear the browsed-away flag. Otherwise the user
                 // drove the navigation: if their page or section differs from
                 // where TTS left off, they've browsed away (suppress auto-advance
-                // until they return). If they're back on the TTS page, resume.
-                const fs = followStateRef.current;
+                // until they return). ourNavInFlight is kept true for a settle
+                // window after display() resolves so epub.js's 2-3 sibling
+                // relocated events are absorbed as our own.
                 const page = location.start.displayed?.page ?? null;
                 const href = location.start.href ?? null;
-                if (fs.ourNavInFlight) {
-                  fs.ourNavInFlight = false;
-                  fs.lastTtsPage = page;
-                  fs.lastTtsHref = href;
-                  fs.userBrowsedAway = false;
-                } else if (fs.lastTtsPage !== null) {
-                  const sameSection = href === fs.lastTtsHref;
-                  const samePage = page === fs.lastTtsPage;
-                  fs.userBrowsedAway = !(sameSection && samePage);
-                }
+                followStateRef.current = applyRelocated(
+                  followStateRef.current,
+                  { ourNav: followStateRef.current.ourNavInFlight, page, href },
+                );
               }
             );
 
@@ -735,6 +755,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
 
       return () => {
         mounted = false;
+        clearNavInFlight();
         try {
           renditionRef.current?.destroy();
           bookRef.current?.destroy();
