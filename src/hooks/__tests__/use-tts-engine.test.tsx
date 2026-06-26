@@ -418,6 +418,54 @@ describe("useTtsEngine", () => {
     unmount();
   });
 
+  it("resolves startPos through a viewer registered after startSection was memoized", async () => {
+    const getText = createGetText("Hello world. This is a test.");
+    const baseProps = {
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText,
+      engineId: "kokoro" as const,
+      voiceId: "af_bella",
+    };
+
+    const { getApi, rerender, unmount } = renderHook(baseProps);
+
+    // ponytail: startSection is memoized before any viewer is registered.
+    // If it captures the stale viewerRef prop, the selection offset is skipped
+    // and playback falls back to chunk 0 (regression for "Start reading from here").
+    const getTtsStartOffset = vi.fn(() => 15);
+    const viewerRef = {
+      current: {
+        highlightChunk: vi.fn(async () => {}),
+        clearTtsHighlight: vi.fn(),
+        setTtsPaused: vi.fn(),
+        getTtsStartOffset,
+      },
+    } as unknown as Parameters<typeof useTtsEngine>[0]["viewerRef"];
+
+    rerender({ ...baseProps, viewerRef });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1", {
+        startCfi: "epubcfi(/6/2!/4/1:8)",
+      });
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+
+    expect(getTtsStartOffset).toHaveBeenCalledWith({
+      startCfi: "epubcfi(/6/2!/4/1:8)",
+    });
+    // ponytail: offset 15 lands in the second chunk ("chunk two"), proving
+    // startPos was resolved through the newly registered viewer ref.
+    expect(mockEngine.synthesize).toHaveBeenNthCalledWith(1, "chunk two", {
+      voiceId: "af_bella",
+      lang: "en",
+      speed: 1,
+    });
+
+    unmount();
+  });
+
   it("prefetches the next chunk while the current chunk plays", async () => {
     const { getApi, unmount } = renderHook({
       bookId: "book-1",

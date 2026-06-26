@@ -294,7 +294,7 @@ export interface EpubViewerHandle {
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
   getSectionText: () => string;
-  highlightChunk: (text: string) => Promise<void>;
+  highlightChunk: (text: string, opts?: { force?: boolean }) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
    * Fade the current chunk highlight out (paused=true → opacity 0) or back in
@@ -567,10 +567,14 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const clone = doc.body.cloneNode(true) as HTMLElement;
         return htmlToTtsText(clone.innerHTML);
       },
-      highlightChunk: async (text: string) => {
+      highlightChunk: async (text: string, opts?: { force?: boolean }) => {
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body || !text.trim()) return;
+
+        if (opts?.force) {
+          followStateRef.current.userBrowsedAway = false;
+        }
 
         // ponytail: leaf blocks, used only by the fallback path. A block is a
         // "container" (dropped) when it owns a block descendant with text, so

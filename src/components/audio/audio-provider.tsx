@@ -538,7 +538,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const chunk = browserTtsRef.current?.getCurrentChunk();
     if (!chunk?.chunkText) return true;
     try {
-      await viewer.highlightChunk(chunk.chunkText);
+      await viewer.highlightChunk(chunk.chunkText, { force: true });
       return true;
     } catch (err) {
       console.warn("[AudioProvider] syncViewerToPlayback highlight failed:", err);

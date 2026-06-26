@@ -673,8 +673,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         // Must happen AFTER getText (which navigates the viewer to the target
         // section), so the viewer's DOM has the right content loaded.
         let startIndex = 0;
-        if (startPos && viewerRef?.current) {
-          const offset = viewerRef.current.getTtsStartOffset(startPos);
+        const viewer = viewerRefRef.current?.current;
+        if (startPos && viewer) {
+          const offset = viewer.getTtsStartOffset(startPos);
           if (offset > 0) {
             startIndex = findStartChunkIndex(chunksRef.current, offset);
             console.log(
