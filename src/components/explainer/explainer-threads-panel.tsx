@@ -47,6 +47,7 @@ import {
 } from "@/lib/client-tokens";
 import type { SpineItem } from "@/lib/reader/spine-playlist";
 import { ExplainerContent } from "./explainer-content";
+import { DiscussionLinksPanel } from "./discussion-links-panel";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
 // (list / thread) gated by `activeThreadId`. Receives `pendingPassage` from
@@ -335,6 +336,17 @@ export function ExplainerThreadsPanel({
     onReturnToSidebar?.();
   }
 
+  // ponytail: wrap navigation so a citation jump from the panel OR an inline
+  // link also closes the pop-out modal, revealing the reader. Built only when
+  // the parent supplied onNavigateToHref; passed down to ThreadView so both
+  // the aggregate panel and inline MessageBubble links benefit.
+  const navigateAndCloseModal = onNavigateToHref
+    ? (href: string) => {
+        onNavigateToHref(href);
+        setPoppedOut(false);
+      }
+    : undefined;
+
   // ─── Follow-up composer ─────────────────────────────────────────────────
   const [input, setInput] = useState("");
 
@@ -507,7 +519,7 @@ export function ExplainerThreadsPanel({
           inModal={inModal}
           onPopOut={() => popOutThread()}
           onReturnToSidebar={returnToSidebar}
-          onNavigateToHref={onNavigateToHref}
+          onNavigateToHref={navigateAndCloseModal}
           spineItems={spineItems}
         />
       );
@@ -860,6 +872,12 @@ function ThreadView({
           />
         </div>
       )}
+
+      <DiscussionLinksPanel
+        texts={[initialContent, ...messages.map((m) => m.content)]}
+        spineItems={spineItems ?? []}
+        onNavigateToHref={onNavigateToHref}
+      />
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {/* Initial explainer response */}
