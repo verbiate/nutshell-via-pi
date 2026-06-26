@@ -122,6 +122,32 @@ function cfiToRange(rendition: Rendition | null, cfi: string): Range | null {
   }
 }
 
+/**
+ * ponytail: a CFI is restorable only if it has at least one element step
+ * after the "!/" spine marker. epub.js emits degenerate CFIs of the form
+ * `epubcfi(/6/N!/:0)` (no element steps) when a section is displayed
+ * without a specific target — those resolve to the section root Element
+ * rather than a text node, and passing them to rendition.display() makes
+ * epub.js's locationOf() throw IndexSizeError inside its setEnd fallback
+ * ("There is no child at offset N" — for an Element, setEnd(node, i)
+ * treats i as a child index, and Element.childNodes.length is always
+ * less than textContent.length). Dropping them costs nothing: display()
+ * with no cfi opens the same section-start, just without the error.
+ *
+ * Ceiling: a section whose first page legitimately starts at the root
+ * element with no paragraph wrappers would also be dropped here — epub.js
+ * doesn't produce such CFIs in practice, so this branch never fires there.
+ */
+export function isRestorableCfi(cfi: string | null | undefined): boolean {
+  if (!cfi) return false;
+  const after = cfi.split("!/")[1];
+  // ponytail: a restorable CFI has at least one element step after the spine
+  // marker — i.e. its post-!/-tail contains a "/". Degenerate forms emit
+  // ":N)" or "" (no element steps at all); those resolve to the section root
+  // Element and break epub.js's setEnd fallback.
+  return !!after && after.includes("/");
+}
+
 function resolveStartBlockFromLocation(
   rendition: Rendition | null,
   doc: Document,
@@ -478,6 +504,36 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     const lastCfiRef = useRef<string | null>(null);
     // Guards one-time restore of the saved CFI once the rendition is ready.
     const restoredRef = useRef(false);
+
+    // ponytail: centralized rendition.display() wrapper. Two jobs:
+    //   1. Log the exact target on failure so we can identify which call site
+    //      emits a bad CFI (the new "Uncaught IndexSizeError at toRange" was
+    //      impossible to attribute without this).
+    //   2. Fall back to display() (no target → section start) when a CFI/href
+    //      rejects with IndexSizeError — that class of error means the path
+    //      resolved to an Element where the char offset was treated as a child
+    //      index. Section-start is always safe and lands the user near where
+    //      they wanted. Resolves normally so callers don't see a rejection.
+    // Ceiling: if the bad CFI pointed at a specific paragraph mid-section,
+    // the user lands on the section's first page instead of the exact target.
+    // Acceptable for now — better than a frozen reader + uncaught error.
+    const safeDisplayRef = useRef(async (target?: string, label?: string) => {
+      const rendition = renditionRef.current;
+      if (!rendition) return;
+      try {
+        await rendition.display(target);
+      } catch (err) {
+        const tag = label ?? target ?? "no-arg";
+        console.warn(`[EpubViewer] display(${tag}) failed:`, err);
+        if (target) {
+          try {
+            await rendition.display();
+          } catch (err2) {
+            console.warn(`[EpubViewer] display(${tag}) fallback failed:`, err2);
+          }
+        }
+      }
+    });
     // ponytail: mirrors the TTS paused state so the content hook can re-apply
     // the .tts-paused body class after epub.js recreates a section's iframe.
     const ttsPausedRef = useRef(false);
@@ -523,7 +579,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // otherwise auto-page-turn dies after page 1 of the new section.
         if (opts?.ttsNav) markNavInFlight();
         try {
-          await renditionRef.current?.display(href);
+          await safeDisplayRef.current(href, `navigateTo:${href}`);
           if (opts?.ttsNav) scheduleNavSettle();
         } catch (err: any) {
           if (opts?.ttsNav) clearNavInFlight();
@@ -587,9 +643,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           { paragraphIndex, charOffset: 0 },
           paragraphMapRef.current
         );
-        renditionRef.current.display(cfi).catch((err: Error) =>
-          console.warn("[EpubViewer] navigateToParagraph failed:", err)
-        );
+        await safeDisplayRef.current(cfi, `navigateToParagraph:${cfi}`);
       },
       resize: () => {
         // ponytail: no args — epub.js re-measures the container, so it picks up
@@ -675,13 +729,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             const chunkCfi = nodeToCfi(rendition, startBlock);
             if (chunkCfi) {
               markNavInFlight();
-              try {
-                await rendition.display(chunkCfi);
-                scheduleNavSettle();
-              } catch (err: any) {
-                clearNavInFlight();
-                console.warn("[EpubViewer] display(chunkCfi) failed:", err);
-              }
+              await safeDisplayRef.current(chunkCfi, `highlightChunk:${chunkCfi}`);
+              scheduleNavSettle();
             }
           }
         }
@@ -783,7 +832,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // so the iframe DOM for the target section is present before we map it.
         markNavInFlight();
         try {
-          await renditionRef.current?.display(sectionHref);
+          await safeDisplayRef.current(sectionHref, `showChunk-section:${sectionHref}`);
           scheduleNavSettle();
         } catch (err: any) {
           clearNavInFlight();
@@ -814,14 +863,8 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const chunkCfi = nodeToCfi(rendition, startBlock);
         if (!chunkCfi) return;
         markNavInFlight();
-        try {
-          await rendition.display(chunkCfi);
-          scheduleNavSettle();
-        } catch (err: any) {
-          clearNavInFlight();
-          // ponytail: include the offending chunkCfi so unresolvable CFI failures surface
-          console.warn("[EpubViewer] showChunk display(chunkCfi) failed for", chunkCfi, err);
-        }
+        await safeDisplayRef.current(chunkCfi, `showChunk-chunk:${chunkCfi}`);
+        scheduleNavSettle();
       },
       getTtsStartOffset: (pos?: { elementId?: string; useVisible?: boolean; startCfi?: string }) => {
         const iframe = containerRef.current?.querySelector("iframe");
@@ -1246,9 +1289,11 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     useEffect(() => {
       if (!initialCfi || !isLoaded || restoredRef.current) return;
       restoredRef.current = true;
-      renditionRef.current?.display(initialCfi).catch((err: Error) =>
-        console.warn("[EpubViewer] CFI restore failed:", err)
-      );
+      // ponytail: skip degenerate CFIs (no element steps) — epub.js's
+      // locationOf throws IndexSizeError on them. See isRestorableCfi.
+      // display() with no cfi lands on the same section-start anyway.
+      if (!isRestorableCfi(initialCfi)) return;
+      void safeDisplayRef.current(initialCfi, `initialCfi:${initialCfi}`);
     }, [initialCfi, isLoaded]);
 
     // Sync theme changes

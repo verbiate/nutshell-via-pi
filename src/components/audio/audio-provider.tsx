@@ -196,8 +196,35 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       if (prev.bookId !== activeItem.bookId) {
         return createSession(openBook, currentIndex);
       }
-      if (prev.currentIndex === currentIndex) return prev;
-      return { ...prev, currentIndex };
+      // ponytail: refresh flatToc AND book metadata (title/author/cover/language)
+      // from openBook. spine/toc/cover all populate asynchronously after first
+      // mount — a session created while they were empty keeps stale values
+      // forever on same-bookId updates, surfacing as:
+      //   - flatToc=[]:   "no section at currentIndex" → syncViewerToPlayback no-op
+      //   - bookCoverPath=null: placeholder thumbnail in the player card
+      // Bail only when currentIndex, flatToc length, AND book metadata are all
+      // unchanged (cheap proxy for "openBook hasn't meaningfully changed").
+      const bookMetaChanged =
+        prev.bookCoverPath !== openBook.bookCoverPath ||
+        prev.bookTitle !== openBook.bookTitle ||
+        prev.bookAuthor !== openBook.bookAuthor ||
+        prev.bookLanguage !== openBook.bookLanguage;
+      if (
+        prev.currentIndex === currentIndex &&
+        prev.flatToc.length === flatToc.length &&
+        !bookMetaChanged
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        currentIndex,
+        flatToc,
+        bookCoverPath: openBook.bookCoverPath,
+        bookTitle: openBook.bookTitle,
+        bookAuthor: openBook.bookAuthor,
+        bookLanguage: openBook.bookLanguage,
+      };
     });
   }, [activeItem, openBook]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -494,8 +521,30 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setSession((prev) => {
       if (!prev) return createSession(open, currentIndex);
       if (prev.bookId !== item.bookId) return createSession(open, currentIndex);
-      if (prev.currentIndex === currentIndex) return prev;
-      return { ...prev, currentIndex };
+      // ponytail: refresh flatToc AND book metadata — see the activeItem effect
+      // above for why. A session built before spine/toc/cover populate keeps
+      // stale values forever on same-bookId updates.
+      const bookMetaChanged =
+        prev.bookCoverPath !== open.bookCoverPath ||
+        prev.bookTitle !== open.bookTitle ||
+        prev.bookAuthor !== open.bookAuthor ||
+        prev.bookLanguage !== open.bookLanguage;
+      if (
+        prev.currentIndex === currentIndex &&
+        prev.flatToc.length === flatToc.length &&
+        !bookMetaChanged
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        currentIndex,
+        flatToc,
+        bookCoverPath: open.bookCoverPath,
+        bookTitle: open.bookTitle,
+        bookAuthor: open.bookAuthor,
+        bookLanguage: open.bookLanguage,
+      };
     });
   }, []);
 
@@ -755,20 +804,43 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const syncViewerToPlayback = useCallback(async (): Promise<boolean> => {
     const s = sessionRef.current;
     const viewer = registeredViewerRef.current?.current;
-    if (!s || !viewer) return false;
-    if (openBookRef.current?.bookId !== s.bookId) return false;
+    if (!s || !viewer) {
+      console.warn("[syncViewerToPlayback] no-op: missing session/viewer", {
+        hasSession: !!s,
+        hasViewer: !!viewer,
+      });
+      return false;
+    }
+    if (openBookRef.current?.bookId !== s.bookId) {
+      console.warn("[syncViewerToPlayback] no-op: book mismatch", {
+        openBookId: openBookRef.current?.bookId,
+        sessionBookId: s.bookId,
+      });
+      return false;
+    }
     const section = s.flatToc[s.currentIndex];
-    if (!section) return false;
+    if (!section) {
+      console.warn("[syncViewerToPlayback] no-op: no section at currentIndex", {
+        currentIndex: s.currentIndex,
+        flatTocLen: s.flatToc.length,
+      });
+      return false;
+    }
 
     const onSection = ttsSectionMatches(
       openBookRef.current?.currentHref ?? "",
       section.href,
     );
+    console.log("[syncViewerToPlayback] entering", {
+      onSection,
+      readerHref: openBookRef.current?.currentHref,
+      ttsSectionHref: section.href,
+    });
     if (!onSection) {
       try {
         await viewer.navigateTo(section.href, { ttsNav: true });
       } catch (err) {
-        console.warn("[AudioProvider] syncViewerToPlayback nav failed:", err);
+        console.warn("[syncViewerToPlayback] nav failed:", err);
         return false;
       }
       await viewer.waitForRender();
@@ -777,15 +849,29 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
 
     const chunk = browserTtsRef.current?.getCurrentChunk();
-    if (!chunk?.chunkText) return true;
+    if (!chunk?.chunkText) {
+      // ponytail: diagnostic — this is the silent-success path that produces
+      // the "click thumbnail → nothing happens" symptom. Section nav above
+      // may have already happened; if onSection was true, NOTHING visible
+      // occurred. Log so we can pin why chunk state is empty during what
+      // should be active playback.
+      console.warn(
+        "[syncViewerToPlayback] no chunk to highlight — silent return",
+        {
+          hasBrowserTts: !!browserTtsRef.current,
+          chunkSectionHref: chunk?.sectionHref ?? null,
+        },
+      );
+      return true;
+    }
     try {
       await viewer.highlightChunk(chunk.chunkText, { force: true });
+      console.log("[syncViewerToPlayback] ok", {
+        chunkLen: chunk.chunkText.length,
+      });
       return true;
     } catch (err) {
-      console.warn(
-        "[AudioProvider] syncViewerToPlayback highlight failed:",
-        err,
-      );
+      console.warn("[syncViewerToPlayback] highlight failed:", err);
       return false;
     }
   }, []);

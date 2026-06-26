@@ -219,7 +219,9 @@ export function TtsPlayer({
   // a DOM/router. goToBook below maps each branch to its side effects.
   async function goToBook() {
     if (!bookId) return;
-    switch (resolveThumbnailNav(pathname, bookId)) {
+    const nav = resolveThumbnailNav(pathname, bookId);
+    console.log("[TtsPlayer.goToBook]", { nav, pathname, bookId });
+    switch (nav) {
       case "same-book-on-reader":
         // Jump the viewer to the current TTS page. Sidebar state is owned by
         // the reader; leave it untouched (open stays open, closed stays closed).
