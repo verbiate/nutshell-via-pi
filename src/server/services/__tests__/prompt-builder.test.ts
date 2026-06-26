@@ -12,6 +12,18 @@ describe("buildChapterIndex", () => {
     );
   });
 
+  it("reads `title` (the format this app actually stores), falling back from `label`", () => {
+    // Real tocJson rows are flat {id, title, href, level} — no `label` field.
+    // buildChapterIndex must read title or every book's manifest comes back empty.
+    const toc = JSON.stringify([
+      { id: "toc-0", title: "1. What Is It Like to Be a Bat?", href: "html/08_chapter1.xhtml#frag", level: 0 },
+      { id: "toc-1", title: "2. Further Thoughts: The Psychophysical Nexus", href: "html/09_chapter2.xhtml#frag", level: 0 },
+    ]);
+    expect(buildChapterIndex(toc)).toBe(
+      "[1] 1. What Is It Like to Be a Bat? → 08_chapter1.xhtml\n[2] 2. Further Thoughts: The Psychophysical Nexus → 09_chapter2.xhtml"
+    );
+  });
+
   it("ignores subitems (top-level only) and strips fragments", () => {
     const toc = JSON.stringify([
       { label: "Part One", href: "part1.xhtml#top", subitems: [{ label: "Ch A", href: "a.xhtml" }] },

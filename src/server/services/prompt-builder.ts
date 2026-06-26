@@ -65,12 +65,14 @@ export function formatExpandedMetadata(m: BookMetadataRow | null): string {
   return lines.join("\n");
 }
 
-type TocItem = { label?: string; href?: string; subitems?: TocItem[] };
+type TocItem = { label?: string; title?: string; href?: string; subitems?: TocItem[] };
 
 /**
  * Build the {{chapter_index}} manifest so the model can cite navigable
- * locations. Top-level ToC entries only (subitems ignored), hrefs normalized
- * to basenames, capped to bound prompt size. Empty string when no usable ToC.
+ * locations. Reads `title` (the flat {id,title,href,level} format this app
+ * stores on EpubFile.tocJson) falling back to `label`, normalizes hrefs to
+ * basenames, and caps entries to bound prompt size. Empty string when no
+ * usable ToC.
  */
 export function buildChapterIndex(
   tocJson: string | null | undefined,
@@ -87,7 +89,7 @@ export function buildChapterIndex(
   const lines: string[] = [];
   for (const item of toc) {
     if (lines.length >= cap) break;
-    const label = (item.label ?? "").trim();
+    const label = (item.label ?? item.title ?? "").trim();
     const href = (item.href ?? "").split("#")[0].trim();
     if (!label || !href) continue;
     lines.push(`[${lines.length + 1}] ${label} → ${hrefBasename(href)}`);
@@ -157,10 +159,16 @@ export async function buildSectionPrompt(
 
   let sectionTitle = "Unknown Section";
   if (book.tocJson) {
-    const toc = JSON.parse(book.tocJson) as Array<{ label: string; href: string; subitems?: unknown[] }>;
+    // ponytail: tocJson stores {title,...} (not {label,...}); read title ?? label.
+    // Also match by basename so a stored href with a fragment/path still resolves.
+    const toc = JSON.parse(book.tocJson) as Array<{ label?: string; title?: string; href?: string; subitems?: unknown[] }>;
+    const wantBasename = sectionHref.split("#")[0].split("/").pop();
     const findTitle = (items: typeof toc): string | null => {
       for (const item of items) {
-        if (item.href === sectionHref) return item.label;
+        const itemBasename = (item.href ?? "").split("#")[0].split("/").pop();
+        if (itemBasename && itemBasename === wantBasename) {
+          return (item.label ?? item.title ?? "").trim() || null;
+        }
         if (item.subitems && Array.isArray(item.subitems)) {
           const found = findTitle(item.subitems as typeof toc);
           if (found) return found;
