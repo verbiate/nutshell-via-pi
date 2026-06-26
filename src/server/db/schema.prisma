@@ -19,6 +19,7 @@ model User {
   role              String          @default("regular")
   preferredLanguage String        @default("en")
   emailVerified     Boolean         @default(false)
+  playlistAutoAdvance Boolean     @default(true)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -32,6 +33,28 @@ model User {
   highlights     Highlight[]
   explainerRequests ExplainerRequest[]
   explainerThreads  ExplainerThread[]
+  playlistItems     PlaylistItem[]
+}
+
+model PlaylistItem {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId        String
+  sectionHref   String
+  sectionLabel  String
+  position      Int
+  status        String   @default("upcoming")
+  bookTitle     String?
+  bookAuthor    String?
+  bookCoverPath String?
+  bookLanguage  String   @default("und")
+  addedAt       DateTime @default(now())
+  playedAt      DateTime?
+
+  @@unique([userId, position])
+  @@index([userId])
+  @@index([userId, status])
 }
 
 model Explainer {

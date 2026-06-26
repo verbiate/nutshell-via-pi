@@ -5,14 +5,21 @@ import { createPortal } from "react-dom";
 import { Lightbulb, Copy, Highlighter, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HIGHLIGHT_COLORS, highlightSwatchStyle } from "./highlight-colors";
+import { useAudio } from "@/components/audio/audio-context";
+import type { TtsStartPos } from "@/components/audio/audio-context";
+import type { PlaylistBookMeta } from "@/types/playlist";
 
 export interface FloatingToolbarProps {
   visible: boolean;
   position: { top: number; left: number };
   selectedText: string;
+  bookId: string;
+  sectionHref: string;
+  sectionLabel: string;
+  bookMeta?: PlaylistBookMeta;
+  startPos?: TtsStartPos;
   onHighlight: (color: string) => void;
   onAsk: () => void;
-  onReadFromHere: () => void;
   onDismiss: () => void;
 }
 
@@ -20,12 +27,30 @@ export function FloatingToolbar({
   visible,
   position,
   selectedText,
+  bookId,
+  sectionHref,
+  sectionLabel,
+  bookMeta,
+  startPos,
   onHighlight,
   onAsk,
-  onReadFromHere,
   onDismiss,
 }: FloatingToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const { playlistItems, playSection } = useAudio();
+  const hasPlaylist = playlistItems.length > 0;
+
+  const startFromSelection = (mode: "now" | "next" | "last") => {
+    void playSection(
+      bookId,
+      sectionHref,
+      sectionLabel,
+      mode,
+      startPos,
+      bookMeta,
+    );
+    onDismiss();
+  };
 
   // Hide on Escape — do NOT trigger highlight or explain
   useEffect(() => {
@@ -76,15 +101,47 @@ export function FloatingToolbar({
         Ask about this
       </button>
 
-      <button
-        type="button"
-        onClick={onReadFromHere}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-        aria-label="Start reading from here"
-      >
-        <Play className="h-4 w-4 fill-current" />
-        Start reading from here
-      </button>
+      {hasPlaylist ? (
+        <>
+          <button
+            type="button"
+            onClick={() => startFromSelection("now")}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            aria-label="Play now"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Play now
+          </button>
+          <button
+            type="button"
+            onClick={() => startFromSelection("next")}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            aria-label="Play next"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Play next
+          </button>
+          <button
+            type="button"
+            onClick={() => startFromSelection("last")}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            aria-label="Play last"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Play last
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => startFromSelection("now")}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          aria-label="Start reading from here"
+        >
+          <Play className="h-4 w-4 fill-current" />
+          Start reading from here
+        </button>
+      )}
 
       <button
         type="button"

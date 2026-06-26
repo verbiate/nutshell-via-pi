@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } fr
 import { flushSync } from "react-dom";
 import { useTheme } from "@teispace/next-themes";
 import type { NavItem } from "@likecoin/epub-ts";
-import type { SpineItem } from "@/lib/reader/spine-playlist";
+import { buildSpinePlaylist, type SpineItem } from "@/lib/reader/spine-playlist";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
 import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
 import { ReaderChrome } from "./reader-chrome";
@@ -738,14 +738,6 @@ export function ReaderClient({
     setToolbarVisible(false);
   }, [selectedText, selectedCfi]);
 
-  const handleReadFromHere = useCallback(() => {
-    // ponytail: floating toolbar → start TTS from the selection's first full
-    // word. startCfi is resolved by the viewer into a TTS-text char offset.
-    if (!selectedCfi) return;
-    startFromHere(undefined, undefined, { startCfi: selectedCfi });
-    setToolbarVisible(false);
-  }, [selectedCfi, startFromHere]);
-
   const handleAskAboutSection = useCallback((href: string, _label: string) => {
     // ponytail: ToC ⋯ menu → section thread. _label reserved for future
     // UI affordance (e.g. toast "Asking about <chapter>"); not currently used.
@@ -770,16 +762,6 @@ export function ReaderClient({
   }, []);
 
   // ponytail: shared by bookmarks & highlights ⋯ menus. Pass sectionHref as
-  // overrideHref so startFromHere navigates the viewer to the right section
-  // before resolving startCfi (mirrors ToC onPlaySection). Legacy rows with
-  // null sectionHref fall back to the current-section path.
-  const handleStartReadingFromCfi = useCallback(
-    (cfi: string, sectionHref: string | null) => {
-      startFromHere(sectionHref ?? undefined, undefined, { startCfi: cfi });
-    },
-    [startFromHere]
-  );
-
   const handleExplainHighlight = useCallback(
     (cfi: string, selectedText: string) => {
       if (!selectedText.trim()) return;
@@ -1260,6 +1242,15 @@ export function ReaderClient({
     bookCreatedAt,
   };
 
+  const currentSectionLabel = useMemo(() => {
+    const flat = buildSpinePlaylist(spineItems, toc);
+    return (
+      flat.find((s) => s.href === currentHref)?.label ||
+      panel.bookTitle ||
+      "Reading"
+    );
+  }, [spineItems, toc, currentHref, panel.bookTitle]);
+
   const skeletonVisible =
     entering ||
     swapPhase === "closing" ||
@@ -1384,9 +1375,18 @@ export function ReaderClient({
         visible={toolbarVisible}
         position={toolbarPos}
         selectedText={selectedText}
+        bookId={bookId}
+        sectionHref={currentHref}
+        sectionLabel={currentSectionLabel}
+        bookMeta={{
+          bookTitle: panel.bookTitle,
+          bookAuthor: panel.author,
+          bookCoverPath: panel.coverPath,
+          bookLanguage: panel.language,
+        }}
+        startPos={selectedCfi ? { startCfi: selectedCfi } : undefined}
         onHighlight={handleHighlight}
         onAsk={handleExplainPassage}
-        onReadFromHere={handleReadFromHere}
         onDismiss={handleSelectionCleared}
       />
 
@@ -1441,7 +1441,6 @@ export function ReaderClient({
                 bookCreatedAt={panel.bookCreatedAt}
                 coverHidden={forwardFlyActive}
                 onAskAboutSection={handleAskAboutSection}
-                onPlaySection={startFromHere}
                 onAskAboutBook={handleAskAboutBook}
               />
             ),
@@ -1452,7 +1451,12 @@ export function ReaderClient({
                 toc={toc}
                 onBookmarkClick={handleNavigateToCfi}
                 onSaveBookmark={handleSaveBookmark}
-                onStartReading={handleStartReadingFromCfi}
+                bookMeta={{
+                  bookTitle: panel.bookTitle,
+                  bookAuthor: panel.author,
+                  bookCoverPath: panel.coverPath,
+                  bookLanguage: panel.language,
+                }}
               />
             ),
             pen: (
@@ -1460,8 +1464,13 @@ export function ReaderClient({
                 bookId={bookId}
                 toc={toc}
                 onHighlightClick={handleNavigateToCfi}
-                onStartReading={handleStartReadingFromCfi}
                 onExplain={handleExplainHighlight}
+                bookMeta={{
+                  bookTitle: panel.bookTitle,
+                  bookAuthor: panel.author,
+                  bookCoverPath: panel.coverPath,
+                  bookLanguage: panel.language,
+                }}
               />
             ),
             bulb: (

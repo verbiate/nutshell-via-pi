@@ -41,6 +41,40 @@ vi.mock("@/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children }: { children: ReactNode }) => <>{children}</>,
+  closestCenter: () => null,
+  KeyboardSensor: class {},
+  PointerSensor: class {},
+  useSensor: () => ({}),
+  useSensors: () => ({}),
+}));
+
+vi.mock("@dnd-kit/sortable", () => ({
+  arrayMove: (arr: string[]) => arr,
+  SortableContext: ({ children }: { children: ReactNode }) => <>{children}</>,
+  sortableKeyboardCoordinates: () => null,
+  verticalListSortingStrategy: () => null,
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: () => {},
+    transform: null,
+    transition: null,
+    isDragging: false,
+  }),
+}));
+
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: { Transform: { toString: () => "" } },
+}));
+
+vi.mock("@/components/ui/switch", () => ({
+  Switch: ({ checked }: { checked?: boolean }) => (
+    <input type="checkbox" checked={checked} readOnly />
+  ),
+}));
+
 // ponytail: TtsPlayer calls useRouter/usePathname at render; bare SSR has no
 // App Router context, so stub them. pathnameRef lets interaction tests set the
 // current route.
@@ -54,6 +88,7 @@ import { TtsPlayer } from "../tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { EngineId } from "@/lib/tts/languages";
 import type { UserRole } from "@/types/book";
+import type { PlaylistItem } from "@/types/playlist";
 
 function render(el: React.ReactElement) {
   return renderToStaticMarkup(el);
@@ -285,34 +320,61 @@ describe("TtsPlayer: scrubber + time readout", () => {
   });
 });
 
-describe("TtsPlayer: playlist", () => {
-  it("shows a playlist button when playlist + onJumpTo are provided", () => {
+describe("TtsPlayer: playlist queue", () => {
+  const queueItems: PlaylistItem[] = [
+    {
+      id: "i1",
+      userId: "u1",
+      bookId: "b1",
+      sectionHref: "ch1.xhtml",
+      sectionLabel: "Chapter 1",
+      position: 0,
+      status: "history",
+      bookTitle: "Test Book",
+      bookAuthor: null,
+      bookCoverPath: null,
+      bookLanguage: "en",
+      addedAt: "2026-01-01T00:00:00.000Z",
+      playedAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "i2",
+      userId: "u1",
+      bookId: "b1",
+      sectionHref: "ch2.xhtml",
+      sectionLabel: "Chapter 2",
+      position: 1,
+      status: "active",
+      bookTitle: "Test Book",
+      bookAuthor: null,
+      bookCoverPath: null,
+      bookLanguage: "en",
+      addedAt: "2026-01-01T00:00:00.000Z",
+      playedAt: null,
+    },
+  ];
+
+  it("shows a playlist button when queueItems + onJumpToItem are provided", () => {
     const html = render(
       mkPlayer({
-        playlist: [
-          { label: "Chapter 1", href: "ch1.xhtml", index: 0 },
-          { label: "Chapter 2", href: "ch2.xhtml", index: 1 },
-        ],
-        onJumpTo: () => {},
+        queueItems,
+        onJumpToItem: () => {},
       }),
     );
     expect(html).toContain('aria-label="Playlist"');
   });
 
-  it("hides the playlist button when no onJumpTo is provided", () => {
+  it("hides the playlist button when no onJumpToItem is provided", () => {
     const html = render(mkPlayer());
     expect(html).not.toContain('aria-label="Playlist"');
   });
 
-  it("renders the playlist dialog with the current section highlighted", () => {
+  it("renders the playlist dialog with the active item highlighted", () => {
     const html = render(
       mkPlayer({
-        playlist: [
-          { label: "Chapter 1", href: "ch1.xhtml", index: 0 },
-          { label: "Chapter 2", href: "ch2.xhtml", index: 1 },
-        ],
-        currentIndex: 1,
-        onJumpTo: () => {},
+        queueItems,
+        activeItemId: "i2",
+        onJumpToItem: () => {},
       }),
     );
     expect(html).toContain("Chapter 1");

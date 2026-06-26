@@ -8,6 +8,7 @@ import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { CloudQuota } from "@/hooks/use-tts-cloud";
 import type { UserRole } from "@/types/book";
 import type { FlatSection, SpineItem } from "@/lib/reader/spine-playlist";
+import type { PlaylistItem } from "@/types/playlist";
 export type { FlatSection } from "@/lib/reader/spine-playlist";
 
 export type BookAudioContext = {
@@ -122,6 +123,41 @@ export type AudioContextValue = {
   setVoice: (id: string) => void;
   /** Jump to a section by index in the session playlist. */
   jumpTo: (index: number) => void;
+
+  /** User's persisted playlist items (history + active + upcoming). */
+  playlistItems: PlaylistItem[];
+  /** Whether the player should auto-advance to the next book section at the end of the queue. */
+  autoAdvanceBook: boolean;
+  /** Id of the currently active playlist item, if any. */
+  activeItemId: string | null;
+  /**
+   * Start, queue, or add a book section to the playlist.
+   * `now` = add after active (or as first) and start playing.
+   * `next`/`last` = add to queue without changing playback.
+   */
+  playSection: (
+    bookId: string,
+    href: string,
+    label: string,
+    mode: "now" | "next" | "last",
+    startPos?: TtsStartPos,
+    bookMeta?: {
+      bookTitle?: string;
+      bookAuthor?: string | null;
+      bookCoverPath?: string | null;
+      bookLanguage?: string;
+    },
+  ) => Promise<void>;
+  /** Jump the playhead to a playlist item and start playing it. */
+  jumpToItem: (itemId: string) => Promise<void>;
+  /** Remove a single playlist item. */
+  removePlaylistItem: (itemId: string) => Promise<void>;
+  /** Clear all items and stop, or clear only upcoming items. */
+  clearPlaylist: (scope: "all" | "upcoming") => Promise<void>;
+  /** Reorder upcoming playlist items. */
+  reorderPlaylist: (orderedIds: string[]) => Promise<void>;
+  /** Toggle auto-advance to the next book section. */
+  setAutoAdvanceBook: (value: boolean) => Promise<void>;
 };
 
 export const AudioContext = createContext<AudioContextValue | null>(null);

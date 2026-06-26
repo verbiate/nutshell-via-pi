@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Lightbulb,
   MoreHorizontal,
-  Play,
   Trash2,
   StickyNote,
 } from "lucide-react";
@@ -22,6 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
+import type { PlaylistBookMeta } from "@/types/playlist";
 import {
   HIGHLIGHT_COLORS,
   highlightColorLabel,
@@ -44,8 +45,8 @@ export interface HighlightsPanelProps {
   bookId: string;
   toc: NavItem[];
   onHighlightClick: (cfi: string) => void;
-  onStartReading: (cfi: string, sectionHref: string | null) => void;
   onExplain: (cfi: string, selectedText: string) => void;
+  bookMeta?: PlaylistBookMeta;
 }
 
 function flattenToc(
@@ -80,15 +81,19 @@ function HighlightRow({
   onNavigate,
   onDelete,
   onNoteSave,
-  onStartReading,
   onExplain,
+  bookId,
+  bookMeta,
+  labelForHref,
 }: {
   highlight: HighlightItem;
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
-  onStartReading: (cfi: string, sectionHref: string | null) => void;
   onExplain: (cfi: string, selectedText: string) => void;
+  bookId: string;
+  bookMeta?: PlaylistBookMeta;
+  labelForHref: Map<string, string>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(highlight.note ?? "");
@@ -189,15 +194,20 @@ function HighlightRow({
             <Lightbulb className="h-4 w-4 text-lav" />
             Explain this
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() =>
-              onStartReading(highlight.cfi, highlight.sectionHref)
-            }
-          >
-            <Play className="h-4 w-4" />
-            Start reading from here
-          </DropdownMenuItem>
+          {highlight.sectionHref && (
+            <>
+              <DropdownMenuSeparator />
+              <PlaySectionMenuItems
+                bookId={bookId}
+                sectionHref={highlight.sectionHref}
+                sectionLabel={
+                  labelForHref.get(highlight.sectionHref) || "Reading"
+                }
+                startPos={{ startCfi: highlight.cfi }}
+                bookMeta={bookMeta}
+              />
+            </>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onDelete(highlight.id)}>
             <Trash2 className="h-4 w-4 text-destructive" />
@@ -219,8 +229,10 @@ function GroupBlock({
   onNavigate,
   onDelete,
   onNoteSave,
-  onStartReading,
   onExplain,
+  bookId,
+  bookMeta,
+  labelForHref,
 }: {
   label: string;
   count: number;
@@ -231,8 +243,10 @@ function GroupBlock({
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
-  onStartReading: (cfi: string, sectionHref: string | null) => void;
   onExplain: (cfi: string, selectedText: string) => void;
+  bookId: string;
+  bookMeta?: PlaylistBookMeta;
+  labelForHref: Map<string, string>;
 }) {
   if (items.length === 0) return null;
   return (
@@ -279,8 +293,10 @@ function GroupBlock({
               onNavigate={onNavigate}
               onDelete={onDelete}
               onNoteSave={onNoteSave}
-              onStartReading={onStartReading}
               onExplain={onExplain}
+              bookId={bookId}
+              bookMeta={bookMeta}
+              labelForHref={labelForHref}
             />
           ))}
         </div>
@@ -293,8 +309,8 @@ export function HighlightsPanel({
   bookId,
   toc,
   onHighlightClick,
-  onStartReading,
   onExplain,
+  bookMeta,
 }: HighlightsPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("date");
@@ -443,8 +459,10 @@ export function HighlightsPanel({
           onNavigate={onHighlightClick}
           onDelete={handleDelete}
           onNoteSave={handleNoteSave}
-          onStartReading={onStartReading}
           onExplain={onExplain}
+          bookId={bookId}
+          bookMeta={bookMeta}
+          labelForHref={labelForHref}
         />
       ))}
     </div>

@@ -51,20 +51,17 @@ function nodeToCfi(
   const view = rendition.manager?.current();
   const contents = view?.contents;
   if (!contents) return null;
-  // ponytail: descend to the first non-empty text node before generating the
-  // CFI. epub.js's locationOf builds a Range from the CFI and, when that range
-  // is collapsed, defensively extends the end via setEnd(startContainer, r)
-  // where r is a *character* offset derived from textContent. On an Element
-  // startContainer (what cfiFromNode(block) yields), setEnd treats the offset
-  // as a *child* index → IndexSizeError ("no child at offset N"). On a Text
-  // node the offset is a character offset, which is what locationOf intends,
-  // so the error never fires. The text node lives inside the block, so it's
-  // in the same column → display() lands on the same page. nodeToCfi runs on
-  // a clean DOM (marks cleared, before wrapping) and the CFI is consumed by
-  // display() before any wrapping, so the text-node staleness the block-level
-  // comment above guards against doesn't apply on this path.
-  let target: Node = node;
+  // ponytail: never hand epub.js an element-based CFI. locationOf reconstructs
+  // a Range from the CFI and, on an Element startContainer, calls
+  // setEnd(element, charOffset) — the char offset is read as a CHILD index →
+  // IndexSizeError ("no child at offset N"). This throws inside display()'s
+  // deferred rAF queue, so the caller's try/await can't catch it; the only fix
+  // is to never produce such a CFI. Descend to the first non-empty text node
+  // (where the offset is a character offset, which is what locationOf intends).
+  // If the block has no non-empty text descendant, return null — callers skip
+  // the page-advance display() and still apply marks via wrapRangePerBlock.
   const doc = node.ownerDocument;
+  let target: Text | null = null;
   if (doc && node.nodeType === 1) {
     const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     let tn = walker.nextNode() as Text | null;
@@ -75,7 +72,10 @@ function nodeToCfi(
       }
       tn = walker.nextNode() as Text | null;
     }
+  } else if (node.nodeType === 3) {
+    target = node as Text;
   }
+  if (!target) return null;
   try {
     return contents.cfiFromNode(target, "tts-chunk");
   } catch (err: any) {

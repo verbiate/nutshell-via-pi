@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -36,6 +35,8 @@ import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { CloudQuota } from "@/hooks/use-tts-cloud";
 import { BookCover } from "@/components/library/book-cover";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
+import { TtsQueue } from "./tts-queue";
+import type { PlaylistItem } from "@/types/playlist";
 
 // ponytail: the three user-facing engine choices. cloud/browser aren't pickable
 // here — cloud maps to "Premium", browser has no slot in the UI.
@@ -99,12 +100,24 @@ export interface TtsPlayerProps {
    * relative, meant to live inside a fixed-position provider wrapper.
    */
   variant?: "reader" | "floating";
-  /** Playlist sections. */
-  playlist?: ReadonlyArray<{ label: string; href: string; index: number }>;
-  /** Index of the currently playing section in the playlist. */
-  currentIndex?: number;
-  /** Jump to a playlist section. */
-  onJumpTo?: (index: number) => void;
+  /** User playlist items. */
+  queueItems?: PlaylistItem[];
+  /** Id of the currently active playlist item. */
+  activeItemId?: string | null;
+  /** Whether the player should auto-advance to the next book segment. */
+  autoAdvanceBook?: boolean;
+  /** Jump to a playlist item. */
+  onJumpToItem?: (itemId: string) => void;
+  /** Remove a playlist item. */
+  onRemove?: (itemId: string) => void;
+  /** Clear all items and stop. */
+  onClearAll?: () => void;
+  /** Clear upcoming items. */
+  onClearUpcoming?: () => void;
+  /** Toggle auto-advance. */
+  onToggleAutoAdvance?: (value: boolean) => void;
+  /** Reorder upcoming playlist items. */
+  onReorder?: (orderedIds: string[]) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -185,9 +198,15 @@ export function TtsPlayer({
   canScrub = false,
   hidden = false,
   variant = "reader",
-  playlist,
-  currentIndex,
-  onJumpTo,
+  queueItems = [],
+  activeItemId = null,
+  autoAdvanceBook = true,
+  onJumpToItem,
+  onRemove,
+  onClearAll,
+  onClearUpcoming,
+  onToggleAutoAdvance,
+  onReorder,
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -379,7 +398,7 @@ export function TtsPlayer({
         </Button>
         )}
 
-        {!collapsed && onJumpTo && playlist && playlist.length > 0 && (
+        {!collapsed && onJumpToItem && queueItems.length > 0 && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -495,41 +514,21 @@ export function TtsPlayer({
           </div>
         </DialogContent>
       </Dialog>
-      {/* Playlist modal */}
-      {playlist && playlist.length > 0 && onJumpTo && (
-      <Dialog open={playlistOpen} onOpenChange={setPlaylistOpen}>
-        <DialogContent className="max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Playlist</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            <ol className="space-y-1">
-              {playlist.map((item) => {
-                const isCurrent = item.index === currentIndex;
-                return (
-                  <li key={item.index}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onJumpTo(item.index);
-                        setPlaylistOpen(false);
-                      }}
-                      className={cn(
-                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                        isCurrent
-                          ? "bg-chocolate/10 font-medium text-chocolate"
-                          : "hover:bg-muted",
-                      )}
-                    >
-                      <span className="line-clamp-2">{item.label}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+      {/* Playlist dialog */}
+      {onJumpToItem && (
+      <TtsQueue
+        open={playlistOpen}
+        onOpenChange={setPlaylistOpen}
+        items={queueItems}
+        activeItemId={activeItemId}
+        autoAdvanceBook={autoAdvanceBook}
+        onJumpToItem={onJumpToItem}
+        onRemove={onRemove ?? (() => {})}
+        onClearAll={onClearAll ?? (() => {})}
+        onClearUpcoming={onClearUpcoming ?? (() => {})}
+        onToggleAutoAdvance={onToggleAutoAdvance ?? (() => {})}
+        onReorder={onReorder ?? (() => {})}
+      />
       )}
     </div>
   );

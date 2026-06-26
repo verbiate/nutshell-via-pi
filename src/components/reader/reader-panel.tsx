@@ -2,17 +2,19 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { BookCover } from "@/components/library/book-cover";
-import type { TtsStartPos } from "@/components/audio/audio-context";
+import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
+import type { PlaylistBookMeta } from "@/types/playlist";
 
 // ponytail: leading-trim/text-edge are draft CSS (css-inline-3) that crop the
 // half-leading inset so the cap-height box matches the Figma box exactly.
@@ -27,11 +29,8 @@ interface TocEntryProps {
   level?: number;
   currentHref?: string;
   onAskAboutSection?: (href: string, label: string) => void;
-  onPlaySection?: (
-    href: string,
-    label: string,
-    startPos?: TtsStartPos,
-  ) => void;
+  bookId: string;
+  bookMeta: PlaylistBookMeta;
 }
 
 function TocEntry({
@@ -40,13 +39,20 @@ function TocEntry({
   level = 0,
   currentHref,
   onAskAboutSection,
-  onPlaySection,
+  bookId,
+  bookMeta,
 }: TocEntryProps) {
   const isActive = currentHref ? item.href === currentHref : false;
 
   return (
     <div>
-      <div className="group relative flex items-center gap-1 pr-14">
+      {/*
+        ponytail: the overflow menu is absolutely positioned so it overlays the
+        row's right edge instead of competing for flex width — long chapter
+        titles keep the full sidebar width and only wrap when they genuinely
+        exceed it, rather than being squeezed by the icon's box.
+      */}
+      <div className="group relative flex items-center">
         {/*
           ponytail: active top-level rows get a left accent bar (the mockup's
           chapter indicator). Subitems keep their existing indent border instead
@@ -61,7 +67,7 @@ function TocEntry({
         <button
           onClick={() => onNavigate(item.href)}
           className={cn(
-            "type-toc-section flex-1 text-left py-2 pr-4 transition-colors",
+            "type-toc-section flex-1 text-left py-2 pr-10 transition-colors",
             isActive
               ? "font-medium text-foreground"
               : "font-normal text-foreground hover:text-primary",
@@ -73,48 +79,47 @@ function TocEntry({
         >
           {item.label}
         </button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="h-6 w-6 opacity-100 transition-opacity shrink-0 hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-          aria-label={`Play ${item.label}`}
-          onClick={() => {
-            // ponytail: parse #fragment so the engine can resolve the exact
-            // subsection element. No fragment → undefined (section head).
-            const hashIdx = item.href.indexOf("#");
-            const startPos: TtsStartPos | undefined =
-              hashIdx >= 0
-                ? { elementId: item.href.slice(hashIdx + 1) }
-                : undefined;
-            onPlaySection?.(item.href, item.label, startPos);
-          }}
-        >
-          <Play className="h-4 w-4" />
-        </Button>
         {/*
           ponytail: hover-revealed overflow menu. "Ask about this" opens the
           section explainer as a thread in the sidebar's bulb tool — same UI as
-          passage explainers. Room to add per-section actions later without
-          touching row layout.
+          passage explainers. The play affordance lives here too: one item when
+          the playlist is empty ("Start reading from here"), three when it isn't
+          (Play now / next / last) — inline items, never a submenu.
         */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-6 w-6 opacity-100 transition-opacity shrink-0 hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-              aria-label={`Ask about ${item.label}`}
+              className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 opacity-100 transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+              aria-label={`More actions for ${item.label}`}
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          {/* ponytail: shadcn's default sizes content to the trigger width
+              (24px icon → collapses to the 128px min-w-32 floor), which wraps
+              "Start reading from here". w-fit sizes to the longest item instead. */}
+          <DropdownMenuContent align="end" className="w-fit min-w-48">
             <DropdownMenuItem
               onClick={() => onAskAboutSection?.(item.href, item.label)}
             >
               <Lightbulb className="h-4 w-4 text-lav" />
               Ask about this
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <PlaySectionMenuItems
+              bookId={bookId}
+              sectionHref={item.href}
+              sectionLabel={item.label}
+              bookMeta={bookMeta}
+              startPos={(() => {
+                const hashIdx = item.href.indexOf("#");
+                return hashIdx >= 0
+                  ? { elementId: item.href.slice(hashIdx + 1) }
+                  : undefined;
+              })()}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -128,7 +133,8 @@ function TocEntry({
               level={level + 1}
               currentHref={currentHref}
               onAskAboutSection={onAskAboutSection}
-              onPlaySection={onPlaySection}
+              bookId={bookId}
+              bookMeta={bookMeta}
             />
           ))}
         </div>
@@ -153,11 +159,6 @@ export interface ReaderPanelProps {
   onNavigate: (href: string) => void;
   initialLanguage: string;
   onAskAboutSection?: (href: string, label: string) => void;
-  onPlaySection?: (
-    href: string,
-    label: string,
-    startPos?: TtsStartPos,
-  ) => void;
   onAskAboutBook?: () => void;
   isAdmin?: boolean;
   bookCreatedAt?: string;
@@ -171,6 +172,7 @@ export function ReaderPanel({
   bookTitle,
   author,
   coverPath,
+  language,
   description,
   descriptionLoading,
   metadataTitle,
@@ -181,7 +183,6 @@ export function ReaderPanel({
   onNavigate,
   initialLanguage,
   onAskAboutSection,
-  onPlaySection,
   onAskAboutBook,
   isAdmin,
   bookCreatedAt,
@@ -328,7 +329,13 @@ export function ReaderPanel({
                 level={0}
                 currentHref={currentHref}
                 onAskAboutSection={onAskAboutSection}
-                onPlaySection={onPlaySection}
+                bookId={bookId}
+                bookMeta={{
+                  bookTitle,
+                  bookAuthor: author,
+                  bookCoverPath: coverPath,
+                  bookLanguage: language,
+                }}
               />
             ))}
           </div>
