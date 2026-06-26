@@ -1505,6 +1505,8 @@ export function ReaderClient({
                 onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
                 contextWindow={contextWindow}
+                onNavigateToHref={handleTocNavigate}
+                spineItems={spineItems}
               />
             ),
             type: (

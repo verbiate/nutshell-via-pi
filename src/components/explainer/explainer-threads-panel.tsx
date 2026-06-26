@@ -45,6 +45,8 @@ import {
   formatTokens,
   EXPLAINER_TEMPLATE_TOKENS,
 } from "@/lib/client-tokens";
+import type { SpineItem } from "@/lib/reader/spine-playlist";
+import { ExplainerContent } from "./explainer-content";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
 // (list / thread) gated by `activeThreadId`. Receives `pendingPassage` from
@@ -97,6 +99,11 @@ export interface ExplainerThreadsPanelProps {
   // bar simply doesn't render.
   bookTxtTokens?: number | null;
   contextWindow?: number;
+  // ponytail: citation deep-link plumbing. spineItems is the reader's spine
+  // (used to validate hrefs by basename + provided to ThreadView/MessageBubble);
+  // onNavigateToHref reuses the reader's existing ToC navigation path.
+  onNavigateToHref?: (href: string) => void;
+  spineItems?: SpineItem[];
 }
 
 export function ExplainerThreadsPanel({
@@ -107,6 +114,8 @@ export function ExplainerThreadsPanel({
   onReturnToSidebar,
   bookTxtTokens,
   contextWindow,
+  onNavigateToHref,
+  spineItems,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
   const { user } = useSession();
@@ -498,6 +507,8 @@ export function ExplainerThreadsPanel({
           inModal={inModal}
           onPopOut={() => popOutThread()}
           onReturnToSidebar={returnToSidebar}
+          onNavigateToHref={onNavigateToHref}
+          spineItems={spineItems}
         />
       );
     }
@@ -703,6 +714,8 @@ function ThreadView({
   inModal,
   onPopOut,
   onReturnToSidebar,
+  onNavigateToHref,
+  spineItems,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -721,7 +734,10 @@ function ThreadView({
   inModal?: boolean;
   onPopOut: () => void;
   onReturnToSidebar: () => void;
+  onNavigateToHref?: (href: string) => void;
+  spineItems?: SpineItem[];
 }) {
+  const spineHrefs = (spineItems ?? []).map((s) => s.href);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -857,6 +873,8 @@ function ThreadView({
           role="assistant"
           content={initialContent}
           pulsing={streamingInitial && !initialContent}
+          spineHrefs={spineHrefs}
+          onNavigateToHref={onNavigateToHref}
         />
 
         {/* Follow-up messages */}
@@ -866,6 +884,8 @@ function ThreadView({
             role={m.role}
             content={m.content}
             pulsing={m.role === "assistant" && streaming && !m.content && i === messages.length - 1}
+            spineHrefs={spineHrefs}
+            onNavigateToHref={onNavigateToHref}
           />
         ))}
       </div>
@@ -908,10 +928,14 @@ function MessageBubble({
   role,
   content,
   pulsing,
+  spineHrefs,
+  onNavigateToHref,
 }: {
   role: "user" | "assistant";
   content: string;
   pulsing?: boolean;
+  spineHrefs: string[];
+  onNavigateToHref?: (href: string) => void;
 }) {
   return (
     <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
@@ -923,13 +947,21 @@ function MessageBubble({
             : "bg-muted border border-border"
         )}
       >
-        {content || (pulsing ? (
+        {content ? (
+          <ExplainerContent
+            content={content}
+            spineHrefs={spineHrefs}
+            onNavigateToHref={onNavigateToHref}
+          />
+        ) : pulsing ? (
           <span className="inline-flex gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
           </span>
-        ) : "")}
+        ) : (
+          ""
+        )}
       </div>
     </div>
   );
