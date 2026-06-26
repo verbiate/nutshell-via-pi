@@ -46,6 +46,12 @@ export type TtsStartPos = {
 
 export type AudioContextValue = {
   session: AudioSession | null;
+  /**
+   * bookId of the reader's currently-registered open book (null when the reader
+   * hasn't registered one). Consumers gate position-sync on this matching their
+   * own bookId so they never act on a stale outgoing book during a swap.
+   */
+  openBookId: string | null;
   playbackState: TtsPlaybackState;
   /** Engine actually in use (after any browser fallback). */
   activeEngineId: EngineId;
@@ -97,10 +103,7 @@ export type AudioContextValue = {
    * currently being read.
    */
   rehighlightCurrentChunk: (renderedHref?: string) => Promise<void>;
-  /** Open the book-details sidebar (no-op when reader hasn't registered a handler). */
-  openBookDetails: () => void;
-  /** ReaderClient registers this so the persistent player can open its sidebar. */
-  registerDetailsOpener: (fn: () => void) => void;
+
   /**
    * Set when the floating player's book thumbnail is clicked off-reader. The
    * reader consumes it on mount to syncViewerToPlayback even when playback is

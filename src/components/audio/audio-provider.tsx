@@ -77,9 +77,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = session;
   }, [session]);
 
-  // ReaderClient registers this so the persistent player can reopen its sidebar.
-  const detailsOpenerRef = useRef<(() => void) | null>(null);
-
   // Viewer ref holder: the reader registers its EpubViewer ref here so
   // highlight-follow-along works when on-reader; off-reader it is null.
   const [registeredViewer, setRegisteredViewer] = useState<React.RefObject<
@@ -453,14 +450,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setOpenBook(ctx);
   }, []);
 
-  const registerDetailsOpener = useCallback((fn: () => void) => {
-    detailsOpenerRef.current = fn;
-  }, []);
-
-  const openBookDetails = useCallback(() => {
-    detailsOpenerRef.current?.();
-  }, []);
-
   const registerViewer = useCallback(
     (ref: React.RefObject<
       import("@/components/reader/epub-viewer").EpubViewerHandle | null
@@ -755,6 +744,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const value: AudioContextValue = useMemo(
     () => ({
       session,
+      openBookId: openBook?.bookId ?? null,
       playbackState,
       activeEngineId: isCloud ? enginePref : browserTts.effectiveEngineId,
       loadPct: browserTts.state.loadPct,
@@ -764,13 +754,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       onReader,
       setReaderControlsHidden,
       registerBook,
-      registerDetailsOpener,
       registerViewer,
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
       rehighlightCurrentChunk,
-      openBookDetails,
       playPause,
       stop,
       scrub,
@@ -783,6 +771,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       session,
+      openBook?.bookId,
       playbackState,
       enginePref,
       browserTts.effectiveEngineId,
@@ -792,13 +781,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       onReader,
       setReaderControlsHidden,
       registerBook,
-      registerDetailsOpener,
       registerViewer,
       unregisterViewer,
       startFromHere,
       syncViewerToPlayback,
       rehighlightCurrentChunk,
-      openBookDetails,
       playPause,
       stop,
       scrub,
@@ -846,7 +833,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             playlist={session?.flatToc ?? (openBook ? buildSpinePlaylist(openBook.spineItems, openBook.toc) : undefined)}
             currentIndex={session?.currentIndex}
             onJumpTo={jumpTo}
-            onOpenBookDetails={openBookDetails}
             onSyncToPlayback={syncViewerToPlayback}
             onMarkPendingReaderSync={markPendingReaderSync}
             hidden={cardHidden}

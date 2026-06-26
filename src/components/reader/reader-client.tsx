@@ -323,7 +323,6 @@ export function ReaderClient({
     registerBook,
     registerViewer,
     unregisterViewer,
-    registerDetailsOpener,
     setReaderControlsHidden,
     startFromHere,
     syncViewerToPlayback,
@@ -332,6 +331,7 @@ export function ReaderClient({
     playbackState: audioPlaybackState,
     pendingReaderSyncBookId,
     clearPendingReaderSync,
+    openBookId,
   } = useAudio();
   // ponytail: when the reader re-mounts while TTS is already playing THIS book
   // (user left for the bookshelf, audio kept going, came back), the viewer must
@@ -345,6 +345,13 @@ export function ReaderClient({
   // reader also syncs to the TTS position when playback is PAUSED (the
   // ttsLiveForBook path only covers PLAYING/LOADING). One-shot — consumed below.
   const pendingSyncForBook = pendingReaderSyncBookId === bookId;
+  // ponytail: the audio layer's registered open book has caught up to the
+  // current bookId. The sync effect waits on this so it never calls
+  // syncViewerToPlayback while openBookRef still holds the outgoing book during
+  // a cross-book swap — that stale read would no-op the book-mismatch guard,
+  // strand the reader on the saved position, and fire a stray navigateTo that
+  // races with the real one.
+  const openBookReady = openBookId === bookId;
 
   // ponytail: restore the last read-aloud position when no CFI was captured
   // (off-reader playback kept going on the bookshelf). The cfi path is handled
@@ -387,7 +394,12 @@ export function ReaderClient({
   const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (ttsSyncedRef.current) return;
-    if (!isLoaded) return;
+    // ponytail: wait for BOTH the rendition (isLoaded) AND the audio layer's
+    // openBook to catch up to the current bookId. On a cross-book swap the
+    // bookId-change commit still has isLoaded true for the outgoing book and
+    // openBookRef pointing at it — without this gate syncViewerToPlayback no-ops
+    // on the book-mismatch guard and relies on a fragile retry to recover.
+    if (!isLoaded || !openBookReady) return;
     const shouldSync = ttsLiveForBook || pendingSyncForBook;
     if (!shouldSync) return;
     syncViewerToPlayback()
@@ -419,7 +431,7 @@ export function ReaderClient({
         syncRetryRef.current = null;
       }
     };
-  }, [isLoaded, ttsLiveForBook, pendingSyncForBook, syncViewerToPlayback, clearPendingReaderSync]);
+  }, [isLoaded, openBookReady, ttsLiveForBook, pendingSyncForBook, syncViewerToPlayback, clearPendingReaderSync]);
 
   // ─── Debounced save ──────────────────────────────────────────────────────────
   const savePosition = useCallback(
@@ -1039,12 +1051,6 @@ export function ReaderClient({
     currentHref,
     bookSettings.voiceSpeed,
   ]);
-
-  // Register a handler so the persistent player can reopen this sidebar when
-  // the user clicks the current book's thumbnail while already reading it.
-  useEffect(() => {
-    registerDetailsOpener(() => setActiveTool("reader"));
-  }, [registerDetailsOpener]);
 
   // ponytail: idle-fade predicate shared by chrome, progress, and the right
   // rail, and pushed to AudioProvider so the floating TTS card mirrors it.

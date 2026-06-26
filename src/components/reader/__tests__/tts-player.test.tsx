@@ -352,14 +352,11 @@ describe("TtsPlayer: idle (nothing loaded) state", () => {
 });
 
 describe("TtsPlayer: thumbnail click", () => {
-  it("awaits onSyncToPlayback before opening details on same-book-on-reader", async () => {
+  it("only syncs to playback on same-book-on-reader without touching the sidebar", async () => {
     pathnameRef.current = `/book/test-book/reader`;
-    const order: string[] = [];
     const onSyncToPlayback = vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 30));
-      order.push("sync");
     });
-    const onOpenBookDetails = vi.fn(() => order.push("details"));
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -372,7 +369,6 @@ describe("TtsPlayer: thumbnail click", () => {
           bookTitle: "Test Book",
           variant: "floating",
           onSyncToPlayback,
-          onOpenBookDetails,
         }),
       );
     });
@@ -388,8 +384,6 @@ describe("TtsPlayer: thumbnail click", () => {
     });
 
     expect(onSyncToPlayback).toHaveBeenCalledTimes(1);
-    expect(onOpenBookDetails).toHaveBeenCalledTimes(1);
-    expect(order).toEqual(["sync", "details"]);
 
     act(() => root.unmount());
     container.remove();

@@ -72,8 +72,6 @@ export interface TtsPlayerProps {
   bookAuthor?: string | null;
   bookCoverPath?: string | null;
   bookId?: string;
-  /** Clicking the cover opens the current book's details sidebar (same book only). */
-  onOpenBookDetails?: () => void;
   /**
    * Jump the registered viewer to the section currently being read by TTS
    * (section nav + chunk re-highlight). No-op unless the viewer is registered
@@ -182,7 +180,6 @@ export function TtsPlayer({
   bookAuthor,
   bookCoverPath,
   bookId,
-  onOpenBookDetails,
   onSyncToPlayback,
   onMarkPendingReaderSync,
   canScrub = false,
@@ -205,9 +202,9 @@ export function TtsPlayer({
     if (!bookId) return;
     switch (resolveThumbnailNav(pathname, bookId)) {
       case "same-book-on-reader":
-        // Jump the viewer to the current TTS page, then surface details.
+        // Jump the viewer to the current TTS page. Sidebar state is owned by
+        // the reader; leave it untouched (open stays open, closed stays closed).
         await onSyncToPlayback?.();
-        onOpenBookDetails?.();
         return;
       case "other-reader":
         // Book-to-book: plain nav. ReaderClient stays mounted and runs its
