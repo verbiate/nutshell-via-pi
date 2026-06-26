@@ -230,6 +230,63 @@ export function expandCaretToWordStart(
   return { node, offset: i };
 }
 
+// ponytail: mirror of expandCaretToWordStart; walk forward to the word end.
+// Used to select the full word under a right-click cursor.
+export function expandCaretToWordEnd(
+  node: Node,
+  offset: number,
+): { node: Node; offset: number } {
+  if (node.nodeType !== 3) return { node, offset };
+  const text = node.nodeValue ?? "";
+  let i = Math.max(0, Math.min(offset, text.length));
+  while (i < text.length && /[\p{L}\p{N}]/u.test(text[i])) {
+    i++;
+  }
+  return { node, offset: i };
+}
+
+// ponytail: build a Range covering the word under the given viewport point.
+// Returns null if the point is not over text or sits on whitespace/punctuation
+// with no adjacent word characters. Uses caretRangeFromPoint (WebKit/Blink) or
+// caretPositionFromPoint (Gecko) and only operates within a single text node.
+export function wordRangeFromPoint(
+  doc: Document,
+  x: number,
+  y: number,
+): Range | null {
+  let node: Node | null = null;
+  let offset = 0;
+
+  if (typeof doc.caretRangeFromPoint === "function") {
+    const range = doc.caretRangeFromPoint(x, y);
+    if (!range) return null;
+    node = range.startContainer;
+    offset = range.startOffset;
+  } else if (typeof doc.caretPositionFromPoint === "function") {
+    const pos = doc.caretPositionFromPoint(x, y);
+    if (!pos) return null;
+    node = pos.offsetNode;
+    offset = pos.offset;
+  } else {
+    return null;
+  }
+
+  if (!node || node.nodeType !== 3) return null;
+
+  const startOffset = expandCaretToWordStart(node, offset).offset;
+  const endOffset = expandCaretToWordEnd(node, offset).offset;
+  if (startOffset === endOffset) return null;
+
+  try {
+    const range = doc.createRange();
+    range.setStart(node, startOffset);
+    range.setEnd(node, endOffset);
+    return range;
+  } catch {
+    return null;
+  }
+}
+
 // ponytail: bounding rect of a single character at `index` in the map. Used to
 // tell which paginated column a chunk/sentence character lives in (a fragmented
 // block's own rect spans columns and is useless for this). Null if the range
@@ -281,6 +338,7 @@ export interface EpubViewerProps {
   onLoadChange?: (isLoaded: boolean) => void;
   onError?: (error: Error) => void;
   onTextSelected?: (cfiRange: string, contents: unknown) => void;
+  onContextMenuWord?: (cfiRange: string, contents: unknown) => void;
   onSelectionCleared?: () => void;
 }
 
@@ -397,6 +455,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       onLoadChange,
       onError,
       onTextSelected,
+      onContextMenuWord,
       onSelectionCleared,
     },
     ref
@@ -1053,6 +1112,24 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                   pendingSelectionRef.current = null;
                   onSelectionCleared?.();
                 }
+              });
+              doc.addEventListener("contextmenu", (e) => {
+                if (!mounted) return;
+                const evt = e as MouseEvent;
+                const wordRange = wordRangeFromPoint(
+                  doc,
+                  evt.clientX,
+                  evt.clientY,
+                );
+                if (!wordRange) return;
+                e.preventDefault();
+                const sel = doc.defaultView?.getSelection?.();
+                if (sel) {
+                  sel.removeAllRanges();
+                  sel.addRange(wordRange);
+                }
+                const cfiRange = contents.cfiFromRange(wordRange);
+                onContextMenuWord?.(cfiRange, contents);
               });
             });
 

@@ -188,7 +188,7 @@ export function ReaderClient({
 
   // ─── Selection / floating toolbar state ────────────────────────────────────────
   const [toolbarVisible, setToolbarVisible] = useState(false);
-  const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+  const [toolbarPos, setToolbarPos] = useState<{ top: number; left: number } | null>(null);
   // ponytail: selection anchor (parent-viewport coords). Final toolbar
   // placement is computed in a layout effect that measures the toolbar's real
   // height, so adding/removing buttons can never make it overlap the selection.
@@ -612,8 +612,12 @@ export function ReaderClient({
   );
 
   // ─── Text selection handling ──────────────────────────────────────────────────
-  const handleTextSelected = useCallback(
-    (cfiRange: string, contents: unknown) => {
+  const presentToolbar = useCallback(
+    (
+      cfiRange: string,
+      contents: unknown,
+      minLength: number,
+    ) => {
       // epub-ts passes its Contents instance (the iframe's window/document),
       // NOT a range. Pull the live selection Range out of the iframe window.
       const c = contents as { window?: Window; document?: Document };
@@ -635,7 +639,7 @@ export function ReaderClient({
       if (!realRange) return;
 
       const text = realRange.toString();
-      if (text.length < 3) return;
+      if (text.length < minLength) return;
 
       setSelectedCfi(cfiRange);
       setSelectedText(text);
@@ -654,7 +658,21 @@ export function ReaderClient({
         setToolbarVisible(true);
       }
     },
-    []
+    [],
+  );
+
+  const handleTextSelected = useCallback(
+    (cfiRange: string, contents: unknown) => {
+      presentToolbar(cfiRange, contents, 3);
+    },
+    [presentToolbar],
+  );
+
+  const handleContextMenuWord = useCallback(
+    (cfiRange: string, contents: unknown) => {
+      presentToolbar(cfiRange, contents, 1);
+    },
+    [presentToolbar],
   );
 
   // ponytail: place the floating toolbar using its MEASURED height so the
@@ -681,6 +699,7 @@ export function ReaderClient({
 
   const handleSelectionCleared = useCallback(() => {
     setToolbarVisible(false);
+    setToolbarPos(null);
     setSelectedCfi(null);
     setSelectedText("");
     setToolbarAnchor(null);
@@ -725,6 +744,7 @@ export function ReaderClient({
         console.error("[ReaderClient] highlight failed:", err);
       }
       setToolbarVisible(false);
+      setToolbarPos(null);
     },
     [bookId, selectedCfi, selectedText, savedPosition, currentHref, queryClient]
   );
@@ -736,6 +756,7 @@ export function ReaderClient({
     setPendingRequest({ type: "passage", text: selectedText, cfi: selectedCfi });
     setActiveTool("bulb");
     setToolbarVisible(false);
+    setToolbarPos(null);
   }, [selectedText, selectedCfi]);
 
   const handleAskAboutSection = useCallback((href: string, _label: string) => {
@@ -944,6 +965,7 @@ export function ReaderClient({
       const toolbarEl = document.querySelector("[data-floating-toolbar]");
       if (toolbarEl && !toolbarEl.contains(e.target as Node)) {
         setToolbarVisible(false);
+        setToolbarPos(null);
       }
     };
     document.addEventListener("mousedown", handleClick);
@@ -1355,6 +1377,7 @@ export function ReaderClient({
               onError={handleError}
               onLoadChange={(loaded) => setIsLoaded(loaded)}
               onTextSelected={handleTextSelected}
+              onContextMenuWord={handleContextMenuWord}
               onSelectionCleared={handleSelectionCleared}
               className="h-full w-full"
             />

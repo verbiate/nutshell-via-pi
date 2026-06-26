@@ -11,7 +11,7 @@ import type { PlaylistBookMeta } from "@/types/playlist";
 
 export interface FloatingToolbarProps {
   visible: boolean;
-  position: { top: number; left: number };
+  position: { top: number; left: number } | null;
   selectedText: string;
   bookId: string;
   sectionHref: string;
@@ -66,6 +66,8 @@ export function FloatingToolbar({
 
   if (!visible) return null;
 
+  const positioned = position !== null;
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(selectedText);
@@ -84,11 +86,12 @@ export function FloatingToolbar({
       className={cn(
         "fixed z-[70] flex w-[220px] flex-col rounded-xl border border-border bg-popover p-1.5",
         "shadow-[0_8px_30px_-6px_rgba(34,24,5,0.25)]",
-        "animate-in fade-in zoom-in-95 duration-150"
+        positioned && "animate-in fade-in duration-100"
       )}
       style={{
-        top: position.top,
-        left: position.left,
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        visibility: positioned ? "visible" : "hidden",
       }}
     >
       <button
