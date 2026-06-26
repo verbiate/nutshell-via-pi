@@ -5,6 +5,7 @@ import {
   isValidHref,
   segmentText,
   aggregateLinks,
+  resolveToSpineHref,
 } from "../citations";
 
 describe("hrefBasename", () => {
@@ -87,5 +88,33 @@ describe("aggregateLinks", () => {
   it("annotates spineIndex", () => {
     const out = aggregateLinks(["[x](#ch:c1.xhtml)"], spine);
     expect(out[0].spineIndex).toBe(0);
+  });
+});
+
+describe("resolveToSpineHref", () => {
+  // ponytail: the model emits bare basenames (buildChapterIndex emits basenames),
+  // but rendition.display() needs a full spine href on prefixed-spine EPUBs.
+  // spine.get only has a decodeURI fallback, no basename match — so citations
+  // must be resolved to the full href at the navigation boundary.
+  const spineHrefs = ["OEBPS/chapter1.xhtml", "OEBPS/chapter2.xhtml"];
+
+  it("resolves a bare basename to the full prefixed spine href", () => {
+    expect(resolveToSpineHref("chapter1.xhtml", spineHrefs)).toBe(
+      "OEBPS/chapter1.xhtml"
+    );
+  });
+
+  it("returns the input unchanged when it is already a full spine href", () => {
+    expect(resolveToSpineHref("OEBPS/chapter2.xhtml", spineHrefs)).toBe(
+      "OEBPS/chapter2.xhtml"
+    );
+  });
+
+  it("returns the input unchanged when no spine href matches (graceful)", () => {
+    expect(resolveToSpineHref("ghost.xhtml", spineHrefs)).toBe("ghost.xhtml");
+  });
+
+  it("returns empty input unchanged", () => {
+    expect(resolveToSpineHref("", spineHrefs)).toBe("");
   });
 });

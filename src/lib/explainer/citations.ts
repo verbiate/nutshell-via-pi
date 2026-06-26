@@ -32,6 +32,26 @@ export function isValidHref(href: string, spineHrefs: string[]): boolean {
   return spineHrefs.some((s) => hrefBasename(s) === b);
 }
 
+/**
+ * Resolve a citation href to the FULL spine href that rendition.display()
+ * needs. The model emits bare basenames (the {{chapter_index}} manifest emits
+ * basenames), but epub.js spine.get() only has a decodeURI fallback — no
+ * basename match — so a bare basename dead-jumps on prefixed-spine EPUBs
+ * (OEBPS/..., Text/...). epub-viewer normalizes ToC hrefs at load via
+ * resolveSpineHref; citations need the same treatment at the nav boundary.
+ * Returns the input unchanged when nothing matches (graceful — display
+ * fail-softs, never throws).
+ */
+export function resolveToSpineHref(target: string, spineHrefs: string[]): string {
+  if (!target) return target;
+  const b = hrefBasename(target);
+  if (!b) return target;
+  for (const h of spineHrefs) {
+    if (hrefBasename(h) === b) return h;
+  }
+  return target;
+}
+
 export function segmentText(text: string): Segment[] {
   const segments: Segment[] = [];
   let last = 0;

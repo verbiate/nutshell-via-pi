@@ -29,6 +29,7 @@ import {
   type BookSettings,
 } from "./book-settings-panel";
 import { ExplainerThreadsPanel, type PendingExplainerRequest } from "@/components/explainer/explainer-threads-panel";
+import { resolveToSpineHref } from "@/lib/explainer/citations";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
@@ -1505,7 +1506,19 @@ export function ReaderClient({
                 onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
                 contextWindow={contextWindow}
-                onNavigateToHref={handleTocNavigate}
+                onNavigateToHref={(href) =>
+                  // ponytail: citations carry bare basenames (the chapter map
+                  // emits basenames); rendition.display() needs the full spine
+                  // href on prefixed-spine EPUBs or it dead-jumps. Resolve at
+                  // this single nav boundary — same fix epub-viewer applies to
+                  // ToC hrefs via resolveSpineHref.
+                  handleTocNavigate(
+                    resolveToSpineHref(
+                      href,
+                      spineItems.map((s) => s.href)
+                    )
+                  )
+                }
                 spineItems={spineItems}
               />
             ),

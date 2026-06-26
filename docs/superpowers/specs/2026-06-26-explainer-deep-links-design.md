@@ -79,9 +79,15 @@ bound prompt size for pathological books), format:
 - **Interception:** render-time regex matches **only** `#ch:` links. Any other
   markdown/URL renders as plain text (security: no arbitrary-link vector).
 - **Validation:** the href is checked by basename against the loaded `spineItems`
-  (matches `buildSpinePlaylist`'s convention; `navigateTo`'s `resolveHref`
-  fallback absorbs path/fragment differences). Invalid → degrades to plain
+  (matches `buildSpinePlaylist`'s convention). Invalid → degrades to plain
   label text, never a dead jump.
+- **Resolution at the nav boundary:** the model emits bare basenames (the
+  manifest emits basenames), but epub.js `rendition.display()` needs the full
+  spine href on prefixed-spine EPUBs (`OEBPS/…`, `Text/…`) — `spine.get()` has
+  only a `decodeURI` fallback, no basename match. So the reader resolves the
+  citation basename → full spine href via `resolveToSpineHref` before calling
+  `handleTocNavigate` (mirrors `resolveSpineHref`'s basename match applied to
+  ToC hrefs at load).
 
 ### Data flow (life of a citation)
 
