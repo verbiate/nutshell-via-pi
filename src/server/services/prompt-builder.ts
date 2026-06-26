@@ -1,5 +1,6 @@
 import { db } from "@/server/db";
 import { storage } from "@/server/storage/local";
+import { hrefBasename } from "@/lib/explainer/citations";
 import { extractSectionText } from "./section-extractor";
 
 export function fillTemplate(
@@ -64,6 +65,36 @@ export function formatExpandedMetadata(m: BookMetadataRow | null): string {
   return lines.join("\n");
 }
 
+type TocItem = { label?: string; href?: string; subitems?: TocItem[] };
+
+/**
+ * Build the {{chapter_index}} manifest so the model can cite navigable
+ * locations. Top-level ToC entries only (subitems ignored), hrefs normalized
+ * to basenames, capped to bound prompt size. Empty string when no usable ToC.
+ */
+export function buildChapterIndex(
+  tocJson: string | null | undefined,
+  cap = 200
+): string {
+  if (!tocJson) return "";
+  let toc: TocItem[];
+  try {
+    toc = JSON.parse(tocJson);
+  } catch {
+    return "";
+  }
+  if (!Array.isArray(toc)) return "";
+  const lines: string[] = [];
+  for (const item of toc) {
+    if (lines.length >= cap) break;
+    const label = (item.label ?? "").trim();
+    const href = (item.href ?? "").split("#")[0].trim();
+    if (!label || !href) continue;
+    lines.push(`[${lines.length + 1}] ${label} → ${hrefBasename(href)}`);
+  }
+  return lines.length === 0 ? "" : lines.join("\n");
+}
+
 export async function buildBookPrompt(
   bookId: string,
   language: string
@@ -89,6 +120,7 @@ export async function buildBookPrompt(
     book_text: sourceText,
     text: sourceText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
+    chapter_index: buildChapterIndex(book.tocJson),
   });
 
   return {
@@ -148,6 +180,7 @@ export async function buildSectionPrompt(
     chosen_text: sectionText,
     book_text: bookText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
+    chapter_index: buildChapterIndex(book.tocJson),
   });
 
   return {
@@ -185,6 +218,7 @@ export async function buildPassagePrompt(
     chosen_text: passageText,
     book_text: bookText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
+    chapter_index: buildChapterIndex(book.tocJson),
   });
 
   return {
