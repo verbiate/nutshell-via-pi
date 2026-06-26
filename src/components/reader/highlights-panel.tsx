@@ -3,7 +3,14 @@
 import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, MoreHorizontal, Play, Trash2, StickyNote } from "lucide-react";
+import {
+  ChevronDown,
+  Lightbulb,
+  MoreHorizontal,
+  Play,
+  Trash2,
+  StickyNote,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +45,7 @@ export interface HighlightsPanelProps {
   toc: NavItem[];
   onHighlightClick: (cfi: string) => void;
   onStartReading: (cfi: string, sectionHref: string | null) => void;
+  onExplain: (cfi: string, selectedText: string) => void;
 }
 
 function flattenToc(
@@ -73,12 +81,14 @@ function HighlightRow({
   onDelete,
   onNoteSave,
   onStartReading,
+  onExplain,
 }: {
   highlight: HighlightItem;
   onNavigate: (cfi: string) => void;
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
   onStartReading: (cfi: string, sectionHref: string | null) => void;
+  onExplain: (cfi: string, selectedText: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(highlight.note ?? "");
@@ -174,6 +184,13 @@ function HighlightRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-52">
           <DropdownMenuItem
+            onClick={() => onExplain(highlight.cfi, highlight.selectedText)}
+          >
+            <Lightbulb className="h-4 w-4 text-lav" />
+            Explain this
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
             onClick={() =>
               onStartReading(highlight.cfi, highlight.sectionHref)
             }
@@ -203,6 +220,7 @@ function GroupBlock({
   onDelete,
   onNoteSave,
   onStartReading,
+  onExplain,
 }: {
   label: string;
   count: number;
@@ -214,6 +232,7 @@ function GroupBlock({
   onDelete: (id: string) => void;
   onNoteSave: (id: string, note: string) => void;
   onStartReading: (cfi: string, sectionHref: string | null) => void;
+  onExplain: (cfi: string, selectedText: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -261,6 +280,7 @@ function GroupBlock({
               onDelete={onDelete}
               onNoteSave={onNoteSave}
               onStartReading={onStartReading}
+              onExplain={onExplain}
             />
           ))}
         </div>
@@ -274,6 +294,7 @@ export function HighlightsPanel({
   toc,
   onHighlightClick,
   onStartReading,
+  onExplain,
 }: HighlightsPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("date");
@@ -423,6 +444,7 @@ export function HighlightsPanel({
           onDelete={handleDelete}
           onNoteSave={handleNoteSave}
           onStartReading={onStartReading}
+          onExplain={onExplain}
         />
       ))}
     </div>

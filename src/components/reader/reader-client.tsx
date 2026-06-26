@@ -780,6 +780,15 @@ export function ReaderClient({
     [startFromHere]
   );
 
+  const handleExplainHighlight = useCallback(
+    (cfi: string, selectedText: string) => {
+      if (!selectedText.trim()) return;
+      setPendingRequest({ type: "passage", text: selectedText, cfi });
+      setActiveTool("bulb");
+    },
+    []
+  );
+
   const handleSaveBookmark = useCallback(
     async (cfi: string) => {
       // ponytail: derive the synthetic page from epub.js locations (the same
@@ -1452,6 +1461,7 @@ export function ReaderClient({
                 toc={toc}
                 onHighlightClick={handleNavigateToCfi}
                 onStartReading={handleStartReadingFromCfi}
+                onExplain={handleExplainHighlight}
               />
             ),
             bulb: (
