@@ -37,6 +37,9 @@ import {
   Trash2,
   Database,
   RefreshCw,
+  Code,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
@@ -770,6 +773,7 @@ export function ExplainerThreadsPanel({
           onNavigateToCfi={navigateCfiAndCloseModal}
           spineItems={spineItems}
           adminMeta={adminMeta}
+          isAdmin={isAdmin}
           onReroll={handleReroll}
           rerolling={rerolling}
           rerollContent={rerollContent}
@@ -1005,6 +1009,7 @@ function ThreadView({
   onNavigateToCfi,
   spineItems,
   adminMeta,
+  isAdmin,
   onReroll,
   rerolling,
   rerollContent,
@@ -1040,6 +1045,7 @@ function ThreadView({
     latestVersion: number;
     initialCacheHit: boolean | null;
   };
+  isAdmin?: boolean;
   onReroll?: (explainerId: string) => void;
   rerolling?: boolean;
   rerollContent?: string;
@@ -1251,6 +1257,7 @@ function ThreadView({
             pulsing={streamingInitial && !initialContent}
             spineHrefs={spineHrefs}
             onNavigateToHref={onNavigateToHref}
+            isAdmin={isAdmin}
           />
         )}
 
@@ -1263,6 +1270,7 @@ function ThreadView({
             pulsing={m.role === "assistant" && streaming && !m.content && i === messages.length - 1}
             spineHrefs={spineHrefs}
             onNavigateToHref={onNavigateToHref}
+            isAdmin={isAdmin}
           />
         ))}
       </div>
@@ -1346,29 +1354,56 @@ function MessageBubble({
   pulsing,
   spineHrefs,
   onNavigateToHref,
+  isAdmin,
 }: {
   role: "user" | "assistant";
   content: string;
   pulsing?: boolean;
   spineHrefs: string[];
   onNavigateToHref?: (href: string) => void;
+  isAdmin?: boolean;
 }) {
+  // ponytail: admin-only debug affordance on rendered (assistant) bubbles.
+  // Toggles a raw <pre> view of the source markdown and offers a one-click
+  // copy. Local state per bubble — no global debug flag needed.
+  const [showRaw, setShowRaw] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const showAdminTools = !!isAdmin && role === "assistant" && !!content;
+
+  const copyRaw = async () => {
+    try {
+      await navigator.clipboard?.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // clipboard unavailable (permissions / non-secure context) — silent.
+    }
+  };
+
   return (
-    <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
+    <div className={cn("flex flex-col", role === "user" ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+          "max-w-[85%] rounded-lg px-3 py-2 text-sm",
           role === "user"
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted border border-border"
+            ? "bg-primary text-primary-foreground whitespace-pre-wrap"
+            : showRaw
+            ? "bg-muted border border-border"
+            : "bg-muted border border-border prose prose-sm dark:prose-invert max-w-none prose-pre:my-1"
         )}
       >
         {content ? (
-          <ExplainerContent
-            content={content}
-            spineHrefs={spineHrefs}
-            onNavigateToHref={onNavigateToHref}
-          />
+          role === "user" ? (
+            content
+          ) : showRaw ? (
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">{content}</pre>
+          ) : (
+            <ExplainerContent
+              content={content}
+              spineHrefs={spineHrefs}
+              onNavigateToHref={onNavigateToHref}
+            />
+          )
         ) : pulsing ? (
           <span className="inline-flex gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-pulse" />
@@ -1379,6 +1414,28 @@ function MessageBubble({
           ""
         )}
       </div>
+      {showAdminTools && (
+        <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setShowRaw((v) => !v)}
+            className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+            title={showRaw ? "Show rendered" : "Show raw markdown"}
+          >
+            <Code className="h-3 w-3" />
+            {showRaw ? "Rendered" : "Raw"}
+          </button>
+          <button
+            type="button"
+            onClick={copyRaw}
+            className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+            title="Copy raw markdown"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
