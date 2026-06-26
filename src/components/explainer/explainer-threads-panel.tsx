@@ -1384,7 +1384,7 @@ function MessageBubble({
     <div className={cn("flex flex-col", role === "user" ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "relative max-w-[85%] rounded-lg px-3 py-2 text-sm",
+          "group relative max-w-[85%] rounded-lg px-3 py-2 text-sm",
           role === "user"
             ? "bg-primary text-primary-foreground whitespace-pre-wrap"
             : showRaw
@@ -1399,7 +1399,7 @@ function MessageBubble({
           avoids clipping text underneath.
         */}
         {showAdminTools && (
-          <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground backdrop-blur-sm">
+          <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             <button
               type="button"
               onClick={() => setShowRaw((v) => !v)}

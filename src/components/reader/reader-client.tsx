@@ -1542,9 +1542,9 @@ export function ReaderClient({
                 spineItems={spineItems}
                 onNavigateToCfi={(cfi) => {
                   // ponytail: jump to the source passage AND briefly flash it so
-                  // the reader can spot what they'd asked about.
+                  // the reader can spot what they'd asked about. Keep the
+                  // sidebar open so the discussion stays in view.
                   viewerRef.current?.flashCfi(cfi);
-                  setActiveTool(null);
                 }}
                 resolveSectionLabel={resolveSectionLabel}
               />
