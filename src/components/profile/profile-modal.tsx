@@ -119,7 +119,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
           {/* Language Preference */}
           <div className="space-y-2">
             <Label className="text-sm">
-              Preferred language for Explainers
+              Preferred language for Discussions
             </Label>
             <Select
               value={preferredLanguage}
@@ -137,7 +137,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Default: English. This will be used for all new Explainers.
+              Default: English. This will be used for all new discussions.
             </p>
           </div>
         </div>

@@ -26,8 +26,8 @@ export const READER_TOOLS: ReaderTool[] = [
   },
   {
     id: "bulb",
-    label: "Explainers",
-    description: "AI explanations for tricky passages.",
+    label: "Discussions",
+    description: "Ask questions about the book, a section, or a passage.",
     icon: "lightbulb",
   },
   {

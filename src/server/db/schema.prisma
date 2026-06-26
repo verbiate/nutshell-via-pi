@@ -66,11 +66,17 @@ model Explainer {
   content       String
   modelId       String
   promptVersion Int
+  // ponytail: version axis turns the cache into a versioned explainer. A
+  // re-reroll creates a NEW row (same contentHash/lang/type/tier, version+1)
+  // rather than overwriting; discussions pin a specific version via their
+  // explainerId, so existing readers keep the version they first saw while new
+  // readers get the latest. Lookup = max(version) for the 4-axis key.
+  version       Int      @default(1)
   tokenCount    Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([contentHash, language, contentType, tier])
+  @@unique([contentHash, language, contentType, tier, version])
   @@index([contentHash])
   @@index([createdAt])
 
@@ -347,30 +353,35 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
-// ponytail: per-user multi-turn explainer threads. Initial response lives in
-// the cached `Explainer` row (globally shared); only follow-up turns are
-// stored as `ExplainerMessage`. One thread per (userId, explainerId) — same
-// passage selected twice reopens the same thread.
+// ponytail: per-user multi-turn discussion threads. The initial response lives
+// in the cached `Explainer` row (globally shared, versioned); only follow-up
+// turns are stored as `ExplainerMessage`. Uniqueness is on the version-
+// independent cache key (contentHash + language + tier) so re-asking the same
+// context reopens the existing discussion even after a re-reroll creates a new
+// explainer version. `explainerId` pins the exact version this discussion shows;
+// `initialCacheHit` records whether the first response was a cache hit (admin UX).
 model ExplainerThread {
-  id           String   @id @default(cuid())
-  userId       String
-  bookId       String
-  explainerId  String
-  type         String   // "passage" | "section" | "book"
-  passageCfi   String?
-  passageText  String?  // full passage text — re-sent as context on follow-ups
-  sectionHref  String?
-  language     String
-  tier         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  bookId          String
+  explainerId     String
+  contentHash     String?  // version-independent cache key (nullable for legacy rows pre-backfill)
+  type            String   // "passage" | "section" | "book"
+  passageCfi      String?
+  passageText     String?  // full passage text — re-sent as context on follow-ups
+  sectionHref     String?
+  language        String
+  tier            String
+  initialCacheHit Boolean? // admin UX: was the first response served from cache?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   book         EpubFile  @relation(fields: [bookId], references: [id], onDelete: Cascade)
   explainer    Explainer @relation(fields: [explainerId], references: [id], onDelete: Cascade)
   messages     ExplainerMessage[]
 
-  @@unique([userId, explainerId])
+  @@unique([userId, contentHash, language, tier])
   @@index([userId, bookId])
 }
 

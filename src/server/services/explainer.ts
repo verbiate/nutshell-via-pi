@@ -20,21 +20,68 @@ export interface ExplainerCreateInput {
   tokenCount?: number;
 }
 
-export async function getExplainer(params: ExplainerLookup) {
-  return db.explainer.findUnique({
+export async function getLatestExplainer(params: ExplainerLookup) {
+  // ponytail: versioned cache — return the highest version for the 4-axis key.
+  // New discussions always read the latest; existing discussions keep their
+  // pinned version via thread.explainerId.
+  return db.explainer.findFirst({
     where: {
-      contentHash_language_contentType_tier: {
-        contentHash: params.contentHash,
-        language: params.language,
-        contentType: params.contentType,
-        tier: params.tier,
-      },
+      contentHash: params.contentHash,
+      language: params.language,
+      contentType: params.contentType,
+      tier: params.tier,
     },
+    orderBy: { version: "desc" },
   });
 }
 
+/**
+ * Single source of truth for the explainer cache key. Both generation paths
+ * (explainer.ts + explainer-threads.ts) call this so the hash can never drift
+ * between writer and reader. bookMd5 is folded in only for section/passage;
+ * twoPass + metadata salts are optional.
+ */
+export interface ContentHashInput {
+  type: "book" | "section" | "passage";
+  sourceText: string;
+  bookMd5: string;
+  promptVersion: number;
+  twoPassVersion?: number;
+  metadataVersion?: string;
+}
+
+export function computeExplainerContentHash(input: ContentHashInput): string {
+  const { type, sourceText, bookMd5, promptVersion, twoPassVersion, metadataVersion } = input;
+  const parts: string[] = [];
+  if (twoPassVersion) parts.push(`twoPass:${twoPassVersion}`);
+  if (metadataVersion) parts.push(`meta:${metadataVersion}`);
+  const extraSalt = parts.length > 0 ? parts.join("|") : undefined;
+  const includeBookMd5 = type === "section" || type === "passage";
+  return computeContentHash(
+    sourceText,
+    promptVersion,
+    type,
+    includeBookMd5 ? bookMd5 : undefined,
+    extraSalt
+  );
+}
+
 export async function createExplainer(data: ExplainerCreateInput) {
-  return db.explainer.create({ data });
+  // ponytail: versioned insert. nextVersion = max(existing) + 1 so a re-reroll
+  // creates a fresh row instead of overwriting. A concurrent create racing on
+  // the same version throws P2002; callers handle it by re-reading the latest.
+  const latest = await db.explainer.findFirst({
+    where: {
+      contentHash: data.contentHash,
+      language: data.language,
+      contentType: data.contentType,
+      tier: data.tier,
+    },
+    orderBy: { version: "desc" },
+    select: { version: true },
+  });
+  const version = (latest?.version ?? 0) + 1;
+  return db.explainer.create({ data: { ...data, version } });
 }
 
 export function computeContentHash(
@@ -133,23 +180,18 @@ export async function* generateExplainer(
     };
   }
 
-  // Compute content hash for cache lookup. Include bookMd5 for section/passage
-  // so the same snippet in two different books doesn't share a cache row.
-  // metadataSalt: when BookMetadata exists, its updatedAt invalidates cache on
-  // re-extraction (the {{expanded_metadata}} block in the prompt may now differ).
-  const metadataSalt = promptData.metadataVersion
-    ? `meta:${promptData.metadataVersion}`
-    : undefined;
-  const contentHash = computeContentHash(
-    promptData.sourceText,
-    promptData.promptVersion,
+  // Compute content hash for cache lookup via the single-source-of-truth
+  // helper (same formula the threaded path uses, so writer/reader never drift).
+  const contentHash = computeExplainerContentHash({
     type,
-    type === "section" || type === "passage" ? promptData.bookMd5 : undefined,
-    metadataSalt
-  );
+    sourceText: promptData.sourceText,
+    bookMd5: promptData.bookMd5,
+    promptVersion: promptData.promptVersion,
+    metadataVersion: promptData.metadataVersion,
+  });
 
   // Check cache
-  const cached = await getExplainer({
+  const cached = await getLatestExplainer({
     contentHash,
     language,
     contentType: type,

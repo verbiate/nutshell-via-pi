@@ -1,9 +1,9 @@
 import { db } from "@/server/db";
 import { OpenRouterError } from "./openrouter";
 import {
-  computeContentHash,
+  computeExplainerContentHash,
   createExplainer,
-  getExplainer,
+  getLatestExplainer,
 } from "./explainer";
 import { recordError } from "./errors";
 import { getSetting } from "./settings";
@@ -27,7 +27,7 @@ const FOLLOWUP_CITATION_SUFFIX =
 // (ExplainerMessage table).
 
 export interface InitialResponseEvent {
-  type: "chunk" | "cached" | "thread" | "error" | "status";
+  type: "chunk" | "cached" | "thread" | "error" | "status" | "existing";
   chunk?: string;
   cached?: boolean;
   threadId?: string;
@@ -79,25 +79,30 @@ export async function* streamInitialThreadResponse(
     pass2Version = (await loadBookPass2Template()).version;
   }
 
-  // ponytail: combined salt — two-pass discriminator + metadata version. Both
-  // are optional; when neither applies the salt is undefined (matches legacy
-  // one-pass-no-metadata behavior). Order is deterministic so the hash is
-  // stable across requests for the same inputs.
-  const parts: string[] = [];
-  if (twoPass) parts.push(`twoPass:${pass2Version}`);
-  if (promptData.metadataVersion) parts.push(`meta:${promptData.metadataVersion}`);
-  const extraSalt = parts.length > 0 ? parts.join("|") : undefined;
-
-  const contentHash = computeContentHash(
-    promptData.sourceText,
-    promptData.promptVersion,
+  const contentHash = computeExplainerContentHash({
     type,
-    type === "section" || type === "passage" ? promptData.bookMd5 : undefined,
-    extraSalt
-  );
+    sourceText: promptData.sourceText,
+    bookMd5: promptData.bookMd5,
+    promptVersion: promptData.promptVersion,
+    twoPassVersion: twoPass ? pass2Version : undefined,
+    metadataVersion: promptData.metadataVersion,
+  });
+
+  // Reopen: if this user already has a discussion for the same context
+  // (version-independent key), navigate them back to it instead of
+  // regenerating. Their thread stays pinned to the version they first saw.
+  const existingThread = await db.explainerThread.findUnique({
+    where: {
+      userId_contentHash_language_tier: { userId, contentHash, language, tier },
+    },
+  });
+  if (existingThread) {
+    yield { type: "existing", threadId: existingThread.id };
+    return;
+  }
 
   // Check cache (shared across all users)
-  const cached = await getExplainer({ contentHash, language, contentType: type, tier });
+  const cached = await getLatestExplainer({ contentHash, language, contentType: type, tier });
 
   let explainerId: string;
   let cachedFlag = false;
@@ -226,7 +231,7 @@ export async function* streamInitialThreadResponse(
       });
     } catch (err: any) {
       if (err?.code === "P2002") {
-        const existing = await getExplainer({
+        const existing = await getLatestExplainer({
           contentHash,
           language,
           contentType: type,
@@ -244,21 +249,28 @@ export async function* streamInitialThreadResponse(
     explainerId = created.id;
   }
 
-  // Upsert thread (one per user + explainer)
+  // Upsert thread on the version-independent key (one discussion per user per
+  // context). Reopen above handles the common case; this upsert also covers a
+  // rare race where two concurrent starts slip past the check — the update
+  // branch just touches updatedAt and leaves the existing version pin intact.
   const thread = await db.explainerThread.upsert({
-    where: { userId_explainerId: { userId, explainerId } },
+    where: {
+      userId_contentHash_language_tier: { userId, contentHash, language, tier },
+    },
     create: {
       userId,
       bookId,
       explainerId,
+      contentHash,
       type,
       passageCfi: params.passageCfi,
       passageText: params.passageText,
       sectionHref: params.sectionHref,
       language,
       tier,
+      initialCacheHit: cachedFlag,
     },
-    update: {}, // touch only; createdAt/updatedAt handle themselves
+    update: { updatedAt: new Date() },
   });
 
   // Record analytics (matches existing pattern)
@@ -278,10 +290,17 @@ export async function* streamInitialThreadResponse(
 }
 
 /**
- * Build the prompt and source text for the given params. Thin wrapper around
- * the existing prompt-builder functions.
+ * Build the prompt and source text for the given context. Shared by the
+ * initial-response stream and the reroll path. Takes only what it needs so
+ * reroll can reuse it without synthesizing a full CreateThreadParams.
  */
-async function buildPromptData(params: CreateThreadParams): Promise<{
+export async function buildPromptData(params: {
+  type: "passage" | "section" | "book";
+  bookId: string;
+  language: string;
+  passageText?: string;
+  sectionHref?: string;
+}): Promise<{
   prompt: string;
   sourceText: string;
   bookText: string;
@@ -311,6 +330,179 @@ async function buildPromptData(params: CreateThreadParams): Promise<{
   // book
   const { buildBookPrompt } = await import("./prompt-builder");
   return buildBookPrompt(params.bookId, params.language);
+}
+
+export interface RerollEvent {
+  type: "chunk" | "status" | "version" | "error";
+  chunk?: string;
+  stage?: "explaining" | "refining";
+  version?: number;
+  explainerId?: string;
+  error?: string;
+}
+
+/**
+ * Admin: regenerate an explainer as a NEW version of its cache key. Recovers
+ * the source context from a linked discussion, regenerates with identical
+ * inputs, and writes a higher-versioned row. Existing discussions keep their
+ * pinned version (untouched); new discussions get this latest version. Throws
+ * (→ 422) if no linked discussion exists to recover source context from.
+ */
+export async function* rerollExplainer(params: {
+  explainerId: string;
+  actorId: string;
+}): AsyncGenerator<RerollEvent> {
+  const explainer = await db.explainer.findUnique({
+    where: { id: params.explainerId },
+  });
+  if (!explainer) {
+    yield { type: "error", error: "Explainer not found" };
+    return;
+  }
+
+  // Recover source context from any discussion linked to this cache key.
+  const thread = await db.explainerThread.findFirst({
+    where: {
+      contentHash: explainer.contentHash,
+      language: explainer.language,
+      tier: explainer.tier,
+    },
+    select: {
+      type: true,
+      bookId: true,
+      passageText: true,
+      sectionHref: true,
+      language: true,
+    },
+  });
+  if (!thread) {
+    yield {
+      type: "error",
+      error: "Cannot reroll: no source context found for this explainer",
+    };
+    return;
+  }
+
+  const type = thread.type as "passage" | "section" | "book";
+  const promptData = await buildPromptData({
+    type,
+    bookId: thread.bookId,
+    language: thread.language,
+    passageText: thread.passageText ?? undefined,
+    sectionHref: thread.sectionHref ?? undefined,
+  });
+
+  // Re-derive the salt exactly as streamInitialThreadResponse does so the new
+  // row shares the original cache key (→ a true new version). If two-pass /
+  // metadata config changed since the original, the hash differs and this
+  // becomes v1 of a new key — still a valid fresh explainer.
+  const twoPass = type === "book" && (await getSetting("bookTwoPassEnabled")) === "true";
+  let pass2Version: number | undefined;
+  if (twoPass) {
+    const { loadBookPass2Template } = await import("./prompt-builder");
+    pass2Version = (await loadBookPass2Template()).version;
+  }
+  const contentHash = computeExplainerContentHash({
+    type,
+    sourceText: promptData.sourceText,
+    bookMd5: promptData.bookMd5,
+    promptVersion: promptData.promptVersion,
+    twoPassVersion: pass2Version,
+    metadataVersion: promptData.metadataVersion,
+  });
+
+  const { streamExplainer, streamBookTwoPass, getOpenRouterConfig } = await import("./openrouter");
+  const { apiKey, model } = await getOpenRouterConfig(
+    explainer.tier as "regular" | "pro" | "admin"
+  );
+  if (!apiKey) {
+    yield { type: "error", error: "OpenRouter API key not configured" };
+    return;
+  }
+  const maxTokens = type === "book" ? 4096 : 2048;
+
+  let fullContent = "";
+  try {
+    if (twoPass) {
+      const { buildBookPass2Prompt } = await import("./prompt-builder");
+      for await (const evt of streamBookTwoPass({
+        pass1Prompt: promptData.prompt,
+        buildPass2Prompt: (pass1) =>
+          buildBookPass2Prompt(thread.bookId, thread.language, pass1, promptData.bookText).then(
+            (r) => r.prompt
+          ),
+        apiKey,
+        model,
+        maxTokens,
+      })) {
+        if (evt.type === "status") yield { type: "status", stage: evt.stage };
+        else if (evt.type === "chunk" && evt.chunk) {
+          fullContent += evt.chunk;
+          yield { type: "chunk", chunk: evt.chunk };
+        }
+      }
+    } else {
+      for await (const chunk of streamExplainer({
+        prompt: promptData.prompt,
+        apiKey,
+        model,
+        maxTokens,
+      })) {
+        fullContent += chunk;
+        yield { type: "chunk", chunk };
+      }
+    }
+  } catch (err: any) {
+    const message = err instanceof OpenRouterError ? err.message : "Reroll generation failed";
+    yield { type: "error", error: message };
+    return;
+  }
+
+  // createExplainer computes version = max(existing) + 1 for the key.
+  let created;
+  try {
+    created = await createExplainer({
+      contentHash,
+      language: explainer.language,
+      contentType: explainer.contentType,
+      tier: explainer.tier,
+      content: fullContent,
+      modelId: model,
+      promptVersion: promptData.promptVersion,
+    });
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      const latest = await getLatestExplainer({
+        contentHash,
+        language: explainer.language,
+        contentType: explainer.contentType as "book" | "section" | "passage",
+        tier: explainer.tier as "regular" | "pro" | "admin",
+      });
+      if (!latest) {
+        yield { type: "error", error: "Reroll race: lost and couldn't refetch" };
+        return;
+      }
+      created = latest;
+    } else {
+      throw err;
+    }
+  }
+
+  await db.auditLog.create({
+    data: {
+      actorId: params.actorId,
+      action: "EXPLAINER_REROLLED",
+      entityType: "explainer",
+      entityId: created.id,
+      oldValue: JSON.stringify({
+        fromVersion: explainer.version,
+        contentHash: explainer.contentHash,
+      }),
+      newValue: JSON.stringify({ toVersion: created.version, contentHash }),
+    },
+  });
+
+  yield { type: "version", version: created.version, explainerId: created.id };
 }
 
 /**
@@ -349,12 +541,27 @@ export async function getThreadWithMessages(threadId: string, userId: string) {
   const thread = await db.explainerThread.findUnique({
     where: { id: threadId },
     include: {
-      explainer: { select: { content: true, modelId: true, promptVersion: true } },
+      explainer: { select: { id: true, content: true, modelId: true, promptVersion: true, version: true } },
       messages: { orderBy: { createdAt: "asc" } },
     },
   });
   if (!thread || thread.userId !== userId) return null;
-  return thread;
+  // ponytail: latest version of this cache key, for the admin "newer version
+  // available" indicator. Falls back to the thread's own version when the
+  // legacy contentHash is missing (pre-backfill).
+  const latest = thread.contentHash
+    ? await db.explainer.findFirst({
+        where: {
+          contentHash: thread.contentHash,
+          language: thread.language,
+          contentType: thread.type,
+          tier: thread.tier,
+        },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      })
+    : null;
+  return { ...thread, latestVersion: latest?.version ?? thread.explainer.version };
 }
 
 export interface FollowupEvent {

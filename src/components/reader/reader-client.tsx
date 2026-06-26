@@ -1520,6 +1520,10 @@ export function ReaderClient({
                   )
                 }
                 spineItems={spineItems}
+                onNavigateToCfi={(cfi) => {
+                  handleNavigateToCfi(cfi);
+                  setActiveTool(null);
+                }}
               />
             ),
             type: (

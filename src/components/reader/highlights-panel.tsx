@@ -192,7 +192,7 @@ function HighlightRow({
             onClick={() => onExplain(highlight.cfi, highlight.selectedText)}
           >
             <Lightbulb className="h-4 w-4 text-lav" />
-            Explain this
+            Ask about this
           </DropdownMenuItem>
           {highlight.sectionHref && (
             <>

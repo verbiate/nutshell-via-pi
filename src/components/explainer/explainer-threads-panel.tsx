@@ -37,6 +37,7 @@ import {
   MoreHorizontal,
   Trash2,
   Database,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
@@ -104,6 +105,9 @@ export interface ExplainerThreadsPanelProps {
   // (used to validate hrefs by basename + provided to ThreadView/MessageBubble);
   // onNavigateToHref reuses the reader's existing ToC navigation path.
   onNavigateToHref?: (href: string) => void;
+  // ponytail: CFI-precise deeplink for the discussion's originating passage
+  // (mirrors highlights). Falls back to section-level nav when no CFI.
+  onNavigateToCfi?: (cfi: string) => void;
   spineItems?: SpineItem[];
 }
 
@@ -116,6 +120,7 @@ export function ExplainerThreadsPanel({
   bookTxtTokens,
   contextWindow,
   onNavigateToHref,
+  onNavigateToCfi,
   spineItems,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
@@ -129,6 +134,13 @@ export function ExplainerThreadsPanel({
   // Sidebar keeps rendering behind the dimmed/blurred overlay (Radix blocks
   // pointer events), so closing the modal returns focus with state intact.
   const [poppedOut, setPoppedOut] = useState(false);
+  // ponytail: admin re-reroll streaming state. Reroll generates a NEW explainer
+  // version; the admin watches it stream, then sees "v{N} now live". Their own
+  // discussion stays pinned to its version (per the versioning rule).
+  const [rerolling, setRerolling] = useState(false);
+  const [rerollContent, setRerollContent] = useState("");
+  const [rerollPhase, setRerollPhase] = useState<"explaining" | "refining" | null>(null);
+  const [rerollResult, setRerollResult] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: StrictMode double-fire guard for the pendingRequest effect below.
   // Holds the last-processed request reference; the effect bails if the
@@ -252,6 +264,13 @@ export function ExplainerThreadsPanel({
               if (parsed.type === "status" && parsed.stage) {
                 setPhase(parsed.stage as "explaining" | "refining");
               }
+              if (parsed.type === "existing" && parsed.threadId) {
+                // ponytail: user already has a discussion for this context —
+                // reopen it instead of regenerating. Just navigate; the active-
+                // thread query loads its content.
+                newThreadId = parsed.threadId;
+                break;
+              }
               if (parsed.type === "chunk" && parsed.chunk) {
                 accumulated += parsed.chunk;
                 setInitialContent(accumulated);
@@ -343,6 +362,13 @@ export function ExplainerThreadsPanel({
   const navigateAndCloseModal = onNavigateToHref
     ? (href: string) => {
         onNavigateToHref(href);
+        setPoppedOut(false);
+      }
+    : undefined;
+  // ponytail: CFI-precise passage deeplink, mirrors navigateAndCloseModal.
+  const navigateCfiAndCloseModal = onNavigateToCfi
+    ? (cfi: string) => {
+        onNavigateToCfi(cfi);
         setPoppedOut(false);
       }
     : undefined;
@@ -478,12 +504,69 @@ export function ExplainerThreadsPanel({
     }
   }
 
+  async function handleReroll(explainerId: string) {
+    setRerolling(true);
+    setRerollContent("");
+    setRerollPhase(null);
+    setRerollResult(null);
+    try {
+      const res = await fetch(`/api/explainers/${explainerId}/reroll`, {
+        method: "POST",
+      });
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]" || !data) continue;
+          try {
+            const p = JSON.parse(data);
+            if (p.type === "error") {
+              console.error("[reroll] failed:", p.error);
+              break;
+            }
+            if (p.type === "status") setRerollPhase(p.stage as "explaining" | "refining");
+            if (p.type === "chunk") setRerollContent((c) => c + p.chunk);
+            if (p.type === "version") setRerollResult(p.version as number);
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+      // Refresh latestVersion on the active thread so the "newer version"
+      // indicator updates immediately.
+      queryClient.invalidateQueries({
+        queryKey: ["explainer-thread", activeThreadId],
+      });
+    } catch (err) {
+      console.error("[reroll] failed:", err);
+    } finally {
+      setRerolling(false);
+    }
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────
   // ponytail: during initial stream, activeData isn't loaded yet — derive the
   // thread type + passage text from the pendingRequest so the indicator can
   // render meaningfully before the server roundtrip completes.
   const activeThread = activeData?.thread as
-    | { type?: ThreadType; passageText?: string | null }
+    | {
+        type?: ThreadType;
+        passageText?: string | null;
+        passageCfi?: string | null;
+        sectionHref?: string | null;
+        initialCacheHit?: boolean | null;
+        latestVersion?: number;
+        explainer?: { id?: string; version?: number };
+      }
     | undefined;
   const threadType: ThreadType =
     activeThread?.type ?? pendingRequest?.type ?? "book";
@@ -491,6 +574,19 @@ export function ExplainerThreadsPanel({
     activeThread?.passageText ??
     (pendingRequest?.type === "passage" ? pendingRequest.text : null) ??
     null;
+  const threadPassageCfi: string | null = activeThread?.passageCfi ?? null;
+  const threadSectionHref: string | null = activeThread?.sectionHref ?? null;
+  // ponytail: admin-only metadata for the explainer badge / cache chip /
+  // newer-version indicator / regenerate action.
+  const adminMeta =
+    isAdmin && activeThread?.explainer
+      ? {
+          explainerId: activeThread.explainer.id!,
+          version: activeThread.explainer.version ?? 1,
+          latestVersion: activeThread.latestVersion ?? activeThread.explainer.version ?? 1,
+          initialCacheHit: activeThread.initialCacheHit ?? null,
+        }
+      : undefined;
 
   // ponytail: single render fn feeds both the sidebar slot and the pop-out
   // Dialog. State lives in this panel, so both views stay in sync by
@@ -514,27 +610,49 @@ export function ExplainerThreadsPanel({
           onBack={backToList}
           threadType={threadType}
           threadPassageText={threadPassageText}
+          threadPassageCfi={threadPassageCfi}
+          threadSectionHref={threadSectionHref}
           bookTxtTokens={bookTxtTokens}
           contextWindow={contextWindow}
           inModal={inModal}
           onPopOut={() => popOutThread()}
           onReturnToSidebar={returnToSidebar}
           onNavigateToHref={navigateAndCloseModal}
+          onNavigateToCfi={navigateCfiAndCloseModal}
           spineItems={spineItems}
+          adminMeta={adminMeta}
+          onReroll={handleReroll}
+          rerolling={rerolling}
+          rerollContent={rerollContent}
+          rerollPhase={rerollPhase}
+          rerollResult={rerollResult}
         />
       );
     }
     return (
-      <ListView
-        threads={threads}
-        loading={listLoading}
-        onSelect={selectThread}
-        onPopOut={popOutThread}
-        onDelete={handleDeleteThread}
-        onPurge={setThreadToPurge}
-        isAdmin={isAdmin}
-        emptyHint="Select text in the book and click 'Explain this' to start a discussion."
-      />
+      <div className="flex min-h-0 flex-1 flex-col gap-9">
+        <div className="px-12">
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => startThread({ type: "book" })}
+            disabled={streaming}
+          >
+            <Lightbulb />
+            New discussion
+          </Button>
+        </div>
+        <ListView
+          threads={threads}
+          loading={listLoading}
+          onSelect={selectThread}
+          onPopOut={popOutThread}
+          onDelete={handleDeleteThread}
+          onPurge={setThreadToPurge}
+          isAdmin={isAdmin}
+          emptyHint="Start a 'New discussion' about the whole book, or select text and click 'Ask about this' for a passage."
+        />
+      </div>
     );
   }
 
@@ -561,9 +679,11 @@ export function ExplainerThreadsPanel({
           <AlertDialogHeader>
             <AlertDialogTitle>Purge cached explainer?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes the shared explainer cache for this passage,
-              removing every reader&apos;s discussion thread and follow-up
-              messages. The next request will regenerate it.
+              This deletes this version of the shared explainer cache.
+              Discussions pinned to it move to the latest remaining version
+              (or are removed if no other version exists). New requests will
+              regenerate it. Prefer &quot;Regenerate&quot; to create a new version
+              without losing the old one.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -721,13 +841,22 @@ function ThreadView({
   onBack,
   threadType,
   threadPassageText,
+  threadPassageCfi,
+  threadSectionHref,
   bookTxtTokens,
   contextWindow,
   inModal,
   onPopOut,
   onReturnToSidebar,
   onNavigateToHref,
+  onNavigateToCfi,
   spineItems,
+  adminMeta,
+  onReroll,
+  rerolling,
+  rerollContent,
+  rerollPhase,
+  rerollResult,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -741,13 +870,27 @@ function ThreadView({
   onBack: () => void;
   threadType: ThreadType;
   threadPassageText: string | null;
+  threadPassageCfi?: string | null;
+  threadSectionHref?: string | null;
   bookTxtTokens?: number | null;
   contextWindow?: number;
   inModal?: boolean;
   onPopOut: () => void;
   onReturnToSidebar: () => void;
   onNavigateToHref?: (href: string) => void;
+  onNavigateToCfi?: (cfi: string) => void;
   spineItems?: SpineItem[];
+  adminMeta?: {
+    explainerId: string;
+    version: number;
+    latestVersion: number;
+    initialCacheHit: boolean | null;
+  };
+  onReroll?: (explainerId: string) => void;
+  rerolling?: boolean;
+  rerollContent?: string;
+  rerollPhase?: "explaining" | "refining" | null;
+  rerollResult?: number | null;
 }) {
   const spineHrefs = (spineItems ?? []).map((s) => s.href);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -887,6 +1030,63 @@ function ThreadView({
             {phaseLabel}
           </div>
         )}
+        {/*
+          ponytail: admin-only explainer provenance, co-located with the
+          explainer message it describes — version badge, cache hit/fresh,
+          newer-version note, the regenerate (re-reroll) action, and reroll
+          progress, tucked just above the first message. Regular users see a
+          normal chat with none of this.
+        */}
+        {adminMeta && !streamingInitial && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 pl-0.5 text-[10px] text-muted-foreground">
+            <Badge variant="outline" className="h-5 gap-1 px-1.5 font-normal">
+              <Database className="h-2.5 w-2.5" />
+              Explainer · v{adminMeta.version}
+            </Badge>
+            {adminMeta.initialCacheHit === true && <span>from cache</span>}
+            {adminMeta.initialCacheHit === false && <span>freshly generated</span>}
+            {adminMeta.version < adminMeta.latestVersion && (
+              <span className="text-amber-600 dark:text-amber-500">
+                newer v{adminMeta.latestVersion} available
+              </span>
+            )}
+            {onReroll && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() => onReroll(adminMeta.explainerId)}
+                disabled={!!rerolling}
+                title="Regenerate explainer (new version)"
+                aria-label="Regenerate explainer"
+              >
+                <RefreshCw className={cn("h-3 w-3", rerolling && "animate-spin")} />
+              </Button>
+            )}
+            {(rerolling || rerollResult !== null) && (
+              <div className="w-full pt-0.5">
+                {rerolling ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      {rerollPhase === "explaining"
+                        ? "Explaining the book…"
+                        : rerollPhase === "refining"
+                        ? "Refining the explanation…"
+                        : "Regenerating explainer…"}
+                    </div>
+                    {rerollContent && <p className="line-clamp-3">{rerollContent}</p>}
+                  </div>
+                ) : (
+                  <p className="text-emerald-600 dark:text-emerald-500">
+                    ✓ v{rerollResult} now live for new discussions
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <MessageBubble
           role="assistant"
           content={initialContent}
@@ -908,35 +1108,76 @@ function ThreadView({
         ))}
       </div>
 
-      <div className="border-t border-border p-2 flex items-end gap-2">
-        <Textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask a follow-up…"
-          className="text-sm min-h-[36px] max-h-[100px] resize-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend();
-            }
-          }}
-          disabled={streaming || streamingInitial}
-        />
-        {streaming ? (
-          <Button size="icon" variant="outline" onClick={onStop} title="Stop">
-            <Square className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <Button
-            size="icon"
-            onClick={onSend}
-            disabled={!input.trim() || streamingInitial}
-            title="Send"
-          >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
-        )}
+      <div className="border-t border-border p-2 flex flex-col gap-1.5">
+        {/*
+          ponytail: "Context" — what each follow-up includes, anchored to the
+          composer. The book is always present; the originating passage
+          (CFI-precise deeplink, mirroring highlights) or section (href deeplink)
+          is shown when present. Flat chip row so future "add context"
+          attachments drop in as siblings.
+        */}
+        <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="font-medium uppercase tracking-wide">Context</span>
+          <span className="rounded bg-muted px-1.5 py-0.5">This book</span>
+          {threadType === "passage" && threadPassageText && (
+            <button
+              type="button"
+              className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
+              title={threadPassageText}
+              onClick={() =>
+                threadPassageCfi && onNavigateToCfi
+                  ? onNavigateToCfi(threadPassageCfi)
+                  : threadSectionHref && onNavigateToHref
+                    ? onNavigateToHref(threadSectionHref)
+                    : undefined
+              }
+              disabled={!threadPassageCfi || !onNavigateToCfi}
+            >
+              “{threadPassageText.slice(0, 60)}…”
+            </button>
+          )}
+          {threadType === "section" && threadSectionHref && (
+            <button
+              type="button"
+              className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
+              title={threadSectionHref}
+              onClick={() => onNavigateToHref?.(threadSectionHref)}
+              disabled={!onNavigateToHref}
+            >
+              {threadSectionHref}
+            </button>
+          )}
+        </div>
+        <div className="flex items-end gap-2">
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask a follow-up…"
+            className="text-sm min-h-[36px] max-h-[100px] resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+            disabled={streaming || streamingInitial}
+          />
+          {streaming ? (
+            <Button size="icon" variant="outline" onClick={onStop} title="Stop">
+              <Square className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              onClick={onSend}
+              disabled={!input.trim() || streamingInitial}
+              title="Send"
+            >
+              <Send className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

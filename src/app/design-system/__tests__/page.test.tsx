@@ -220,7 +220,7 @@ describe("Design system page", () => {
       expect(html).toContain('aria-label="Contents"');
       expect(html).toContain('aria-label="Bookmarks"');
       expect(html).toContain('aria-label="Notes + Highlights"');
-      expect(html).toContain('aria-label="Explainers"');
+      expect(html).toContain('aria-label="Discussions"');
       expect(html).toContain('aria-label="Book Settings"');
     });
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/server/db", () => ({
   db: {
     explainer: {
-      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
     },
     promptTemplate: {
@@ -32,9 +32,10 @@ vi.mock("@likecoin/epub-ts", () => ({
 import { db } from "@/server/db";
 import { storage } from "@/server/storage/local";
 import {
-  getExplainer,
+  getLatestExplainer,
   createExplainer,
   computeContentHash,
+  computeExplainerContentHash,
 } from "@/server/services/explainer";
 import { fillTemplate } from "@/server/services/prompt-builder";
 
@@ -64,9 +65,6 @@ describe("EXP-05/06: Explainer cache", () => {
     });
 
     it("differs when extraSalt is supplied vs omitted", () => {
-      // ponytail: two-pass book explainers share the book template version
-      // with one-pass but must not collide in the cache. extraSalt encodes the
-      // pass-2 template version so the rows diverge.
       const h1 = computeContentHash("hello", 1, "book");
       const h2 = computeContentHash("hello", 1, "book", undefined, "twoPass:3");
       expect(h1).not.toBe(h2);
@@ -79,31 +77,94 @@ describe("EXP-05/06: Explainer cache", () => {
     });
   });
 
-  describe("getExplainer", () => {
-    it("queries composite unique key", async () => {
-      vi.mocked(db.explainer.findUnique).mockResolvedValue(null);
-      await getExplainer({
+  describe("computeExplainerContentHash (single source of truth)", () => {
+    // ponytail: the whole point of this helper is that the writer (generation)
+    // and reader (lookup) can never drift. Pin the formula so a refactor that
+    // breaks parity fails loudly here instead of silently always-missing.
+    it("omits bookMd5 for book type (sourceText IS the book)", () => {
+      const withoutMd5 = computeExplainerContentHash({
+        type: "book",
+        sourceText: "x",
+        bookMd5: "md5",
+        promptVersion: 1,
+      });
+      const reference = computeContentHash("x", 1, "book");
+      expect(withoutMd5).toBe(reference);
+    });
+
+    it("includes bookMd5 for section and passage (same text, different book → different row)", () => {
+      const a = computeExplainerContentHash({
+        type: "passage",
+        sourceText: "x",
+        bookMd5: "md5-a",
+        promptVersion: 1,
+      });
+      const b = computeExplainerContentHash({
+        type: "passage",
+        sourceText: "x",
+        bookMd5: "md5-b",
+        promptVersion: 1,
+      });
+      expect(a).not.toBe(b);
+    });
+
+    it("assembles twoPass + metadata salts as 'twoPass:N|meta:M'", () => {
+      const withSalts = computeExplainerContentHash({
+        type: "book",
+        sourceText: "x",
+        bookMd5: "md5",
+        promptVersion: 1,
+        twoPassVersion: 3,
+        metadataVersion: "2026-01-01",
+      });
+      const reference = computeContentHash(
+        "x",
+        1,
+        "book",
+        undefined,
+        "twoPass:3|meta:2026-01-01"
+      );
+      expect(withSalts).toBe(reference);
+    });
+
+    it("omits the salt entirely when neither twoPass nor metadata apply", () => {
+      const noSalt = computeExplainerContentHash({
+        type: "book",
+        sourceText: "x",
+        bookMd5: "md5",
+        promptVersion: 1,
+      });
+      const reference = computeContentHash("x", 1, "book");
+      expect(noSalt).toBe(reference);
+    });
+  });
+
+  describe("getLatestExplainer", () => {
+    it("queries the 4-axis key ordered by version desc (versioned cache)", async () => {
+      vi.mocked(db.explainer.findFirst).mockResolvedValue(null);
+      await getLatestExplainer({
         contentHash: "abc",
         language: "en",
         contentType: "book",
         tier: "regular",
       });
-      expect(db.explainer.findUnique).toHaveBeenCalledWith({
+      expect(db.explainer.findFirst).toHaveBeenCalledWith({
         where: {
-          contentHash_language_contentType_tier: {
-            contentHash: "abc",
-            language: "en",
-            contentType: "book",
-            tier: "regular",
-          },
+          contentHash: "abc",
+          language: "en",
+          contentType: "book",
+          tier: "regular",
         },
+        orderBy: { version: "desc" },
       });
     });
   });
 
-  describe("createExplainer", () => {
-    it("creates explainer record", async () => {
-      vi.mocked(db.explainer.create).mockResolvedValue({ id: "e1" } as any);
+  describe("createExplainer (versioning)", () => {
+    it("sets version = max(existing) + 1 for the key", async () => {
+      // ponytail: a re-reroll must NOT overwrite — it creates the next version.
+      vi.mocked(db.explainer.findFirst).mockResolvedValue({ version: 4 } as any);
+      vi.mocked(db.explainer.create).mockResolvedValue({ id: "e1", version: 5 } as any);
       await createExplainer({
         contentHash: "abc",
         language: "en",
@@ -117,8 +178,25 @@ describe("EXP-05/06: Explainer cache", () => {
         data: expect.objectContaining({
           contentHash: "abc",
           content: "explanation",
-          modelId: "google/gemini-2.0-flash-001",
+          version: 5,
         }),
+      });
+    });
+
+    it("starts at version 1 when no existing row exists", async () => {
+      vi.mocked(db.explainer.findFirst).mockResolvedValue(null);
+      vi.mocked(db.explainer.create).mockResolvedValue({ id: "e1", version: 1 } as any);
+      await createExplainer({
+        contentHash: "abc",
+        language: "en",
+        contentType: "book",
+        tier: "regular",
+        content: "explanation",
+        modelId: "m",
+        promptVersion: 1,
+      });
+      expect(db.explainer.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ version: 1 }),
       });
     });
   });
@@ -129,24 +207,19 @@ describe("EXP-03: Passage explainer", () => {
     vi.clearAllMocks();
   });
 
-  it("getExplainer accepts passage contentType", async () => {
-    vi.mocked(db.explainer.findUnique).mockResolvedValue(null);
-    await getExplainer({
+  it("getLatestExplainer accepts passage contentType", async () => {
+    vi.mocked(db.explainer.findFirst).mockResolvedValue(null);
+    await getLatestExplainer({
       contentHash: "abc",
       language: "en",
       contentType: "passage",
       tier: "regular",
     });
-    expect(db.explainer.findUnique).toHaveBeenCalledWith({
-      where: {
-        contentHash_language_contentType_tier: {
-          contentHash: "abc",
-          language: "en",
-          contentType: "passage",
-          tier: "regular",
-        },
-      },
-    });
+    expect(db.explainer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ contentType: "passage" }),
+      })
+    );
   });
 });
 

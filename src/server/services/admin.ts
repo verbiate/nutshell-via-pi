@@ -208,6 +208,29 @@ export async function purgeExplainerCache(adminId: string, explainerId: string) 
     throw new Error("Explainer not found");
   }
 
+  // ponytail: under versioning, deleting one version would cascade-delete every
+  // discussion pinned to it. If a newer/other version of the same cache key
+  // exists, reassign those discussions to it first so readers keep their
+  // conversation (just on the surviving version). If no other version exists,
+  // the threads cascade as before — purge is the destructive nuke; reroll is
+  // the gentle tool.
+  const replacement = await db.explainer.findFirst({
+    where: {
+      contentHash: explainer.contentHash,
+      language: explainer.language,
+      contentType: explainer.contentType,
+      tier: explainer.tier,
+      NOT: { id: explainer.id },
+    },
+    orderBy: { version: "desc" },
+  });
+  if (replacement) {
+    await db.explainerThread.updateMany({
+      where: { explainerId: explainer.id },
+      data: { explainerId: replacement.id },
+    });
+  }
+
   await db.explainer.delete({ where: { id: explainerId } });
 
   await auditLog({
@@ -220,6 +243,7 @@ export async function purgeExplainerCache(adminId: string, explainerId: string) 
       language: explainer.language,
       contentType: explainer.contentType,
       tier: explainer.tier,
+      version: explainer.version,
     }),
   });
 }
