@@ -501,3 +501,18 @@
   background-color: #fcd34d;
   color: #78350f;
 }
+
+/* ponytail: transient "you came from here" flash when a discussion's context
+   chip deeplinks back to its source passage. Applied to the epub.js annotation
+   rect (rendered in the parent doc, not the iframe). flashCfi removes the
+   annotation from the rendition after ~2.6s. The CSS animation overrides the
+   inline base fill while playing and holds the faded-out state (forwards). */
+.br-flash {
+  animation: br-flash-pulse 2.6s ease-out forwards;
+}
+@keyframes br-flash-pulse {
+  0% { fill: rgba(250, 204, 21, 0.9); }
+  15% { fill: rgba(250, 204, 21, 0.95); }
+  55% { fill: rgba(250, 204, 21, 0.45); }
+  100% { fill: rgba(250, 204, 21, 0); }
+}

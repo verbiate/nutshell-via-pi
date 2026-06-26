@@ -4,28 +4,21 @@ import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
 import {
   streamInitialThreadResponse,
+  streamBlankFirstTurn,
   listThreadsForBook,
 } from "@/server/services/explainer-threads";
 
 /**
  * POST /api/explainers/threads
  *
- * Body: {
- *   bookId: string,
- *   type: "passage" | "section" | "book",
- *   passageText?: string,  // required for passage
- *   passageCfi?: string,
- *   sectionHref?: string,  // required for section
- *   language?: string
- * }
+ * Two modes:
+ *  1. Seeded ("Ask about this"): { bookId, type, passageText?/sectionHref?, language? }
+ *     — generates (or serves cached) the explainer as the first response.
+ *  2. Blank ("New discussion"):  { bookId, type: "book", message, language? }
+ *     — creates a thread with NO explainer and answers the user's opening
+ *       question with the book as context. Emits `thread` then `chunk`s.
  *
- * Returns SSE stream. Emits chunks for the initial response, then a final
- * `thread` event with the threadId. Cache hits emit a single chunk with the
- * full cached content followed by the thread event.
- *
- * GET /api/explainers/threads?bookId=X
- *
- * Returns list of user's threads for a book.
+ * GET /api/explainers/threads?bookId=X — list user's threads for a book.
  */
 export async function POST(request: Request) {
   try {
@@ -38,6 +31,7 @@ export async function POST(request: Request) {
       passageCfi,
       sectionHref,
       language,
+      message,
     } = body as {
       bookId?: string;
       type?: "passage" | "section" | "book";
@@ -45,6 +39,7 @@ export async function POST(request: Request) {
       passageCfi?: string;
       sectionHref?: string;
       language?: string;
+      message?: string;
     };
 
     if (!bookId || !type) {
@@ -53,6 +48,8 @@ export async function POST(request: Request) {
     if (!["passage", "section", "book"].includes(type)) {
       return sseError("type must be passage, section, or book", 400);
     }
+    // Seeded-mode field validation (runs before the access check so a bad
+    // request is 400, not 403 — matches existing endpoint contract).
     if (type === "passage" && !passageText) {
       return sseError("passageText is required for passage type", 400);
     }
@@ -69,6 +66,51 @@ export async function POST(request: Request) {
     // tier's API key and used its model — wrong since admin/pro/regular each
     // have their own OpenRouterConfig row.
     const tier = user.role as "regular" | "pro" | "admin";
+
+    // Blank "New discussion" first turn — no explainer generation.
+    if (message !== undefined) {
+      if (typeof message !== "string" || !message.trim()) {
+        return sseError("message must be a non-empty string", 400);
+      }
+      if (type !== "book") {
+        return sseError("blank discussions are book-level only", 400);
+      }
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of streamBlankFirstTurn({
+              userId: user.id,
+              bookId,
+              language: preferredLanguage,
+              tier,
+              userMessage: message,
+            })) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+              );
+              if (event.type === "error") break;
+            }
+            controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+            controller.close();
+          } catch (err: any) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", error: err.message || "Generation failed" })}\n\n`
+              )
+            );
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

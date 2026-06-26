@@ -1274,6 +1274,26 @@ export function ReaderClient({
     );
   }, [spineItems, toc, currentHref, panel.bookTitle]);
 
+  // ponytail: basename → ToC label map for discussion context chips. A section
+  // discussion's title isn't persisted server-side, so reopened threads resolve
+  // their label here from the live ToC. Built once per spine/toc change.
+  const sectionLabelByBaseHref = useMemo(() => {
+    const flat = buildSpinePlaylist(spineItems, toc);
+    const map: Record<string, string> = {};
+    for (const s of flat) {
+      const base = s.href.split("/").pop()?.split("#")[0];
+      if (base && !(base in map)) map[base] = s.label;
+    }
+    return map;
+  }, [spineItems, toc]);
+  const resolveSectionLabel = useCallback(
+    (href: string) => {
+      const base = href.split("/").pop()?.split("#")[0];
+      return base ? sectionLabelByBaseHref[base] : undefined;
+    },
+    [sectionLabelByBaseHref]
+  );
+
   const skeletonVisible =
     entering ||
     swapPhase === "closing" ||
@@ -1521,9 +1541,12 @@ export function ReaderClient({
                 }
                 spineItems={spineItems}
                 onNavigateToCfi={(cfi) => {
-                  handleNavigateToCfi(cfi);
+                  // ponytail: jump to the source passage AND briefly flash it so
+                  // the reader can spot what they'd asked about.
+                  viewerRef.current?.flashCfi(cfi);
                   setActiveTool(null);
                 }}
+                resolveSectionLabel={resolveSectionLabel}
               />
             ),
             type: (

@@ -561,7 +561,10 @@ export async function getThreadWithMessages(threadId: string, userId: string) {
         select: { version: true },
       })
     : null;
-  return { ...thread, latestVersion: latest?.version ?? thread.explainer.version };
+  return {
+    ...thread,
+    latestVersion: latest?.version ?? thread.explainer?.version ?? 1,
+  };
 }
 
 export interface FollowupEvent {
@@ -616,11 +619,14 @@ export async function* streamFollowup(params: {
   // so we can rebuild the prompt without re-reading the book.
   const systemPrompt = await rebuildSystemPrompt(thread);
 
-  // Compose messages array
-  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt + FOLLOWUP_CITATION_SUFFIX },
-    { role: "assistant", content: thread.explainer.content },
-  ];
+  // Compose messages array. The explainer seed is optional — blank
+  // discussions (started via "New discussion") have no cached first response,
+  // so the model just sees system context + the conversation so far.
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] =
+    [{ role: "system", content: systemPrompt + FOLLOWUP_CITATION_SUFFIX }];
+  if (thread.explainer) {
+    messages.push({ role: "assistant", content: thread.explainer.content });
+  }
   for (const m of thread.messages) {
     if (m.role === "user" || m.role === "assistant") {
       messages.push({ role: m.role, content: m.content });
@@ -708,4 +714,83 @@ async function rebuildSystemPrompt(thread: {
   const { buildBookPrompt } = await import("./prompt-builder");
   const data = await buildBookPrompt(thread.bookId, thread.language);
   return data.prompt;
+}
+
+export interface BlankFirstTurnEvent {
+  type: "thread" | "chunk" | "error" | "done";
+  threadId?: string;
+  chunk?: string;
+  error?: string;
+}
+
+/**
+ * Start a fresh, user-initiated discussion: create a thread with NO explainer
+ * seed, then answer the user's opening question with the full book as system
+ * context. Used by the "New discussion" button so clicking it never fires an
+ * explainer-generation request — the conversation begins with the user's own
+ * question. Emits the new threadId up front (so the client can pin it), then
+ * streams the assistant reply.
+ */
+export async function* streamBlankFirstTurn(params: {
+  userId: string;
+  bookId: string;
+  language: string;
+  tier: "regular" | "pro" | "admin";
+  userMessage: string;
+}): AsyncGenerator<BlankFirstTurnEvent> {
+  const { userId, bookId, language, tier, userMessage } = params;
+
+  // Blank book-level discussion: no explainer, no cache key, no passage/section.
+  const thread = await db.explainerThread.create({
+    data: { userId, bookId, type: "book", language, tier },
+  });
+  yield { type: "thread", threadId: thread.id };
+
+  // Persist the opening question immediately (intent survives a stream failure).
+  await db.explainerMessage.create({
+    data: { threadId: thread.id, role: "user", content: userMessage },
+  });
+
+  // System prompt = full-book context (the same template follow-ups reuse).
+  const { buildBookPrompt } = await import("./prompt-builder");
+  const promptData = await buildBookPrompt(bookId, language);
+
+  const { streamChat, getOpenRouterConfig } = await import("./openrouter");
+  const { apiKey, model } = await getOpenRouterConfig(tier);
+  if (!apiKey) {
+    yield { type: "error", error: "OpenRouter API key not configured" };
+    return;
+  }
+
+  const messages: { role: "system" | "user"; content: string }[] = [
+    { role: "system", content: promptData.prompt + FOLLOWUP_CITATION_SUFFIX },
+    { role: "user", content: userMessage },
+  ];
+
+  let fullContent = "";
+  try {
+    for await (const chunk of streamChat({ apiKey, model, messages })) {
+      fullContent += chunk;
+      yield { type: "chunk", chunk };
+    }
+  } catch (err: any) {
+    const message = err instanceof OpenRouterError ? err.message : "Generation failed";
+    yield { type: "error", error: message };
+    return;
+  }
+
+  await db.explainerMessage.create({
+    data: {
+      threadId: thread.id,
+      role: "assistant",
+      content: fullContent,
+      modelId: model,
+    },
+  });
+  await db.explainerThread.update({
+    where: { id: thread.id },
+    data: { updatedAt: new Date() },
+  });
+
+  yield { type: "done" };
 }

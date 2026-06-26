@@ -29,7 +29,6 @@ import {
 import {
   ArrowLeft,
   Send,
-  Square,
   Lightbulb,
   Loader2,
   Maximize2,
@@ -68,7 +67,7 @@ type ThreadPreview = {
   sectionHref: string | null;
   language: string;
   updatedAt: string;
-  explainer: { id: string; content: string; modelId: string };
+  explainer?: { id: string; content: string; modelId: string };
   _count: { messages: number };
 };
 
@@ -108,6 +107,9 @@ export interface ExplainerThreadsPanelProps {
   // ponytail: CFI-precise deeplink for the discussion's originating passage
   // (mirrors highlights). Falls back to section-level nav when no CFI.
   onNavigateToCfi?: (cfi: string) => void;
+  // ponytail: resolve a section href to its ToC label, for discussions reopened
+  // after the click-time title is gone (the title isn't persisted server-side).
+  resolveSectionLabel?: (href: string) => string | undefined;
   spineItems?: SpineItem[];
 }
 
@@ -121,6 +123,7 @@ export function ExplainerThreadsPanel({
   contextWindow,
   onNavigateToHref,
   onNavigateToCfi,
+  resolveSectionLabel,
   spineItems,
 }: ExplainerThreadsPanelProps) {
   const queryClient = useQueryClient();
@@ -141,6 +144,24 @@ export function ExplainerThreadsPanel({
   const [rerollContent, setRerollContent] = useState("");
   const [rerollPhase, setRerollPhase] = useState<"explaining" | "refining" | null>(null);
   const [rerollResult, setRerollResult] = useState<number | null>(null);
+  // ponytail: draft mode for "New discussion" — the button opens an empty
+  // composer WITHOUT firing an explainer request. The thread row is only
+  // created (server-side) when the user sends their opening question, which the
+  // book answers with full-book context. Lets a user start fresh from their own
+  // question instead of a generated explainer.
+  const [drafting, setDrafting] = useState(false);
+  // ponytail: click-time context captured so the Context chips render
+  // IMMEDIATELY (during generation), before the server thread row loads. Holds
+  // the section's ToC title too — which isn't persisted server-side. Cleared
+  // on back/list-select so a reopened thread falls back to activeThread +
+  // resolveSectionLabel.
+  const [localContext, setLocalContext] = useState<{
+    type: ThreadType;
+    passageText: string | null;
+    passageCfi: string | null;
+    sectionHref: string | null;
+    sectionTitle: string | null;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: StrictMode double-fire guard for the pendingRequest effect below.
   // Holds the last-processed request reference; the effect bails if the
@@ -184,7 +205,8 @@ export function ExplainerThreadsPanel({
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (activeData?.thread) {
-      setInitialContent(activeData.thread.explainer.content);
+      // explainer is optional (blank "New discussion" threads have no seed).
+      setInitialContent(activeData.thread.explainer?.content ?? "");
       setLocalMessages(
         activeData.thread.messages
           ?.filter((m: any) => m.role === "user" || m.role === "assistant")
@@ -207,6 +229,13 @@ export function ExplainerThreadsPanel({
       setStreamingInitial(true);
       setStreaming(true);
       setPhase(null);
+      setLocalContext({
+        type: request.type,
+        passageText: request.type === "passage" ? request.text : null,
+        passageCfi: request.type === "passage" ? request.cfi : null,
+        sectionHref: request.type === "section" ? request.sectionHref : null,
+        sectionTitle: request.type === "section" ? request.sectionTitle : null,
+      });
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -326,6 +355,8 @@ export function ExplainerThreadsPanel({
     setActiveThreadId(id);
     setInitialContent("");
     setLocalMessages([]);
+    setLocalContext(null);
+    setDrafting(false);
   }
 
   function backToList() {
@@ -333,6 +364,29 @@ export function ExplainerThreadsPanel({
     setActiveThreadId(null);
     setInitialContent("");
     setLocalMessages([]);
+    setLocalContext(null);
+    setDrafting(false);
+  }
+
+  // ponytail: open a blank "New discussion" — no API call. The thread is
+  // created only when the user sends their opening question (sendDraftMessage).
+  // Book is the in-context subject, so threadType resolves to "book" and the
+  // context chip shows "This book".
+  function startDraft() {
+    if (streaming) return;
+    setActiveThreadId(null);
+    setInitialContent("");
+    setLocalMessages([]);
+    setStreamingInitial(false);
+    setPhase(null);
+    setLocalContext({
+      type: "book",
+      passageText: null,
+      passageCfi: null,
+      sectionHref: null,
+      sectionTitle: null,
+    });
+    setDrafting(true);
   }
 
   // ponytail: pop a thread into the modal. Called from ThreadView's header
@@ -457,8 +511,89 @@ export function ExplainerThreadsPanel({
     }
   }
 
-  function stop() {
-    abortRef.current?.abort();
+  // ponytail: the opening turn of a blank "New discussion". POSTs {message}
+  // to the threads endpoint, which creates the thread (no explainer) and
+  // streams the book's answer. The threadId arrives in the stream; we pin
+  // activeThreadId only AFTER streaming completes to avoid the active-thread
+  // query racing in and clobbering the in-flight assistant bubble.
+  async function sendDraftMessage() {
+    const text = input.trim();
+    if (!text || streaming || !drafting) return;
+
+    const assistantIndex = localMessages.length + 1;
+    const nextMessages = [...localMessages, { role: "user" as const, content: text }];
+    setLocalMessages([...nextMessages, { role: "assistant", content: "" }]);
+    setInput("");
+    setStreaming(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let newThreadId: string | null = null;
+
+    try {
+      const res = await fetch("/api/explainers/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId, type: "book", message: text }),
+        signal: controller.signal,
+      });
+
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let acc = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          if (!data) continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === "error") {
+              console.error("Draft first turn failed:", parsed.error);
+              setLocalMessages((prev) =>
+                prev.filter((_, i) => i !== assistantIndex)
+              );
+              return;
+            }
+            if (parsed.type === "thread" && parsed.threadId) {
+              newThreadId = parsed.threadId;
+            }
+            if (parsed.type === "chunk" && parsed.chunk) {
+              acc += parsed.chunk;
+              const snapshot = acc;
+              setLocalMessages((prev) =>
+                prev.map((m, i) =>
+                  i === assistantIndex ? { ...m, content: snapshot } : m
+                )
+              );
+            }
+          } catch {
+            // Skip malformed
+          }
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["explainer-threads", bookId] });
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        console.error("Draft first turn failed:", err);
+      }
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
+      // Pin the thread now that streaming is done — the active-thread query
+      // loads the fully-persisted conversation (no race on the assistant msg).
+      setDrafting(false);
+      if (newThreadId) setActiveThreadId(newThreadId);
+    }
   }
 
   async function handleDeleteThread(id: string) {
@@ -483,6 +618,7 @@ export function ExplainerThreadsPanel({
   }
 
   async function handlePurgeCache(thread: ThreadPreview) {
+    if (!thread.explainer) return;
     try {
       const res = await fetch(`/api/explainers/${thread.explainer.id}`, {
         method: "DELETE",
@@ -569,13 +705,23 @@ export function ExplainerThreadsPanel({
       }
     | undefined;
   const threadType: ThreadType =
-    activeThread?.type ?? pendingRequest?.type ?? "book";
+    activeThread?.type ?? localContext?.type ?? pendingRequest?.type ?? "book";
   const threadPassageText: string | null =
     activeThread?.passageText ??
+    localContext?.passageText ??
     (pendingRequest?.type === "passage" ? pendingRequest.text : null) ??
     null;
-  const threadPassageCfi: string | null = activeThread?.passageCfi ?? null;
-  const threadSectionHref: string | null = activeThread?.sectionHref ?? null;
+  const threadPassageCfi: string | null =
+    activeThread?.passageCfi ?? localContext?.passageCfi ?? null;
+  const threadSectionHref: string | null =
+    activeThread?.sectionHref ?? localContext?.sectionHref ?? null;
+  // ponytail: prefer the click-time ToC title (localContext, shown immediately),
+  // then the ToC resolver (reopened threads), then the raw href as last resort.
+  const threadSectionLabel: string =
+    localContext?.sectionTitle ??
+    (threadSectionHref ? resolveSectionLabel?.(threadSectionHref) : undefined) ??
+    threadSectionHref ??
+    "";
   // ponytail: admin-only metadata for the explainer badge / cache chip /
   // newer-version indicator / regenerate action.
   const adminMeta =
@@ -595,7 +741,7 @@ export function ExplainerThreadsPanel({
   // Plain function (not useCallback) — closes over fresh state every render,
   // and no memoized child needs a stable reference.
   function renderPanelContent(inModal: boolean) {
-    if (activeThreadId || streamingInitial) {
+    if (activeThreadId || streamingInitial || drafting) {
       return (
         <ThreadView
           initialContent={initialContent}
@@ -605,13 +751,16 @@ export function ExplainerThreadsPanel({
           input={input}
           setInput={setInput}
           streaming={streaming}
-          onSend={sendFollowup}
-          onStop={stop}
+          onSend={drafting ? sendDraftMessage : sendFollowup}
+          composerPlaceholder={
+            drafting ? "Ask anything about this book…" : "Ask a follow-up…"
+          }
           onBack={backToList}
           threadType={threadType}
           threadPassageText={threadPassageText}
           threadPassageCfi={threadPassageCfi}
           threadSectionHref={threadSectionHref}
+          threadSectionLabel={threadSectionLabel}
           bookTxtTokens={bookTxtTokens}
           contextWindow={contextWindow}
           inModal={inModal}
@@ -635,7 +784,7 @@ export function ExplainerThreadsPanel({
           <Button
             variant="outline"
             className="w-full gap-2"
-            onClick={() => startThread({ type: "book" })}
+            onClick={startDraft}
             disabled={streaming}
           >
             <Lightbulb />
@@ -651,6 +800,7 @@ export function ExplainerThreadsPanel({
           onPurge={setThreadToPurge}
           isAdmin={isAdmin}
           emptyHint="Start a 'New discussion' about the whole book, or select text and click 'Ask about this' for a passage."
+          resolveSectionLabel={resolveSectionLabel}
         />
       </div>
     );
@@ -714,6 +864,7 @@ function ListView({
   onPurge,
   isAdmin,
   emptyHint,
+  resolveSectionLabel,
 }: {
   threads: ThreadPreview[];
   loading: boolean;
@@ -723,6 +874,7 @@ function ListView({
   onPurge: (thread: ThreadPreview) => void;
   isAdmin: boolean;
   emptyHint: string;
+  resolveSectionLabel?: (href: string) => string | undefined;
 }) {
   if (loading) {
     return (
@@ -789,7 +941,7 @@ function ListView({
                 {t.passageText
                   ? t.passageText.slice(0, 120)
                   : t.sectionHref
-                  ? t.sectionHref
+                  ? resolveSectionLabel?.(t.sectionHref) ?? t.sectionHref
                   : "Whole book"}
               </p>
               <DropdownMenu>
@@ -812,7 +964,7 @@ function ListView({
                     <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     Delete
                   </DropdownMenuItem>
-                  {isAdmin && (
+                  {isAdmin && t.explainer && (
                     <DropdownMenuItem onClick={() => onPurge(t)}>
                       <Database className="h-3.5 w-3.5 text-destructive" />
                       Purge cached explainer (admin)
@@ -837,12 +989,13 @@ function ThreadView({
   setInput,
   streaming,
   onSend,
-  onStop,
+  composerPlaceholder,
   onBack,
   threadType,
   threadPassageText,
   threadPassageCfi,
   threadSectionHref,
+  threadSectionLabel,
   bookTxtTokens,
   contextWindow,
   inModal,
@@ -866,12 +1019,13 @@ function ThreadView({
   setInput: (v: string) => void;
   streaming: boolean;
   onSend: () => void;
-  onStop: () => void;
+  composerPlaceholder?: string;
   onBack: () => void;
   threadType: ThreadType;
   threadPassageText: string | null;
   threadPassageCfi?: string | null;
   threadSectionHref?: string | null;
+  threadSectionLabel?: string;
   bookTxtTokens?: number | null;
   contextWindow?: number;
   inModal?: boolean;
@@ -900,14 +1054,14 @@ function ThreadView({
   }, [initialContent, messages]);
 
   // ponytail: autofocus the composer when rendered in the pop-out modal.
-  // Covers both cases: modal opens while idle (focus immediately), and modal
-  // opens during streaming (effect re-fires when streaming ends → focus then).
+  // ponytail: focus the composer when a discussion opens (mount) and whenever a
+  // generation finishes, so the user can immediately compose their next
+  // question. Fires in the sidebar AND the pop-out modal. The textarea is never
+  // disabled, so the cursor is always available even mid-generation.
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (inModal && !streaming && !streamingInitial) {
-      inputRef.current?.focus();
-    }
-  }, [inModal, streaming, streamingInitial]);
+    inputRef.current?.focus();
+  }, [streaming, streamingInitial]);
 
   // ponytail: phase label only matters while the user is staring at an empty
   // (or growing) bubble. "Explaining" = hidden pass 1 running, nothing shown
@@ -1087,13 +1241,18 @@ function ThreadView({
           </div>
         )}
 
-        <MessageBubble
-          role="assistant"
-          content={initialContent}
-          pulsing={streamingInitial && !initialContent}
-          spineHrefs={spineHrefs}
-          onNavigateToHref={onNavigateToHref}
-        />
+        {/* Initial explainer response (blank "New discussion" threads have
+            no explainer seed — skip the bubble entirely so the conversation
+            starts at the user's own first message). */}
+        {(initialContent || streamingInitial) && (
+          <MessageBubble
+            role="assistant"
+            content={initialContent}
+            pulsing={streamingInitial && !initialContent}
+            spineHrefs={spineHrefs}
+            onNavigateToHref={onNavigateToHref}
+          />
+        )}
 
         {/* Follow-up messages */}
         {messages.map((m, i) => (
@@ -1140,11 +1299,11 @@ function ThreadView({
             <button
               type="button"
               className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
-              title={threadSectionHref}
+              title={threadSectionLabel || threadSectionHref}
               onClick={() => onNavigateToHref?.(threadSectionHref)}
               disabled={!onNavigateToHref}
             >
-              {threadSectionHref}
+              {threadSectionLabel || threadSectionHref}
             </button>
           )}
         </div>
@@ -1153,7 +1312,7 @@ function ThreadView({
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a follow-up…"
+            placeholder={composerPlaceholder ?? "Ask a follow-up…"}
             className="text-sm min-h-[36px] max-h-[100px] resize-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -1161,22 +1320,20 @@ function ThreadView({
                 onSend();
               }
             }}
-            disabled={streaming || streamingInitial}
           />
-          {streaming ? (
-            <Button size="icon" variant="outline" onClick={onStop} title="Stop">
-              <Square className="h-3.5 w-3.5" />
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              onClick={onSend}
-              disabled={!input.trim() || streamingInitial}
-              title="Send"
-            >
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          {/*
+            ponytail: the composer is NEVER disabled (so the user can draft
+            their next question while a response streams); the Send button
+            carries the disabled state instead — busy or empty.
+          */}
+          <Button
+            size="icon"
+            onClick={onSend}
+            disabled={streaming || streamingInitial || !input.trim()}
+            title="Send"
+          >
+            <Send className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
     </div>

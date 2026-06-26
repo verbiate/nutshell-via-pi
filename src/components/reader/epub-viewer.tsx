@@ -375,6 +375,12 @@ export interface EpubViewerHandle {
   getCurrentCfi: () => string | null;
   clearSelection: () => void;
   addHighlight: (cfi: string, color: string) => void;
+  /**
+   * Navigate to a CFI and briefly emphasize its range (yellow pulse that fades).
+   * Used by a discussion's context chip to return the reader to the source
+   * passage and make it easy to spot.
+   */
+  flashCfi: (cfi: string) => Promise<void>;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
   getSectionText: () => string;
@@ -631,6 +637,42 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           // color is required — callers always pass a user-chosen swatch.
           { fill: highlightFill(color) }
         );
+      },
+      flashCfi: async (cfi: string) => {
+        // ponytail: jump to the range, then overlay a transient `.br-flash`
+        // annotation (CSS pulse in globals.css) so the source passage stands
+        // out. Add once immediately (same-section) and again on the next
+        // "rendered" (cross-section); remove from the rendition after the
+        // pulse so it doesn't linger or redraw on later section visits.
+        const r = renditionRef.current;
+        if (!r) return;
+        try {
+          await safeDisplayRef.current(cfi, `flashCfi:${cfi}`);
+        } catch (err: any) {
+          console.warn("[EpubViewer] flashCfi navigate failed:", err);
+        }
+        const add = () => {
+          try {
+            renditionRef.current?.annotations.highlight(
+              cfi,
+              {},
+              () => {},
+              "br-flash",
+              { fill: "rgba(250, 204, 21, 0.55)" }
+            );
+          } catch {}
+        };
+        add();
+        const onRendered = () => add();
+        r.on?.("rendered", onRendered);
+        setTimeout(() => {
+          try {
+            renditionRef.current?.off?.("rendered", onRendered);
+          } catch {}
+          try {
+            renditionRef.current?.annotations.remove(cfi, "highlight");
+          } catch {}
+        }, 2700);
       },
       navigateToParagraph: async (paragraphIndex: number) => {
         if (!renditionRef.current || !bookRef.current) return;

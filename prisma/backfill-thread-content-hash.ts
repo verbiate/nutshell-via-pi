@@ -9,11 +9,12 @@ const prisma = new PrismaClient();
 
 async function main() {
   const threads = await prisma.explainerThread.findMany({
-    where: { contentHash: null },
+    where: { contentHash: null, explainerId: { not: null } },
     select: { id: true, explainerId: true },
   });
   let n = 0;
   for (const t of threads) {
+    if (!t.explainerId) continue;
     const ex = await prisma.explainer.findUnique({
       where: { id: t.explainerId },
       select: { contentHash: true },
