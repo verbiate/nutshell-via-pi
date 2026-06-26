@@ -1384,7 +1384,7 @@ function MessageBubble({
     <div className={cn("flex flex-col", role === "user" ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+          "relative max-w-[85%] rounded-lg px-3 py-2 text-sm",
           role === "user"
             ? "bg-primary text-primary-foreground whitespace-pre-wrap"
             : showRaw
@@ -1392,6 +1392,34 @@ function MessageBubble({
             : "bg-muted border border-border prose prose-sm dark:prose-invert max-w-none prose-pre:my-1"
         )}
       >
+        {/*
+          ponytail: admin Raw/Copy float at the bubble's top-right corner so
+          they share the first line of content instead of stacking as a row
+          above/below. z-10 keeps them above prose content; bg transparent
+          avoids clipping text underneath.
+        */}
+        {showAdminTools && (
+          <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={() => setShowRaw((v) => !v)}
+              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+              title={showRaw ? "Show rendered" : "Show raw markdown"}
+            >
+              <Code className="h-3 w-3" />
+              {showRaw ? "Rendered" : "Raw"}
+            </button>
+            <button
+              type="button"
+              onClick={copyRaw}
+              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+              title="Copy raw markdown"
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        )}
         {content ? (
           role === "user" ? (
             content
@@ -1414,28 +1442,6 @@ function MessageBubble({
           ""
         )}
       </div>
-      {showAdminTools && (
-        <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
-          <button
-            type="button"
-            onClick={() => setShowRaw((v) => !v)}
-            className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
-            title={showRaw ? "Show rendered" : "Show raw markdown"}
-          >
-            <Code className="h-3 w-3" />
-            {showRaw ? "Rendered" : "Raw"}
-          </button>
-          <button
-            type="button"
-            onClick={copyRaw}
-            className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
-            title="Copy raw markdown"
-          >
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
