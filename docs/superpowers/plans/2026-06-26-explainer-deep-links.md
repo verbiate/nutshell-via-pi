@@ -613,19 +613,15 @@ describe("DiscussionLinksPanel", () => {
   it("renders deduped links in spine reading order", () => {
     const html = renderToStaticMarkup(
       <DiscussionLinksPanel
-        texts={["[A](#ch:c2.xhtml) [B](#ch:c3.xhtml)", "[dup](#ch:c2.xhtml)"]}
+        texts={["[Gamma](#ch:c3.xhtml) [Beta](#ch:c2.xhtml)", "[dup](#ch:c2.xhtml)"]}
         spineItems={spine}
         onNavigateToHref={() => {}}
       />
     );
-    // c3 (index 2) before c2 (index 5); c2 deduped.
-    const aPos = html.indexOf("c3.xhtml");
-    const bPos = html.indexOf("c2.xhtml");
-    expect(aPos).toBeGreaterThan(-1);
-    expect(bPos).toBeGreaterThan(-1);
-    expect(aPos).toBeLessThan(bPos);
-    // exactly two entries
-    expect(html.match(/role="button"/g)).toHaveLength(2);
+    // c3 (index 2) sorts before c2 (index 5); c2 deduped to one entry.
+    // The panel renders each link's LABEL as the button text, in spine order.
+    expect(html.indexOf("Gamma")).toBeLessThan(html.indexOf("Beta"));
+    expect(html.match(/<button/g)).toHaveLength(2);
   });
 
   it("renders nothing when there are no valid citations", () => {

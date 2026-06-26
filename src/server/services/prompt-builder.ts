@@ -73,6 +73,14 @@ type TocItem = { label?: string; title?: string; href?: string; subitems?: TocIt
  * stores on EpubFile.tocJson) falling back to `label`, normalizes hrefs to
  * basenames, and caps entries to bound prompt size. Empty string when no
  * usable ToC.
+ *
+ * Entries are emitted in the EXACT link form the model is asked to produce
+ * ([Label](#ch:basename.xhtml)) so it can copy tokens verbatim instead of
+ * translating a `→` manifest into markdown — the copy-token path is far more
+ * reliable than transform-token. Label brackets are sanitized (`[`→`(`,
+ * `]`→`)`) so a `]` in a title can't terminate the link early: CITE_RE in
+ * citations.ts captures `[^\]]+` for the label, so an unsanitized `]` would
+ * silently break parsing downstream.
  */
 export function buildChapterIndex(
   tocJson: string | null | undefined,
@@ -89,10 +97,11 @@ export function buildChapterIndex(
   const lines: string[] = [];
   for (const item of toc) {
     if (lines.length >= cap) break;
-    const label = (item.label ?? item.title ?? "").trim();
+    const rawLabel = (item.label ?? item.title ?? "").trim();
     const href = (item.href ?? "").split("#")[0].trim();
-    if (!label || !href) continue;
-    lines.push(`[${lines.length + 1}] ${label} → ${hrefBasename(href)}`);
+    if (!rawLabel || !href) continue;
+    const label = rawLabel.replace(/[[\]]/g, (b) => (b === "[" ? "(" : ")"));
+    lines.push(`- [${label}](#ch:${hrefBasename(href)})`);
   }
   return lines.length === 0 ? "" : lines.join("\n");
 }

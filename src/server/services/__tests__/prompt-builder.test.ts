@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { buildChapterIndex } from "../prompt-builder";
 
 describe("buildChapterIndex", () => {
-  it("renders a numbered manifest of top-level ToC entries", () => {
+  it("renders a link-form manifest of top-level ToC entries", () => {
     const toc = JSON.stringify([
       { label: "Chapter One", href: "chapter1.xhtml" },
       { label: "Chapter Two", href: "OEBPS/chapter2.xhtml" },
     ]);
     expect(buildChapterIndex(toc)).toBe(
-      "[1] Chapter One → chapter1.xhtml\n[2] Chapter Two → chapter2.xhtml"
+      "- [Chapter One](#ch:chapter1.xhtml)\n- [Chapter Two](#ch:chapter2.xhtml)"
     );
   });
 
@@ -20,7 +20,7 @@ describe("buildChapterIndex", () => {
       { id: "toc-1", title: "2. Further Thoughts: The Psychophysical Nexus", href: "html/09_chapter2.xhtml#frag", level: 0 },
     ]);
     expect(buildChapterIndex(toc)).toBe(
-      "[1] 1. What Is It Like to Be a Bat? → 08_chapter1.xhtml\n[2] 2. Further Thoughts: The Psychophysical Nexus → 09_chapter2.xhtml"
+      "- [1. What Is It Like to Be a Bat?](#ch:08_chapter1.xhtml)\n- [2. Further Thoughts: The Psychophysical Nexus](#ch:09_chapter2.xhtml)"
     );
   });
 
@@ -28,17 +28,24 @@ describe("buildChapterIndex", () => {
     const toc = JSON.stringify([
       { label: "Part One", href: "part1.xhtml#top", subitems: [{ label: "Ch A", href: "a.xhtml" }] },
     ]);
-    expect(buildChapterIndex(toc)).toBe("[1] Part One → part1.xhtml");
+    expect(buildChapterIndex(toc)).toBe("- [Part One](#ch:part1.xhtml)");
   });
 
   it("skips entries missing label or href", () => {
     const toc = JSON.stringify([{ label: "Ok", href: "ok.xhtml" }, { label: "No href" }, { href: "x.xhtml" }]);
-    expect(buildChapterIndex(toc)).toBe("[1] Ok → ok.xhtml");
+    expect(buildChapterIndex(toc)).toBe("- [Ok](#ch:ok.xhtml)");
   });
 
   it("caps the number of entries", () => {
     const toc = JSON.stringify(Array.from({ length: 5 }, (_, i) => ({ label: `C${i}`, href: `c${i}.xhtml` })));
-    expect(buildChapterIndex(toc, 2)).toBe("[1] C0 → c0.xhtml\n[2] C1 → c1.xhtml");
+    expect(buildChapterIndex(toc, 2)).toBe("- [C0](#ch:c0.xhtml)\n- [C1](#ch:c1.xhtml)");
+  });
+
+  it("sanitizes brackets in labels so they can't terminate the link early", () => {
+    // CITE_RE in citations.ts captures [^\]]+ for the label; an unsanitized ]
+    // in a title would silently break parsing. [ → ( and ] → ).
+    const toc = JSON.stringify([{ label: "Appendix [Notes]", href: "app.xhtml" }]);
+    expect(buildChapterIndex(toc)).toBe("- [Appendix (Notes)](#ch:app.xhtml)");
   });
 
   it("returns empty string for null / malformed JSON / non-array", () => {

@@ -8,6 +8,19 @@ import {
 import { recordError } from "./errors";
 import { getSetting } from "./settings";
 
+// ponytail: follow-up turns rebuild the book template as the system message,
+// but the citation rule ends up buried under megabytes of {{book_text}} while
+// the user's question is the fresh last turn — so the model answers "which
+// chapter?" in prose. Re-stating a compact reminder + one shape exemplar
+// (follow-ups only, to keep initial-generation prompts lean) flips this:
+// few-shot is the strongest lever for fiddly format adherence, especially on
+// weaker tiers (Gemini Flash). Hrefs in the exemplar are illustrative — the
+// rule tells the model to copy a real href from the chapter map above.
+// Upgrade path: promote to an AppSetting / *_followup_suffix template row if
+// it needs to be admin-editable.
+const FOLLOWUP_CITATION_SUFFIX =
+  "\n\nThe same citation rule applies to follow-up questions — especially \"which chapter?\" or \"where does the author …?\" Answer with a (#ch:…) link copied from the chapter map above. Shape (hrefs illustrative — always copy a real one): Q: \"In which chapter does the author discuss X?\" A: \"That's in [Chapter Title](#ch:<real-href>.xhtml), where …\"";
+
 // ponytail: explainer-threads wraps the existing generateExplainer cache logic
 // and adds the per-user multi-turn thread model. Initial response uses the
 // same global cache (Explainer table); only follow-up turns are per-user
@@ -398,7 +411,7 @@ export async function* streamFollowup(params: {
 
   // Compose messages array
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: systemPrompt + FOLLOWUP_CITATION_SUFFIX },
     { role: "assistant", content: thread.explainer.content },
   ];
   for (const m of thread.messages) {
