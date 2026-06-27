@@ -571,7 +571,13 @@ export function ReaderClient({
   // isLoaded + bookId-match one-shot pattern. Lives after handleTocNavigate so
   // the deps array can reference it without a temporal-dead-zone error.
   useEffect(() => {
-    if (!isLoaded) return;
+    // ponytail: gate on swapPhase === "revealed", NOT isLoaded. The swap
+    // sequence runs closing → placeholder → opening → revealed. Phase 2
+    // (placeholder→opening) calls setActiveTool("reader") which would
+    // overwrite our setActiveTool("bulb") if this effect fired at isLoaded
+    // (both fire in the same render; Phase 2 is declared later and wins).
+    // Waiting for "revealed" ensures our setActiveTool("bulb") runs LAST.
+    if (swapPhase !== "revealed") return;
     if (!pendingReaderNav) return;
     if (pendingReaderNav.bookId !== bookId) return;
 
@@ -579,10 +585,8 @@ export function ReaderClient({
 
     // ponytail: resolve the basename via the viewer's own book.spine walk,
     // NOT the spineItems React state — spineItems may be stale or empty during
-    // a book swap even after isLoaded is true (the rendition is ready but the
-    // onSpineLoaded callback hasn't fired yet). The viewer's resolveHref reads
-    // bookRef.current.spine directly, which is guaranteed populated by the time
-    // the rendition exists.
+    // a book swap. The viewer's resolveHref reads bookRef.current.spine
+    // directly, which is guaranteed populated by the time the rendition exists.
     if (href) {
       const resolved = viewerRef.current?.resolveHref(href);
       if (!resolved) return; // spine not ready yet — retry on next render
@@ -594,7 +598,7 @@ export function ReaderClient({
     }
 
     clearPendingReaderNav();
-  }, [isLoaded, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
+  }, [swapPhase, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
