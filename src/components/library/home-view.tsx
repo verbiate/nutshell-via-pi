@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Compass, Search } from "lucide-react";
+import { Lightbulb, Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import { SmoothScrollArea } from "./smooth-scroll-area";
@@ -187,7 +187,7 @@ export function HomeView({ userName, books, digestImage, static: isStatic = fals
           <TabsContent value="explainers" className="lg:absolute lg:inset-0">
             <SmoothScrollArea className="lg:absolute lg:inset-0">
               <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
-                <Sparkles className="h-16 w-16 text-muted-foreground" />
+                <Lightbulb className="h-16 w-16 text-muted-foreground" />
                 <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
                   Discussions are brewing
                 </h2>
