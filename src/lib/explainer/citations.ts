@@ -2,7 +2,6 @@
 // the deterministic, fully-tested boundary. Components compose these fns.
 
 export type Citation = { label: string; href: string };
-export type DiscussionLink = Citation & { spineIndex: number };
 export type Segment =
   | { type: "text"; value: string }
   | { type: "link"; label: string; href: string };
@@ -65,48 +64,11 @@ export function segmentText(text: string): Segment[] {
   return segments;
 }
 
-/** Aggregate citations across many message texts: drop invalid hrefs, dedupe
- *  by basename (first occurrence wins), sort by spine reading order. */
-export function aggregateLinks(
-  texts: string[],
-  spineItems: { href: string; index: number }[]
-): DiscussionLink[] {
-  const indexByBasename = new Map<string, number>();
-  for (const s of spineItems) {
-    const b = hrefBasename(s.href);
-    if (b && !indexByBasename.has(b)) indexByBasename.set(b, s.index);
-  }
-  const seen = new Set<string>();
-  const links: DiscussionLink[] = [];
-  for (const text of texts) {
-    for (const c of parseCitations(text)) {
-      const b = hrefBasename(c.href);
-      const idx = indexByBasename.get(b);
-      if (idx === undefined) continue;
-      if (seen.has(b)) continue;
-      seen.add(b);
-      links.push({ label: c.label, href: c.href, spineIndex: idx });
-    }
-  }
-  links.sort((a, z) => a.spineIndex - z.spineIndex);
-  return links;
-}
-
 // ponytail: self-check. Run: npx tsx src/lib/explainer/citations.ts
 if (process.argv[1]?.endsWith("citations.ts")) {
   const c = parseCitations("see [Chapter One](#ch:chapter1.xhtml) and [Two](#ch:c2.xhtml)");
   if (c.length !== 2) throw new Error("parseCitations failed");
   if (!isValidHref("chapter1.xhtml", ["OEBPS/chapter1.xhtml"])) throw new Error("isValidHref true");
   if (isValidHref("nope.xhtml", ["chapter1.xhtml"])) throw new Error("isValidHref false");
-  const agg = aggregateLinks(
-    ["[A](#ch:c2.xhtml) [B](#ch:c1.xhtml)", "[dup](#ch:c2.xhtml)"],
-    [
-      { href: "c1.xhtml", index: 0 },
-      { href: "c2.xhtml", index: 5 },
-    ]
-  );
-  if (agg.length !== 2 || agg[0].href !== "c1.xhtml" || agg[1].href !== "c2.xhtml") {
-    throw new Error("aggregateLinks failed");
-  }
   console.log("citations self-check OK");
 }

@@ -4,7 +4,6 @@ import {
   parseCitations,
   isValidHref,
   segmentText,
-  aggregateLinks,
   resolveToSpineHref,
 } from "../citations";
 
@@ -63,31 +62,6 @@ describe("segmentText", () => {
     const segs = segmentText("[x](https://e.com)");
     expect(segs).toHaveLength(1);
     expect(segs[0].type).toBe("text");
-  });
-});
-
-describe("aggregateLinks", () => {
-  const spine = [
-    { href: "c1.xhtml", index: 0 },
-    { href: "c2.xhtml", index: 5 },
-    { href: "c3.xhtml", index: 2 },
-  ];
-  it("dedupes by basename across messages and sorts by spine reading order", () => {
-    const out = aggregateLinks(
-      ["[A](#ch:c2.xhtml) [B](#ch:c3.xhtml)", "[dup](#ch:c2.xhtml)"],
-      spine
-    );
-    // c3 (index 2) sorts before c2 (index 5); c2 deduped to a single entry.
-    expect(out).toHaveLength(2);
-    expect(out[0].href).toBe("c3.xhtml");
-    expect(out[1].href).toBe("c2.xhtml");
-  });
-  it("drops hrefs not in the spine", () => {
-    expect(aggregateLinks(["[x](#ch:ghost.xhtml)"], spine)).toEqual([]);
-  });
-  it("annotates spineIndex", () => {
-    const out = aggregateLinks(["[x](#ch:c1.xhtml)"], spine);
-    expect(out[0].spineIndex).toBe(0);
   });
 });
 

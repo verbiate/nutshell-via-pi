@@ -52,7 +52,6 @@ import {
 } from "@/lib/client-tokens";
 import type { SpineItem } from "@/lib/reader/spine-playlist";
 import { ExplainerContent } from "../explainer/explainer-content";
-import { DiscussionLinksPanel } from "./discussion-links-panel";
 import { BookCover } from "../library/book-cover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -1485,12 +1484,6 @@ function DiscussionView({
           />
         </div>
       )}
-
-      <DiscussionLinksPanel
-        texts={[initialContent, ...messages.map((m) => m.content)]}
-        spineItems={spineItems ?? []}
-        onNavigateToHref={onNavigateToHref}
-      />
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {/* Initial explainer response */}
