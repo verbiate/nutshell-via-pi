@@ -577,26 +577,18 @@ export function ReaderClient({
   );
 
   // ponytail: consume a cross-book deep-link navigation. The click handler
-  // above closes the sidebar, marks the pending nav, and router.pushes to the
-  // target book. On arrival, this effect fires once the rendition is ready for
-  // the TARGET book — it navigates the viewer to the cited section and opens
-  // the Discussions panel to the source thread. Lives after handleTocNavigate
-  // so the deps array can reference it without a temporal-dead-zone error.
+  // above marks the pending nav and router.pushes to the target book. On
+  // arrival, this effect fires once the rendition is ready for the TARGET book
+  // — it navigates the viewer to the cited section (if href set) and opens the
+  // Discussions panel to the source thread. Lives after handleTocNavigate so
+  // the deps array can reference it without a temporal-dead-zone error.
   //
-  // navConsumedRef: one-shot per swap-revealed cycle. swapPhase stays "revealed"
-  // after a swap completes — when the NEXT hop changes bookId, this effect would
-  // fire prematurely (before the swap reset effect runs), consuming the pending
-  // nav and getting overridden by the swap sequence. The ref prevents this: it's
-  // set true on first fire, and reset to false whenever swapPhase leaves "revealed"
-  // (entering the next swap's closing phase). Each swap cycle gets exactly one
-  // consumption opportunity.
-  const navConsumedRef = useRef(false);
+  // After consumption, setSwapPhase("idle") resets the swap state machine so
+  // the NEXT bookId change doesn't see "revealed" (which would fire this
+  // effect prematurely before the swap reset effect runs). Each swap starts
+  // from "idle" → "closing" → ... → "revealed" → consume → "idle".
   useEffect(() => {
-    if (swapPhase !== "revealed") {
-      navConsumedRef.current = false;
-      return;
-    }
-    if (navConsumedRef.current) return;
+    if (swapPhase !== "revealed") return;
     if (!pendingReaderNav) return;
     if (pendingReaderNav.bookId !== bookId) return;
 
@@ -612,8 +604,8 @@ export function ReaderClient({
       setPendingOpenDiscussionId(discussionId);
     }
 
-    navConsumedRef.current = true;
     clearPendingReaderNav();
+    setSwapPhase("idle");
   }, [swapPhase, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
