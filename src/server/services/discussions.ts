@@ -584,9 +584,9 @@ export async function getDiscussionWithMessages(discussionId: string, userId: st
       messages: { orderBy: { createdAt: "asc" } },
       // ponytail: origin book fields — tocJson so the panel can build hrefs for
       // the origin book's unprefixed #ch: citations when the discussion is
-      // viewed from a co-primary (non-origin) book. Without this, origin-book
-      // citations degrade to plain text when viewed cross-book.
-      book: { select: { id: true, title: true, tocJson: true } },
+      // viewed from a co-primary (non-origin) book; coverPath + author so the
+      // origin book chip renders with a cover thumbnail like attached book chips.
+      book: { select: { id: true, title: true, author: true, coverPath: true, tocJson: true } },
       attachments: {
         orderBy: { createdAt: "asc" },
         // ponytail: book-type attachments carry only bookId; include the

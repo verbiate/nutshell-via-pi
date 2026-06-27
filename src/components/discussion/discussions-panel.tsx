@@ -1020,6 +1020,26 @@ export function DiscussionsPanel({
       txtTokens: bookAtt.book.txtTokens,
     };
   })();
+  // ponytail: when viewing from a co-primary (non-origin) book, show the origin
+  // book as a named context chip — it's "another book" from the viewer's
+  // perspective. "This book" implicitly means the currently-open book. Null
+  // when viewing from the origin (no chip needed — "This book" covers it).
+  const originBookChip: BookAttachment | null = (() => {
+    const d = activeData?.discussion as
+      | {
+          bookId: string;
+          book?: { id: string; title: string; author: string | null; coverPath: string | null } | null;
+        }
+      | undefined;
+    if (!d?.book || d.bookId === bookId) return null;
+    return {
+      bookId: d.book.id,
+      title: d.book.title,
+      author: d.book.author,
+      coverPath: d.book.coverPath,
+      txtTokens: null,
+    };
+  })();
   // ponytail: pending book chip retires once the refetch lands it in persistedBook.
   const pendingBookDisplay =
     pendingBook && persistedBook?.bookId !== pendingBook.bookId ? pendingBook : null;
@@ -1119,6 +1139,7 @@ export function DiscussionsPanel({
           onAddDraftAttachment={addDraftAttachment}
           onRemoveDraftAttachment={removeDraftAttachment}
           currentBookId={bookId}
+          originBookChip={originBookChip}
           persistedBook={persistedBook}
           pendingBook={pendingBookDisplay}
           draftBook={draftBook}
@@ -1386,6 +1407,7 @@ function DiscussionView({
   onAddDraftAttachment,
   onRemoveDraftAttachment,
   currentBookId,
+  originBookChip,
   persistedBook,
   pendingBook,
   draftBook,
@@ -1438,6 +1460,7 @@ function DiscussionView({
   onAddDraftAttachment?: (href: string, label: string) => void;
   onRemoveDraftAttachment?: (href: string) => void;
   currentBookId?: string;
+  originBookChip?: BookAttachment | null;
   persistedBook?: BookAttachment | null;
   pendingBook?: BookAttachment | null;
   draftBook?: BookAttachment | null;
@@ -1833,13 +1856,25 @@ function DiscussionView({
             );
             return (
               <>
-                {persistedBook && chip(persistedBook, `pb-${persistedBook.bookId}`)}
+                {/* ponytail: origin book chip — shown when viewing from a
+                  co-primary. "This book" (above) means the open book; the
+                  origin appears here as a named chip. */}
+                {originBookChip && chip(originBookChip, `ob-${originBookChip.bookId}`)}
+                {/* ponytail: hide persistedBook when it IS the current book —
+                  it's already represented by "This book" and showing both is
+                  redundant. Only hides the visual chip; the attachment still
+                  counts toward the slot cap. */}
+                {persistedBook &&
+                  persistedBook.bookId !== currentBookId &&
+                  chip(persistedBook, `pb-${persistedBook.bookId}`)}
                 {pendingBook &&
                   pendingBook.bookId !== persistedBook?.bookId &&
+                  pendingBook.bookId !== currentBookId &&
                   chip(pendingBook, `kb-${pendingBook.bookId}`)}
                 {draftBook &&
                   draftBook.bookId !== persistedBook?.bookId &&
                   draftBook.bookId !== pendingBook?.bookId &&
+                  draftBook.bookId !== currentBookId &&
                   chip(draftBook, "db", onRemoveDraftBook)}
               </>
             );
