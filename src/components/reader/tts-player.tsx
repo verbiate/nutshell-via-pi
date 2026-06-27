@@ -288,10 +288,15 @@ export function TtsPlayer({
   return (
     <div
       className={cn(
-        "z-50 w-[calc(100%-6rem)] max-w-[640px] rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
+        "rounded-xl border border-border bg-background/95 p-3 shadow-card backdrop-blur-sm transition-all duration-300",
         variant === "reader"
           ? "absolute bottom-12 left-12"
           : "relative w-full",
+        // ponytail: when collapsed the card shrinks to fit the 3 mini buttons,
+        // instead of holding its wide max-width box with empty space.
+        collapsed
+          ? "w-fit"
+          : "w-[calc(100%-6rem)] max-w-[640px]",
         hidden && "opacity-0 pointer-events-none",
       )}
       role="region"
@@ -412,7 +417,7 @@ export function TtsPlayer({
         </Button>
         )}
 
-        {!collapsed && !isIdle && (
+        {!isIdle && (
         <Button
           variant="ghost"
           size="icon-sm"

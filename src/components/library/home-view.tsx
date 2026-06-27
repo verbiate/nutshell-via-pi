@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Lightbulb, Compass, Search } from "lucide-react";
+import { Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import { SmoothScrollArea } from "./smooth-scroll-area";
+import { DiscussionsHomeView } from "./discussions-home";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { LibraryBook } from "@/types/book";
+import type { DiscussionListItem } from "@/types/discussion";
 
 // ponytail: progressive blur = stacked masked backdrop-filter layers (geometric
 // blur staircase) + a tint gradient on top. Tunable via NUM/MAX/EXP/SOLID_STOP.
@@ -45,6 +47,10 @@ interface HomeViewProps {
   userName: string | null;
   books: LibraryBook[];
   digestImage: string | null;
+  // ponytail: pre-fetched by the server component so the Discussions tab
+  // renders SSR without a client fetch waterfall. The client component
+  // refetches on mount for freshness.
+  discussions?: DiscussionListItem[];
   // ponytail: when true, this HomeView is rendered as a non-interactive
   // snapshot (e.g. inside BookshelfSnapshot for the refresh-back-nav case).
   // Skips router.refresh() and disables interactive elements. The real
@@ -52,7 +58,13 @@ interface HomeViewProps {
   static?: boolean;
 }
 
-export function HomeView({ userName, books, digestImage, static: isStatic = false }: HomeViewProps) {
+export function HomeView({
+  userName,
+  books,
+  digestImage,
+  discussions,
+  static: isStatic = false,
+}: HomeViewProps) {
   // ponytail: greeting computed on mount to respect the viewer's local timezone
   const [greeting, setGreeting] = useState("Hello");
   useEffect(() => {
@@ -111,8 +123,14 @@ export function HomeView({ userName, books, digestImage, static: isStatic = fals
 
   const first = userName?.split(" ")[0] || "reader";
 
+  // ponytail: controlled tab value so the Discussions empty-state CTA can
+  // route the user to Bookshelf. Uncontrolled (defaultValue) elsewhere.
+  const [tabValue, setTabValue] = useState("bookshelf");
+
   return (
     <Tabs
+      value={tabValue}
+      onValueChange={setTabValue}
       defaultValue="bookshelf"
       className="flex w-full flex-col lg:min-h-0 lg:flex-1"
     >
@@ -185,17 +203,19 @@ export function HomeView({ userName, books, digestImage, static: isStatic = fals
             </SmoothScrollArea>
           </TabsContent>
           <TabsContent value="explainers" className="lg:absolute lg:inset-0">
-            <SmoothScrollArea className="lg:absolute lg:inset-0">
-              <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
-                <Lightbulb className="h-16 w-16 text-muted-foreground" />
-                <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
-                  Discussions are brewing
-                </h2>
-                <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
-                  Your saved discussions will live here, ready to revisit anytime.
-                </p>
-              </div>
-            </SmoothScrollArea>
+            {/*
+              ponytail: NO SmoothScrollArea wrapper here — DiscussionsHomeView
+              wraps its LIST in SmoothScrollArea internally but renders the
+              DETAIL view without it. The detail view is chat-shaped (header
+              pinned top, composer pinned bottom, messages scroll between),
+              and an outer ScrollArea breaks that flex layout — heights don't
+              propagate and the composer scrolls away with content. Mirrors
+              the reader-sidebar bulb pattern (reader-sidebar.tsx:116-126).
+            */}
+            <DiscussionsHomeView
+              discussions={discussions ?? []}
+              onGoToBookshelf={() => setTabValue("bookshelf")}
+            />
           </TabsContent>
           <TabsContent value="find" className="lg:absolute lg:inset-0">
             <SmoothScrollArea className="lg:absolute lg:inset-0">

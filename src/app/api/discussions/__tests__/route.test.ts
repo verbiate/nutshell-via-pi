@@ -18,12 +18,13 @@ vi.mock("@/server/services/reader", () => ({
 vi.mock("@/server/services/discussions", () => ({
   streamInitialDiscussionResponse: vi.fn(),
   listDiscussionsForBook: vi.fn(),
+  listAllDiscussionsForUser: vi.fn(),
 }));
 
 import { POST, GET } from "@/app/api/discussions/route";
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
-import { listDiscussionsForBook } from "@/server/services/discussions";
+import { listDiscussionsForBook, listAllDiscussionsForUser } from "@/server/services/discussions";
 
 describe("POST /api/discussions", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -86,12 +87,25 @@ describe("POST /api/discussions", () => {
 describe("GET /api/discussions", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns 400 when bookId is missing", async () => {
+  it("lists ALL user discussions when bookId is absent (homepage tab)", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
+    vi.mocked(listAllDiscussionsForUser).mockResolvedValue([
+      {
+        id: "t1",
+        type: "book",
+        updatedAt: new Date().toISOString(),
+        _count: { messages: 0 },
+      } as any,
+    ]);
 
     const req = new Request("http://localhost/api/discussions");
     const res = await GET(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(listAllDiscussionsForUser).toHaveBeenCalledWith("u1");
+    expect(vi.mocked(verifyBookAccess)).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.discussions).toHaveLength(1);
+    expect(body.discussions[0].id).toBe("t1");
   });
 
   it("returns 403 when user lacks book access", async () => {

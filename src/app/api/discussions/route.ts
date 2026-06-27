@@ -6,6 +6,7 @@ import {
   streamInitialDiscussionResponse,
   streamBlankFirstTurn,
   listDiscussionsForBook,
+  listAllDiscussionsForUser,
   type NewDiscussionAttachment,
 } from "@/server/services/discussions";
 
@@ -20,6 +21,8 @@ import {
  *       question with the book as context. Emits `discussion` then `chunk`s.
  *
  * GET /api/discussions?bookId=X — list user's discussions for a book.
+ * GET /api/discussions             — list ALL of the user's discussions
+ *                                    across every book (homepage tab).
  */
 export async function POST(request: Request) {
   try {
@@ -194,11 +197,13 @@ export async function GET(request: Request) {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
     const bookId = searchParams.get("bookId");
+
+    // ponytail: no bookId → list every discussion this user owns, across all
+    // their books. Used by the homepage Discussions tab. No per-book access
+    // check needed — `where: { userId }` already scopes ownership.
     if (!bookId) {
-      return Response.json(
-        { error: "bookId query param is required" },
-        { status: 400 }
-      );
+      const discussions = await listAllDiscussionsForUser(user.id);
+      return Response.json({ discussions });
     }
 
     const hasAccess = await verifyBookAccess(user.id, bookId);

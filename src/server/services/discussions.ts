@@ -559,6 +559,71 @@ export async function listDiscussionsForBook(userId: string, bookId: string) {
 }
 
 /**
+ * List ALL of a user's discussions across every book, newest first. Powers
+ * the homepage Discussions tab. Includes origin book + every attachment (with
+ * its book) + the origin/attached books' tocJson so the UI can resolve
+ * section labels client-side and render clickable book/section chips.
+ *
+ * No per-book access check — `where: { userId }` already scopes to
+ * discussions this user owns. If a UserBookAccess grant was revoked but the
+ * discussion row survives, the reader surfaces the denial on navigation
+ * (filtered out of scope here).
+ */
+export async function listAllDiscussionsForUser(userId: string) {
+  const rows = await db.discussion.findMany({
+    where: { userId },
+    include: {
+      book: {
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          coverPath: true,
+          tocJson: true,
+          // ponytail: prefer the LLM-extracted main title (BookMetadata.title)
+          // over the raw OPF title (EpubFile.title) — the metadata row is the
+          // canonical display source per schema.prisma:157-158; the OPF title
+          // can be a "Main Title: Subtitle" concatenation. Remapped in-place
+          // below so the returned shape matches DiscussionListItem unchanged.
+          bookMetadata: { select: { title: true } },
+        },
+      },
+      attachments: {
+        include: {
+          book: {
+            select: {
+              id: true,
+              title: true,
+              author: true,
+              coverPath: true,
+              tocJson: true,
+              bookMetadata: { select: { title: true } },
+            },
+          },
+        },
+      },
+      explainer: { select: { id: true, content: true, modelId: true } },
+      _count: { select: { messages: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  // ponytail: in-place remap — overwrite book.title with the metadata main
+  // title when available, then strip bookMetadata so the client-facing shape
+  // is unchanged (DiscussionListItem has no bookMetadata field). Done in the
+  // service rather than the client so every render site (~6 in
+  // discussions-home.tsx) picks up the fix without per-site changes.
+  for (const r of rows) {
+    if (r.book.bookMetadata?.title) r.book.title = r.book.bookMetadata.title;
+    delete (r.book as { bookMetadata?: unknown }).bookMetadata;
+    for (const a of r.attachments) {
+      if (a.book?.bookMetadata?.title) a.book.title = a.book.bookMetadata.title;
+      if (a.book) delete (a.book as { bookMetadata?: unknown }).bookMetadata;
+    }
+  }
+  return rows;
+}
+
+/**
  * Delete a discussion and its messages. Ownership-checked (matches the
  * bookmark and highlight delete pattern).
  */

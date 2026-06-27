@@ -2,6 +2,7 @@ import { readdir } from "fs/promises";
 import path from "path";
 import { requireAuth } from "@/lib/auth-guards";
 import { getPersonalLibrary } from "@/server/services/library";
+import { listAllDiscussionsForUser } from "@/server/services/discussions";
 import { EmptyLibrary } from "@/components/library/empty-library";
 import { HomeView } from "@/components/library/home-view";
 
@@ -27,11 +28,21 @@ export default async function MyLibraryPage() {
     requireAuth(),
     pickRandomDigestImage(),
   ]);
-  const books = await getPersonalLibrary(user.id);
+  const [books, discussions] = await Promise.all([
+    getPersonalLibrary(user.id),
+    listAllDiscussionsForUser(user.id),
+  ]);
 
   if (books.length === 0) {
     return <EmptyLibrary />;
   }
 
-  return <HomeView userName={user.name} books={books} digestImage={digestImage} />;
+  return (
+    <HomeView
+      userName={user.name}
+      books={books}
+      digestImage={digestImage}
+      discussions={discussions as any}
+    />
+  );
 }
