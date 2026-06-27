@@ -153,9 +153,10 @@ export interface DiscussionsPanelProps {
   // from its activeDiscussionId state — inner components (DiscussionView,
   // MessageBubble, ExplainerContent) pass only (bookId, basename).
   onNavigateToBookSection?: (bookId: string, basename: string, discussionId?: string) => void;
-  // ponytail: open a book to its last-read position (chip click). No pending
-  // nav — the reader's saved-position restore handles the landing page.
-  onOpenBook?: (bookId: string) => void;
+  // ponytail: open a book to its last-read position + reopen the discussion.
+  // Chip click → pending nav with discussionId (no href) → reader restores
+  // saved position, Discussions panel opens to the thread on arrival.
+  onOpenBook?: (bookId: string, discussionId?: string) => void;
   // ponytail: resolve a section href to its ToC label, for discussions reopened
   // after the click-time title is gone (the title isn't persisted server-side).
   resolveSectionLabel?: (href: string) => string | undefined;
@@ -533,6 +534,16 @@ export function DiscussionsPanel({
     ? (bookId: string, basename: string) => {
         onNavigateToBookSection(bookId, basename, activeDiscussionId ?? undefined);
         setPoppedOut(false);
+      }
+    : undefined;
+
+  // ponytail: wrap onOpenBook to inject activeDiscussionId — same pattern as
+  // navigateBookAndCloseModal. The chip click fires with just bookId; the
+  // wrapper adds the discussion context so the destination book reopens the
+  // discussion in the Discussions panel.
+  const openBookHandler = onOpenBook
+    ? (bookId: string) => {
+        onOpenBook(bookId, activeDiscussionId ?? undefined);
       }
     : undefined;
 
@@ -1126,7 +1137,7 @@ export function DiscussionsPanel({
           onNavigateToHref={navigateAndCloseModal}
           onNavigateToCfi={navigateCfiAndCloseModal}
           onNavigateToBookSection={navigateBookAndCloseModal}
-          onOpenBook={onOpenBook}
+          onOpenBook={openBookHandler}
           attachedBookHrefs={attachedBookHrefs}
           originBookId={originBookId}
           spineItems={spineItems}

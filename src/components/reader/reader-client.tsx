@@ -563,16 +563,17 @@ export function ReaderClient({
     [markPendingReaderNav, router]
   );
 
-  // ponytail: open a book to its last-read position. No pending nav, no
-  // discussion auto-open — just navigate and let the reader's normal
-  // saved-position restore handle landing on the right page. Used by
-  // clickable context chips (attached book / origin book name).
+  // ponytail: open a book to its last-read position AND reopen the discussion.
+  // Uses the same pending-nav pattern as citation clicks, but with no href —
+  // the reader's saved-position restore handles the landing page, while the
+  // consumption effect opens the Discussions panel to the thread. Does NOT
+  // close the sidebar (the user wants to keep the discussion context visible).
   const handleOpenBook = useCallback(
-    (bookId: string) => {
-      setActiveTool(null);
+    (bookId: string, discussionId?: string) => {
+      markPendingReaderNav({ bookId, discussionId });
       router.push(`/book/${bookId}/reader`);
     },
-    [router]
+    [markPendingReaderNav, router]
   );
 
   // ponytail: consume a cross-book deep-link navigation. The click handler
