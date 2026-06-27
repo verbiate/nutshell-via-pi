@@ -69,7 +69,10 @@ describe("DiscussionsHomeView", () => {
     expect(html).toContain(">book<");
   });
 
-  it("renders attached-book and section chips from attachments", () => {
+  it("renders dual-ownership as two covers + 'Two books:' label (not an attachment chip)", () => {
+    // ponytail: a second book is a co-owner, not an attachment. The list row
+    // shows BOTH covers and the title becomes "Two books: T1 + T2". The 2nd
+    // book must NOT appear as an attachment chip. Sections still render as pills.
     const d = makeDiscussion({
       id: "d2",
       type: "section",
@@ -101,7 +104,8 @@ describe("DiscussionsHomeView", () => {
     });
     (globalThis as any).__DISCUSSIONS_INITIAL__ = [d];
     const html = render(<DiscussionsHomeView discussions={[d]} />);
-    expect(html).toContain("Attached Book");
+    // dual-ownership label
+    expect(html).toContain("Two books: Origin Book + Attached Book");
     // section pill falls back to the raw basename when no tocJson to resolve
     expect(html).toContain("appendix.xhtml");
   });
@@ -173,5 +177,69 @@ describe("DiscussionDetail", () => {
     );
     expect(html).toContain("1. What Is It Like to Be a Bat?");
     expect(html).not.toContain("08_chapter1.xhtml");
+  });
+
+  it("renders the Attach affordance when the origin book has tocJson sections", () => {
+    // ponytail: composer context row exposes an "Attach"/"Section" trigger once
+    // pickerOptions is non-empty. attachBookMax defaults to 0 (detail query not
+    // exercised under SSR), so the trigger reads "Section" (sections-only mode).
+    const d = makeDiscussion({
+      type: "book",
+      book: {
+        id: "b1",
+        title: "Origin Book",
+        author: null,
+        coverPath: null,
+        tocJson: JSON.stringify([
+          { id: "t1", title: "Intro", href: "intro.xhtml" },
+          { id: "t2", title: "Chapter One", href: "ch1.xhtml" },
+        ]),
+      },
+    });
+    const html = render(
+      <DiscussionDetail
+        discussion={d}
+        onBack={() => {}}
+        navigate={() => {}}
+        resolveLabel={() => undefined}
+      />
+    );
+    // ponytail: bookEnabled is false (no attachBookMax from SSR mock) → the
+    // trigger label is "Section", not "Attach".
+    expect(html).toContain("Section");
+    expect(html).toContain("Context");
+  });
+
+  it("shows dual-ownership as two large covers + 'Two books:' label in the header", () => {
+    // ponytail: detail header shows the parent book as a large cover; when a
+    // second book is attached, BOTH covers render and the title uses the
+    // "Two books: T1 + T2" treatment (mirrors the list row).
+    const d = makeDiscussion({
+      attachments: [
+        {
+          id: "a1",
+          type: "book",
+          sectionHref: null,
+          bookId: "b2",
+          createdAt: new Date().toISOString(),
+          book: {
+            id: "b2",
+            title: "Attached Book",
+            author: "Other",
+            coverPath: null,
+            tocJson: null,
+          },
+        },
+      ],
+    });
+    const html = render(
+      <DiscussionDetail
+        discussion={d}
+        onBack={() => {}}
+        navigate={() => {}}
+        resolveLabel={() => undefined}
+      />
+    );
+    expect(html).toContain("Two books: Origin Book + Attached Book");
   });
 });

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
 import {
   deleteDiscussion,
+  getAttachBookMax,
   getDiscussionWithMessages,
 } from "@/server/services/discussions";
 
@@ -26,7 +27,12 @@ export async function GET(
       return NextResponse.json({ error: "Discussion not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ discussion });
+    // ponytail: per-tier "attach another book" cap so the homepage composer
+    // (which has no /api/books/[id] fetch) can gate the Other-book picker
+    // without a second round-trip. Reader gets this from its book-detail call.
+    const attachBookMax = await getAttachBookMax(user.role);
+
+    return NextResponse.json({ discussion, attachBookMax });
   } catch (error: any) {
     if (error.statusCode === 401)
       return NextResponse.json(

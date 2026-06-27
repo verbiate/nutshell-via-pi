@@ -583,14 +583,24 @@ export function ReaderClient({
   // Discussions panel to the source thread. Lives after handleTocNavigate so
   // the deps array can reference it without a temporal-dead-zone error.
   //
+  // Two arrival paths reach "ready":
+  //  - book-to-book swap WITHIN the reader → swapPhase climbs to "revealed".
+  //  - FRESH arrival from outside the reader (e.g. homepage Discussions tab) →
+  //    no swap runs (prevBookIdRef starts null), so swapPhase stays "idle" and
+  //    isLoaded is the readiness signal instead. Without this branch the
+  //    pending discussionId is never consumed on fresh arrival — the book
+  //    opens but the sidebar doesn't show the source thread.
+  //
   // After consumption, setSwapPhase("idle") resets the swap state machine so
   // the NEXT bookId change doesn't see "revealed" (which would fire this
   // effect prematurely before the swap reset effect runs). Each swap starts
   // from "idle" → "closing" → ... → "revealed" → consume → "idle".
   useEffect(() => {
-    if (swapPhase !== "revealed") return;
     if (!pendingReaderNav) return;
     if (pendingReaderNav.bookId !== bookId) return;
+
+    const ready = swapPhase === "revealed" || (swapPhase === "idle" && isLoaded);
+    if (!ready) return;
 
     const { href, discussionId } = pendingReaderNav;
 
@@ -606,7 +616,7 @@ export function ReaderClient({
 
     clearPendingReaderNav();
     setSwapPhase("idle");
-  }, [swapPhase, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
+  }, [swapPhase, pendingReaderNav, bookId, isLoaded, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
@@ -1201,14 +1211,18 @@ export function ReaderClient({
   // URL nav has no scene transition). Functional update so a user who closed it
   // during the slide-in isn't overridden.
   const autoOpenedRef = useRef(false);
-  // ponytail: one-shot entry effect opens the sidebar concurrent with slide-in
+  // ponytail: one-shot entry effect opens the sidebar concurrent with slide-in.
+  // If a cross-route discussion nav is pending (e.g. clicked a book from the
+  // homepage Discussions tab), open straight to the discussions panel instead
+  // of book-details — avoids a reader→bulb panel flash before the consume
+  // effect below applies the pending discussionId.
   useEffect(() => {
     if (autoOpenedRef.current) return;
     if (!entering && !isLoaded) return;
     autoOpenedRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActiveTool((prev) => prev ?? "reader");
-  }, [entering, isLoaded]);
+    setActiveTool((prev) => prev ?? (pendingReaderNav?.discussionId ? "bulb" : "reader"));
+  }, [entering, isLoaded, pendingReaderNav]);
 
   // ─── Book-to-book swap choreography (reader → different book via thumbnail) ─
   // ReaderClient stays mounted when the [id] param changes. The swap sequence:

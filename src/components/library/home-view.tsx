@@ -215,6 +215,7 @@ export function HomeView({
             <DiscussionsHomeView
               discussions={discussions ?? []}
               onGoToBookshelf={() => setTabValue("bookshelf")}
+              books={books}
             />
           </TabsContent>
           <TabsContent value="find" className="lg:absolute lg:inset-0">

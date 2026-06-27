@@ -19,15 +19,27 @@ import {
   Quote,
   Loader2,
   Send,
+  Plus,
+  X,
 } from "lucide-react";
 import { BookCover } from "./book-cover";
 import { ExplainerContent } from "../explainer/explainer-content";
 import { SmoothScrollArea } from "./smooth-scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 import { useReaderNav } from "@/components/reader/reader-nav-context";
 import { hrefBasename } from "@/lib/explainer/citations";
 import type { DiscussionListItem } from "@/types/discussion";
+import type { LibraryBook } from "@/types/book";
 
 // ponytail: in-flight message shape. createdAt is optional — synthesized
 // during streaming, replaced with server truth on refetch. Mirrors the panel.
@@ -38,6 +50,9 @@ interface Props {
   // ponytail: switches the parent Tabs to "bookshelf" — used by the empty
   // state CTA. Optional so the component can render standalone.
   onGoToBookshelf?: () => void;
+  // ponytail: user's library — feeds the composer's "Other book" attach
+  // picker. Optional so the component can render standalone (tests).
+  books?: LibraryBook[];
 }
 
 type NavigateFn = (
@@ -45,7 +60,21 @@ type NavigateFn = (
   opts: { href?: string; discussionId: string }
 ) => void;
 
-export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf }: Props) {
+// ponytail: real tocJson rows are flat {id, title, href, level, subitems?}.
+// Hoisted so both the list-view resolveLabel walker and the detail-view
+// section picker share the shape.
+type TocItem = { href?: string; label?: string; title?: string; subitems?: TocItem[] };
+
+// ponytail: dual-ownership title treatment. A discussion seeded with a second
+// book shows BOTH covers and this label instead of one title + an attachment
+// chip. Exactly two → "Two books:" (product wording); 3+ → "N books:".
+function booksLabel(titles: string[]): string {
+  if (titles.length === 2) return `Two books: ${titles[0]} + ${titles[1]}`;
+  if (titles.length > 2) return `${titles.length} books: ${titles.join(" + ")}`;
+  return titles[0] ?? "";
+}
+
+export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, books = [] }: Props) {
   const router = useRouter();
   const { markPendingReaderNav } = useReaderNav();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -80,7 +109,6 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf }: P
   const resolveLabel = useMemo(() => {
     const map = new Map<string, string>();
     const seen = new Set<string>();
-    type TocItem = { href?: string; label?: string; title?: string; subitems?: TocItem[] };
     const ingest = (b: { id: string; tocJson: string | null } | null | undefined) => {
       if (!b || seen.has(b.id) || !b.tocJson) return;
       seen.add(b.id);
@@ -165,6 +193,7 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf }: P
           onBack={() => setActiveId(null)}
           navigate={navigate}
           resolveLabel={resolveLabel}
+          books={books}
         />
       </div>
     );
@@ -239,6 +268,12 @@ function DiscussionRow({
   // navigation affordance — shown alongside attachments. Null for passage/book.
   const primarySection = d.type === "section" && d.sectionHref ? d.sectionHref : null;
 
+  // ponytail: dual-ownership — when a second book is attached, BOTH covers
+  // render and the title becomes "Two books: T1 + T2". The 2nd book is NOT
+  // shown as an attachment chip (it's a co-owner, represented by its cover).
+  const isMulti = attachedBooks.length > 0;
+  const involvedTitles = [d.book.title, ...attachedBooks.map((a) => a.book!.title)];
+
   return (
     <div
       role="button"
@@ -255,57 +290,62 @@ function DiscussionRow({
       }}
       className="group flex cursor-pointer gap-3 rounded-xl border border-line bg-white p-3 text-left transition-colors hover:bg-muted/40"
     >
-      <BookCover
-        coverPath={d.book.coverPath}
-        title={d.book.title}
-        className="h-14 w-10 shrink-0 rounded"
-        cover
-      />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="truncate font-serif text-base font-medium text-espresso">
-            {d.book.title}
-          </h3>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {formatRelative(d.updatedAt)}
-          </span>
-        </div>
-        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-          {previewText(d)}
-        </p>
+        <h3 className="truncate font-serif text-base font-medium text-espresso">
+          {isMulti ? booksLabel(involvedTitles) : d.book.title}
+        </h3>
         <ContextChips
           discussion={d}
-          attachedBooks={attachedBooks}
           attachedSections={attachedSections}
           primarySection={primarySection}
           navigate={navigate}
           resolveLabel={resolveLabel}
         />
+        <span className="mt-1.5 block text-xs text-muted-foreground">
+          Last message {formatRelative(d.updatedAt)} ago
+        </span>
+      </div>
+      {/* ponytail: covers on the right so all rows share a left detail scanline
+          regardless of 1 vs 2 books (single source of width variance). */}
+      <div className={"flex shrink-0" + (isMulti ? " gap-1" : "")}>
+        <BookCover
+          coverPath={d.book.coverPath}
+          title={d.book.title}
+          className="h-14 w-10 rounded"
+          cover
+        />
+        {attachedBooks.map((a) => (
+          <BookCover
+            key={a.id}
+            coverPath={a.book!.coverPath}
+            title={a.book!.title}
+            className="h-14 w-10 rounded"
+            cover
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-// ponytail: shared chip row — used in both the list row and the detail
-// header. All chips stopPropagation on click so the parent row's onSelect
-// doesn't fire. Each chip routes via `navigate`.
+// ponytail: shared chip row — used in the list row. All chips stopPropagation
+// on click so the parent row's onSelect doesn't fire. Each chip routes via
+// `navigate`. Books are NOT chips here — dual-ownership books render as covers
+// in the row; this row carries only the type indicator + section pills.
 function ContextChips({
   discussion: d,
-  attachedBooks,
   attachedSections,
   primarySection,
   navigate,
   resolveLabel,
 }: {
   discussion: DiscussionListItem;
-  attachedBooks: DiscussionListItem["attachments"];
   attachedSections: DiscussionListItem["attachments"];
   primarySection: string | null;
   navigate: NavigateFn;
   resolveLabel: (bookId: string, href: string) => string | undefined;
 }) {
-  const hasAny =
-    attachedBooks.length > 0 || attachedSections.length > 0 || primarySection;
+  const hasAny = attachedSections.length > 0 || primarySection;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
       {/* type chip — not clickable */}
@@ -348,18 +388,6 @@ function ContextChips({
           }}
         />
       ))}
-      {/* attached books (co-primary context) */}
-      {attachedBooks.map((b) => (
-        <BookChip
-          key={b.id}
-          title={b.book?.title ?? ""}
-          coverPath={b.book?.coverPath ?? null}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (b.bookId) navigate(b.bookId, { discussionId: d.id });
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -378,33 +406,6 @@ function SectionPill({ label, onClick }: { label: string; onClick: (e: React.Mou
   );
 }
 
-function BookChip({
-  title,
-  coverPath,
-  onClick,
-}: {
-  title: string;
-  coverPath: string | null;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex max-w-[12rem] items-center gap-1 rounded-full border border-line bg-white px-1.5 py-0.5 text-[10px] text-foreground transition-colors hover:bg-muted"
-      title={title}
-    >
-      <BookCover
-        coverPath={coverPath}
-        title={title}
-        className="h-4 w-3 shrink-0 rounded-sm"
-        cover
-      />
-      <span className="truncate">{title}</span>
-    </button>
-  );
-}
-
 // ─── Detail view ──────────────────────────────────────────────────────────
 
 export function DiscussionDetail({
@@ -412,16 +413,20 @@ export function DiscussionDetail({
   onBack,
   navigate,
   resolveLabel,
+  books = [],
 }: {
   discussion: DiscussionListItem;
   onBack: () => void;
   navigate: NavigateFn;
   resolveLabel: (bookId: string, href: string) => string | undefined;
+  books?: LibraryBook[];
 }) {
   const queryClient = useQueryClient();
 
   // ponytail: the list row carries the explainer preview; the full message
-  // thread comes from GET /api/discussions/<id> (the existing endpoint).
+  // thread comes from GET /api/discussions/<id>. The response now also carries
+  // attachBookMax (per-tier cap) so the composer can gate the Other-book
+  // picker without a second round-trip.
   const { data, isLoading } = useQuery({
     queryKey: ["discussion", d.id],
     queryFn: async () => {
@@ -431,7 +436,14 @@ export function DiscussionDetail({
         discussion: {
           messages?: { role: string; content: string; createdAt: string }[];
           explainer?: { content: string } | null;
+          attachments?: {
+            type: string;
+            sectionHref: string | null;
+            bookId: string | null;
+            book?: { id: string; title: string; author: string | null; coverPath: string | null; txtTokens: number | null } | null;
+          }[];
         } | null;
+        attachBookMax?: number;
       };
     },
   });
@@ -464,11 +476,157 @@ export function DiscussionDetail({
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ponytail: sendFollowup adapted from discussions-panel.tsx:619-742.
-  // Text-only — no attachment editing UI (v1). The POST endpoint already
-  // exists at /api/discussions/<id>/messages. Index-based streaming update
-  // is mandatory: object-reference equality breaks after the first chunk
-  // (lesson from playground/page.tsx, documented in the panel).
+  // ponytail: attachment state machine — ported (trimmed) from
+  // discussions-panel.tsx:242-256, 1000-1184. draft = picked but unsent (x to
+  // remove); pending = sent, awaiting the refetch that confirms it persisted
+  // (no x); persisted = server truth. Sections + a single other-book slot.
+  const [draftAttachments, setDraftAttachments] = useState<
+    { type: "section"; sectionHref: string; label: string }[]
+  >([]);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    { type: "section"; sectionHref: string; label: string }[]
+  >([]);
+  const [draftBook, setDraftBook] = useState<{
+    bookId: string;
+    title: string;
+    author: string | null;
+    coverPath: string | null;
+    txtTokens: number | null;
+  } | null>(null);
+  const [pendingBook, setPendingBook] = useState<{
+    bookId: string;
+    title: string;
+    author: string | null;
+    coverPath: string | null;
+    txtTokens: number | null;
+  } | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachView, setAttachView] = useState<"menu" | "section" | "book">("menu");
+
+  const attachBookMax = data?.attachBookMax ?? 0;
+  const bookEnabled = attachBookMax >= 1;
+
+  // ponytail: section picker options from the origin book's tocJson. Walks the
+  // flat {title, href, subitems?} tree (same shape the list-view resolveLabel
+  // walker uses above). First-occurrence wins per basename.
+  const sectionOptions = useMemo(() => {
+    const out: { href: string; label: string }[] = [];
+    if (!d.book.tocJson) return out;
+    let toc: TocItem[];
+    try {
+      toc = JSON.parse(d.book.tocJson);
+    } catch {
+      return out;
+    }
+    if (!Array.isArray(toc)) return out;
+    const seen = new Set<string>();
+    const walk = (items: TocItem[]) => {
+      for (const item of items) {
+        const base = hrefBasename(item.href ?? "");
+        const label = (item.title ?? item.label ?? "").trim();
+        if (base && label && !seen.has(base)) {
+          seen.add(base);
+          out.push({ href: base, label });
+        }
+        if (Array.isArray(item.subitems)) walk(item.subitems);
+      }
+    };
+    walk(toc);
+    return out;
+  }, [d.book.tocJson]);
+
+  // ponytail: permanently-attached sections (server-side). Labels resolved via
+  // resolveLabel; fall back to raw href.
+  const persistedAttachments: { type: "section"; sectionHref: string; label: string }[] = useMemo(() => {
+    const atts = data?.discussion?.attachments ?? [];
+    return atts
+      .filter((a) => a.type === "section" && a.sectionHref)
+      .map((a) => ({
+        type: "section" as const,
+        sectionHref: a.sectionHref as string,
+        label: resolveLabel(d.book.id, a.sectionHref as string) ?? hrefBasename(a.sectionHref as string),
+      }));
+  }, [data, d.book.id, resolveLabel]);
+
+  // ponytail: pending = sent-but-not-yet-confirmed; dedup against persisted so
+  // a chip never renders twice during the handoff window.
+  const pendingDisplay = pendingAttachments.filter(
+    (p) => !persistedAttachments.some((a) => a.sectionHref === p.sectionHref)
+  );
+
+  // ponytail: permanently-attached other book (server-side, single slot).
+  const persistedBook = useMemo(() => {
+    const atts = data?.discussion?.attachments ?? [];
+    const bookAtt = atts.find((a) => a.type === "book" && a.bookId && a.book);
+    if (!bookAtt || !bookAtt.book) return null;
+    return {
+      bookId: bookAtt.book.id,
+      title: bookAtt.book.title,
+      author: bookAtt.book.author,
+      coverPath: bookAtt.book.coverPath,
+      txtTokens: bookAtt.book.txtTokens,
+    };
+  }, [data]);
+  const pendingBookDisplay =
+    pendingBook && persistedBook?.bookId !== pendingBook.bookId ? pendingBook : null;
+
+  // Hrefs already in the context row (draft + pending + persisted) — excluded
+  // from the picker so the user can't attach a duplicate.
+  const attachedHrefs = new Set<string>([
+    ...draftAttachments.map((a) => a.sectionHref),
+    ...pendingDisplay.map((a) => a.sectionHref),
+    ...persistedAttachments.map((a) => a.sectionHref),
+  ]);
+  const pickerOptions = sectionOptions.filter((s) => !attachedHrefs.has(s.href));
+
+  // Slots remaining for attaching other books (0..max).
+  const bookSlotsRemaining = Math.max(
+    0,
+    attachBookMax -
+      (persistedBook ? 1 : 0) -
+      (draftBook ? 1 : 0) -
+      (pendingBookDisplay ? 1 : 0)
+  );
+
+  // ponytail: retire pending → persisted once the refetch confirms them.
+  // Mirrors discussions-panel.tsx:1152-1176.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (pendingAttachments.length === 0) return;
+    const confirmed = new Set(persistedAttachments.map((a) => a.sectionHref));
+    setPendingAttachments((prev) => prev.filter((p) => !confirmed.has(p.sectionHref)));
+  }, [persistedAttachments]);
+  useEffect(() => {
+    if (!pendingBook) return;
+    if (persistedBook?.bookId === pendingBook.bookId) setPendingBook(null);
+  }, [persistedBook]);
+
+  // ponytail: clear drafts when switching discussions so stale picks don't
+  // bleed across detail views.
+  useEffect(() => {
+    setDraftAttachments([]);
+    setDraftBook(null);
+    setPendingAttachments([]);
+    setPendingBook(null);
+  }, [d.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  function addDraftAttachment(href: string, label: string) {
+    if (attachedHrefs.has(href)) return;
+    setDraftAttachments((prev) => [...prev, { type: "section", sectionHref: href, label }]);
+  }
+  function removeDraftAttachment(href: string) {
+    setDraftAttachments((prev) => prev.filter((a) => a.sectionHref !== href));
+  }
+  function addDraftBook(b: { bookId: string; title: string; author: string | null; coverPath: string | null; txtTokens: number | null }) {
+    if (bookSlotsRemaining <= 0) return;
+    setDraftBook(b);
+  }
+
+  // ponytail: sendFollowup adapted from discussions-panel.tsx:619-742, extended
+  // with the attachments payload (the POST endpoint already supports it).
+  // Index-based streaming update is mandatory: object-reference equality
+  // breaks after the first chunk (lesson from playground/page.tsx).
   async function sendFollowup() {
     const text = input.trim();
     if (!text || streaming) return;
@@ -483,14 +641,40 @@ export function DiscussionDetail({
     setInput("");
     setStreaming(true);
 
+    // ponytail: snapshot drafts → move to pending so chips hold steady through
+    // the stream; the confirm effect retires them once the refetch lands them
+    // in persisted. Mirrors discussions-panel.tsx:640-658.
+    const sendingAttachments = draftAttachments;
+    if (sendingAttachments.length > 0) {
+      setPendingAttachments((prev) => {
+        const seen = new Set(prev.map((a) => a.sectionHref));
+        return [...prev, ...sendingAttachments.filter((a) => !seen.has(a.sectionHref))];
+      });
+      setDraftAttachments([]);
+    }
+    const sendingBook = draftBook;
+    if (sendingBook) {
+      setPendingBook(sendingBook);
+      setDraftBook(null);
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
+      const sectionPayload = sendingAttachments.map((a) => ({
+        type: a.type,
+        sectionHref: a.sectionHref,
+      }));
+      const bookPayload = sendingBook ? [{ type: "book", bookId: sendingBook.bookId }] : [];
+      const attachmentsPayload = [...sectionPayload, ...bookPayload];
       const res = await fetch(`/api/discussions/${d.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({
+          content: text,
+          attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
+        }),
         signal: controller.signal,
       });
 
@@ -565,10 +749,13 @@ export function DiscussionDetail({
   const attachedBooks = d.attachments.filter(
     (a) => a.type === "book" && a.bookId && a.book
   );
-  const attachedSections = d.attachments.filter(
-    (a) => a.type === "section" && a.sectionHref
-  );
   const primarySection = d.type === "section" && d.sectionHref ? d.sectionHref : null;
+
+  // ponytail: header — parent book as a large cover, exactly as before. Dual
+  // ownership (a second book attached) shows BOTH covers and the "Two books:"
+  // label treatment. Each cover opens its own book in the reader.
+  const isMulti = attachedBooks.length > 0;
+  const involvedTitles = [d.book.title, ...attachedBooks.map((a) => a.book!.title)];
 
   return (
     <div className="flex h-full flex-col">
@@ -584,41 +771,47 @@ export function DiscussionDetail({
       </div>
 
       <div className="flex-1 overflow-y-auto px-1 py-4">
-        {/* Header: origin book + context chips */}
+        {/* Header: involved books as large covers (dual → two covers + label). */}
         <div className="mb-4 flex gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(d.book.id, { discussionId: d.id })}
-            className="flex gap-3 rounded-lg text-left transition-colors hover:bg-muted/40"
-            title={`Open ${d.book.title}`}
-          >
-            <BookCover
-              coverPath={d.book.coverPath}
-              title={d.book.title}
-              className="h-16 w-12 shrink-0 rounded"
-              cover
-            />
-            <div className="min-w-0 self-center">
-              <h2 className="font-serif text-lg font-medium text-espresso">
-                {d.book.title}
-              </h2>
-              {d.book.author && (
-                <p className="text-xs text-muted-foreground">{d.book.author}</p>
-              )}
-            </div>
-          </button>
-        </div>
-
-        {/* Context chips row */}
-        <div className="mb-4">
-          <ContextChips
-            discussion={d}
-            attachedBooks={attachedBooks}
-            attachedSections={attachedSections}
-            primarySection={primarySection}
-            navigate={navigate}
-            resolveLabel={resolveLabel}
-          />
+          <div className={"flex shrink-0" + (isMulti ? " gap-2" : "")}>
+            <button
+              type="button"
+              onClick={() => navigate(d.book.id, { discussionId: d.id })}
+              className="rounded-lg transition-colors hover:bg-muted/40"
+              title={`Open ${d.book.title}`}
+            >
+              <BookCover
+                coverPath={d.book.coverPath}
+                title={d.book.title}
+                className="h-16 w-12 rounded"
+                cover
+              />
+            </button>
+            {attachedBooks.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => navigate(a.book!.id, { discussionId: d.id })}
+                className="rounded-lg transition-colors hover:bg-muted/40"
+                title={`Open ${a.book!.title}`}
+              >
+                <BookCover
+                  coverPath={a.book!.coverPath}
+                  title={a.book!.title}
+                  className="h-16 w-12 rounded"
+                  cover
+                />
+              </button>
+            ))}
+          </div>
+          <div className="min-w-0 self-center">
+            <h2 className="font-serif text-lg font-medium text-espresso">
+              {isMulti ? booksLabel(involvedTitles) : d.book.title}
+            </h2>
+            {!isMulti && d.book.author && (
+              <p className="text-xs text-muted-foreground">{d.book.author}</p>
+            )}
+          </div>
         </div>
 
         {/* Passage excerpt (display-only) */}
@@ -659,7 +852,46 @@ export function DiscussionDetail({
       </div>
 
       {/* Composer — sticky at the bottom of the detail pane. */}
-      <div className="shrink-0 border-t border-line p-2">
+      <div className="shrink-0 border-t border-line p-2 flex flex-col gap-1.5">
+        <ComposerContextRow
+          originBook={{
+            bookId: d.book.id,
+            title: d.book.title,
+            author: d.book.author,
+            coverPath: d.book.coverPath,
+          }}
+          originBookId={d.book.id}
+          primarySection={
+            primarySection
+              ? {
+                  href: primarySection,
+                  label:
+                    resolveLabel(d.book.id, primarySection) ??
+                    hrefBasename(primarySection),
+                }
+              : null
+          }
+          persistedAttachments={persistedAttachments}
+          pendingAttachments={pendingDisplay}
+          draftAttachments={draftAttachments}
+          persistedBook={persistedBook}
+          pendingBook={pendingBookDisplay}
+          draftBook={draftBook}
+          onRemoveDraftAttachment={removeDraftAttachment}
+          onRemoveDraftBook={() => setDraftBook(null)}
+          navigate={navigate}
+          discussionId={d.id}
+          pickerOptions={pickerOptions}
+          onAddDraftAttachment={addDraftAttachment}
+          books={books}
+          bookEnabled={bookEnabled}
+          bookSlotsRemaining={bookSlotsRemaining}
+          onAddDraftBook={addDraftBook}
+          attachOpen={attachOpen}
+          setAttachOpen={setAttachOpen}
+          attachView={attachView}
+          setAttachView={setAttachView}
+        />
         <div className="flex items-end gap-2 rounded-xl border border-line bg-white p-2">
           <Textarea
             value={input}
@@ -686,6 +918,329 @@ export function DiscussionDetail({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Composer context row + Attach Popover ─────────────────────────────────
+// ponytail: ported (trimmed) from discussions-panel.tsx:1889-2216. Shows all
+// context anchored to a follow-up: persisted/pending sections (no x), draft
+// sections (with x), the single other-book slot (persisted/pending/draft),
+// and a unified "Attach" Popover swapping between a Section Command list
+// (sourced from the origin book's tocJson) and an Other-book Command list
+// (sourced from the user's library). All books render as named peers — no
+// "This book" singular, since multiple books can be co-equal context here.
+
+type SectionAtt = { type: "section"; sectionHref: string; label: string };
+type BookAtt = {
+  bookId: string;
+  title: string;
+  author: string | null;
+  coverPath: string | null;
+  txtTokens: number | null;
+};
+
+function ComposerContextRow({
+  originBook,
+  originBookId,
+  primarySection,
+  persistedAttachments,
+  pendingAttachments,
+  draftAttachments,
+  persistedBook,
+  pendingBook,
+  draftBook,
+  onRemoveDraftAttachment,
+  onRemoveDraftBook,
+  navigate,
+  discussionId,
+  pickerOptions,
+  onAddDraftAttachment,
+  books,
+  bookEnabled,
+  bookSlotsRemaining,
+  onAddDraftBook,
+  attachOpen,
+  setAttachOpen,
+  attachView,
+  setAttachView,
+}: {
+  originBook: { bookId: string; title: string; author: string | null; coverPath: string | null };
+  originBookId: string;
+  primarySection: { href: string; label: string } | null;
+  persistedAttachments: SectionAtt[];
+  pendingAttachments: SectionAtt[];
+  draftAttachments: SectionAtt[];
+  persistedBook: BookAtt | null;
+  pendingBook: BookAtt | null;
+  draftBook: BookAtt | null;
+  onRemoveDraftAttachment: (href: string) => void;
+  onRemoveDraftBook: () => void;
+  navigate: NavigateFn;
+  discussionId: string;
+  pickerOptions: { href: string; label: string }[];
+  onAddDraftAttachment: (href: string, label: string) => void;
+  books: LibraryBook[];
+  bookEnabled: boolean;
+  bookSlotsRemaining: number;
+  onAddDraftBook: (b: BookAtt) => void;
+  attachOpen: boolean;
+  setAttachOpen: (o: boolean) => void;
+  attachView: "menu" | "section" | "book";
+  setAttachView: (v: "menu" | "section" | "book") => void;
+}) {
+  const sectionAvailable = pickerOptions.length > 0;
+  const booksAvailable = bookEnabled && bookSlotsRemaining > 0;
+
+  const closeAttach = () => {
+    setAttachOpen(false);
+    setAttachView("menu");
+  };
+
+  const renderBookChip = (
+    b: BookAtt,
+    key: string,
+    onRemove?: () => void,
+    onClick?: () => void
+  ) => (
+    <span
+      key={key}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={
+        onClick
+          ? "inline-flex max-w-[14rem] cursor-pointer items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline"
+          : "inline-flex max-w-[14rem] items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5"
+      }
+      title={`${b.title}${b.author ? ` — ${b.author}` : ""}`}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
+      <span className="h-4 w-3 shrink-0 overflow-hidden rounded-sm">
+        <BookCover coverPath={b.coverPath} title={b.title} cover />
+      </span>
+      <span className="truncate text-xs">{b.title}</span>
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove ${b.title}`}
+          onClick={onRemove}
+          className="text-muted-foreground/70 hover:text-foreground"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+      <span className="font-medium uppercase tracking-wide">Context</span>
+      {/* origin book — always present (always sent with every follow-up).
+          Clickable → reader. No x: it's the discussion's seed book. */}
+      {renderBookChip(
+        { ...originBook, txtTokens: null },
+        `ob-${originBook.bookId}`,
+        undefined,
+        () => navigate(originBook.bookId, { discussionId })
+      )}
+      {/* primary section — the discussion's own type=section context (the
+          section it was started from). Clickable → reader. No x. */}
+      {primarySection && (
+        <button
+          key={`ps-${primarySection.href}`}
+          type="button"
+          className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline"
+          title={primarySection.label}
+          onClick={() => navigate(originBookId, { href: primarySection.href, discussionId })}
+        >
+          {primarySection.label}
+        </button>
+      )}
+      {/* persisted sections (no x — re-sent every follow-up) */}
+      {persistedAttachments.map((a) => (
+        <button
+          key={`p-${a.sectionHref}`}
+          type="button"
+          className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline"
+          title={a.label}
+          onClick={() => navigate(originBookId, { href: a.sectionHref, discussionId })}
+        >
+          {a.label}
+        </button>
+      ))}
+      {/* pending sections (sent, awaiting confirm — no x) */}
+      {pendingAttachments.map((a) => (
+        <button
+          key={`k-${a.sectionHref}`}
+          type="button"
+          className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline"
+          title={a.label}
+          onClick={() => navigate(originBookId, { href: a.sectionHref, discussionId })}
+        >
+          {a.label}
+        </button>
+      ))}
+      {/* draft sections (picked, unsent — removable via x) */}
+      {draftAttachments.map((a) => (
+        <span
+          key={`d-${a.sectionHref}`}
+          className="inline-flex max-w-[12rem] items-center gap-0.5 truncate rounded bg-muted px-1.5 py-0.5"
+          title={a.label}
+        >
+          <span className="truncate">{a.label}</span>
+          <button
+            type="button"
+            aria-label={`Remove ${a.label}`}
+            onClick={() => onRemoveDraftAttachment(a.sectionHref)}
+            className="text-muted-foreground/70 hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      {/* book chips: persisted + pending (clickable → reader) + draft (removable) */}
+      {persistedBook &&
+        renderBookChip(
+          persistedBook,
+          `pb-${persistedBook.bookId}`,
+          undefined,
+          () => navigate(persistedBook.bookId, { discussionId })
+        )}
+      {pendingBook &&
+        pendingBook.bookId !== persistedBook?.bookId &&
+        renderBookChip(
+          pendingBook,
+          `kb-${pendingBook.bookId}`,
+          undefined,
+          () => navigate(pendingBook.bookId, { discussionId })
+        )}
+      {draftBook &&
+        draftBook.bookId !== persistedBook?.bookId &&
+        draftBook.bookId !== pendingBook?.bookId &&
+        renderBookChip(draftBook, "db", onRemoveDraftBook)}
+      {/* unified Attach affordance */}
+      {(sectionAvailable || booksAvailable || attachOpen) && (
+        <Popover
+          open={attachOpen}
+          onOpenChange={(o) => {
+            if (o) {
+              setAttachView(bookEnabled ? "menu" : "section");
+            } else {
+              setAttachView("menu");
+            }
+            setAttachOpen(o);
+          }}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center gap-0.5 rounded border border-dashed border-border px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title={bookEnabled ? "Attach more context" : "Attach another section"}
+            >
+              <Plus className="h-3 w-3" />
+              {bookEnabled ? "Attach" : "Section"}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-0">
+            {attachView === "menu" && (
+              <div className="p-1">
+                <button
+                  type="button"
+                  disabled={!sectionAvailable}
+                  onClick={() => setAttachView("section")}
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                >
+                  Section from this book…
+                </button>
+                <button
+                  type="button"
+                  disabled={!booksAvailable}
+                  onClick={() => setAttachView("book")}
+                  className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                >
+                  Other book…
+                </button>
+              </div>
+            )}
+            {attachView === "section" && (
+              <Command>
+                <CommandInput placeholder="Find a section…" />
+                <CommandList className="max-h-60">
+                  <CommandEmpty>No sections.</CommandEmpty>
+                  <CommandGroup>
+                    {pickerOptions.map((s) => (
+                      <CommandItem
+                        key={s.href}
+                        value={s.label}
+                        onSelect={() => {
+                          onAddDraftAttachment(s.href, s.label);
+                          closeAttach();
+                        }}
+                        className="text-xs"
+                      >
+                        <span className="truncate">{s.label}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            )}
+            {attachView === "book" && (
+              <Command>
+                <CommandInput placeholder="Find a book…" />
+                <CommandList className="max-h-72">
+                  <CommandEmpty>No books.</CommandEmpty>
+                  <CommandGroup>
+                    {books
+                      .filter((b) => b.id !== originBookId)
+                      .map((b) => (
+                        <CommandItem
+                          key={b.id}
+                          value={`${b.title} ${b.author ?? ""}`}
+                          onSelect={() => {
+                            onAddDraftBook({
+                              bookId: b.id,
+                              title: b.title,
+                              author: b.author,
+                              coverPath: b.coverPath,
+                              txtTokens: b.txtTokens,
+                            });
+                            closeAttach();
+                          }}
+                          className="gap-2"
+                        >
+                          <span className="h-8 w-6 shrink-0 overflow-hidden rounded-sm">
+                            <BookCover coverPath={b.coverPath} title={b.title} cover />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-medium">
+                              {b.title}
+                            </span>
+                            {b.author && (
+                              <span className="block truncate text-[11px] text-muted-foreground">
+                                {b.author}
+                              </span>
+                            )}
+                          </span>
+                        </CommandItem>
+                      ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
     </div>
   );
 }
