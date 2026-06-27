@@ -563,6 +563,18 @@ export function ReaderClient({
     [markPendingReaderNav, router]
   );
 
+  // ponytail: open a book to its last-read position. No pending nav, no
+  // discussion auto-open — just navigate and let the reader's normal
+  // saved-position restore handle landing on the right page. Used by
+  // clickable context chips (attached book / origin book name).
+  const handleOpenBook = useCallback(
+    (bookId: string) => {
+      setActiveTool(null);
+      router.push(`/book/${bookId}/reader`);
+    },
+    [router]
+  );
+
   // ponytail: consume a cross-book deep-link navigation. The click handler
   // above closes the sidebar, marks the pending nav, and router.pushes to the
   // target book. On arrival, this effect fires once the rendition is ready for
@@ -1629,6 +1641,7 @@ export function ReaderClient({
                   viewerRef.current?.flashCfi(cfi);
                 }}
                 onNavigateToBookSection={handleNavigateToBookSection}
+                onOpenBook={handleOpenBook}
                 resolveSectionLabel={resolveSectionLabel}
                 sectionOptions={sectionOptions}
                 attachBookMax={attachBookMax}

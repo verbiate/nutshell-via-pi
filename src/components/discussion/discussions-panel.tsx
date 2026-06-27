@@ -153,6 +153,9 @@ export interface DiscussionsPanelProps {
   // from its activeDiscussionId state — inner components (DiscussionView,
   // MessageBubble, ExplainerContent) pass only (bookId, basename).
   onNavigateToBookSection?: (bookId: string, basename: string, discussionId?: string) => void;
+  // ponytail: open a book to its last-read position (chip click). No pending
+  // nav — the reader's saved-position restore handles the landing page.
+  onOpenBook?: (bookId: string) => void;
   // ponytail: resolve a section href to its ToC label, for discussions reopened
   // after the click-time title is gone (the title isn't persisted server-side).
   resolveSectionLabel?: (href: string) => string | undefined;
@@ -181,6 +184,7 @@ export function DiscussionsPanel({
   onNavigateToHref,
   onNavigateToCfi,
   onNavigateToBookSection,
+  onOpenBook,
   resolveSectionLabel,
   spineItems,
   sectionOptions,
@@ -1122,6 +1126,7 @@ export function DiscussionsPanel({
           onNavigateToHref={navigateAndCloseModal}
           onNavigateToCfi={navigateCfiAndCloseModal}
           onNavigateToBookSection={navigateBookAndCloseModal}
+          onOpenBook={onOpenBook}
           attachedBookHrefs={attachedBookHrefs}
           originBookId={originBookId}
           spineItems={spineItems}
@@ -1390,6 +1395,7 @@ function DiscussionView({
   onNavigateToHref,
   onNavigateToCfi,
   onNavigateToBookSection,
+  onOpenBook,
   attachedBookHrefs,
   originBookId,
   spineItems,
@@ -1461,6 +1467,7 @@ function DiscussionView({
   onRemoveDraftAttachment?: (href: string) => void;
   currentBookId?: string;
   originBookChip?: BookAttachment | null;
+  onOpenBook?: (bookId: string) => void;
   persistedBook?: BookAttachment | null;
   pendingBook?: BookAttachment | null;
   draftBook?: BookAttachment | null;
@@ -1831,12 +1838,30 @@ function DiscussionView({
             const chip = (
               b: BookAttachment,
               key: string,
-              onRemove?: () => void
+              onRemove?: () => void,
+              onClick?: () => void
             ) => (
               <span
                 key={key}
-                className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5"
+                role={onClick ? "button" : undefined}
+                tabIndex={onClick ? 0 : undefined}
+                className={
+                  onClick
+                    ? "inline-flex max-w-[14rem] cursor-pointer items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline"
+                    : "inline-flex max-w-[14rem] items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5"
+                }
                 title={`${b.title}${b.author ? ` — ${b.author}` : ""}`}
+                onClick={onClick}
+                onKeyDown={
+                  onClick
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onClick();
+                        }
+                      }
+                    : undefined
+                }
               >
                 <span className="h-4 w-3 shrink-0 overflow-hidden rounded-sm">
                   <BookCover coverPath={b.coverPath} title={b.title} cover />
@@ -1854,23 +1879,25 @@ function DiscussionView({
                 )}
               </span>
             );
+            const open = (id: string) => () => onOpenBook?.(id);
             return (
               <>
                 {/* ponytail: origin book chip — shown when viewing from a
                   co-primary. "This book" (above) means the open book; the
-                  origin appears here as a named chip. */}
-                {originBookChip && chip(originBookChip, `ob-${originBookChip.bookId}`)}
+                  origin appears here as a named chip. Clickable → opens the
+                  origin book at its last-read position. */}
+                {originBookChip && chip(originBookChip, `ob-${originBookChip.bookId}`, undefined, open(originBookChip.bookId))}
                 {/* ponytail: hide persistedBook when it IS the current book —
                   it's already represented by "This book" and showing both is
                   redundant. Only hides the visual chip; the attachment still
-                  counts toward the slot cap. */}
+                  counts toward the slot cap. Clickable → opens at last-read. */}
                 {persistedBook &&
                   persistedBook.bookId !== currentBookId &&
-                  chip(persistedBook, `pb-${persistedBook.bookId}`)}
+                  chip(persistedBook, `pb-${persistedBook.bookId}`, undefined, open(persistedBook.bookId))}
                 {pendingBook &&
                   pendingBook.bookId !== persistedBook?.bookId &&
                   pendingBook.bookId !== currentBookId &&
-                  chip(pendingBook, `kb-${pendingBook.bookId}`)}
+                  chip(pendingBook, `kb-${pendingBook.bookId}`, undefined, open(pendingBook.bookId))}
                 {draftBook &&
                   draftBook.bookId !== persistedBook?.bookId &&
                   draftBook.bookId !== pendingBook?.bookId &&
