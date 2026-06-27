@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   hrefBasename,
   parseCitations,
+  parseBookRef,
   isValidHref,
   segmentText,
   resolveToSpineHref,
@@ -62,6 +63,65 @@ describe("segmentText", () => {
     const segs = segmentText("[x](https://e.com)");
     expect(segs).toHaveLength(1);
     expect(segs[0].type).toBe("text");
+  });
+});
+
+describe("parseBookRef", () => {
+  // ponytail: the cuid-form prefix ^[a-z0-9]{8,}: discriminates a cross-book
+  // href from an origin-book basename. cuid() emits ~24-char base36 ids;
+  // no real EPUB spine basename starts with 8+ lowercase-alphanumerics + ":".
+  it("splits a cuid-prefixed href into bookId + basename", () => {
+    expect(parseBookRef("ck1abc2def3ghi4jkl:chapter3.xhtml")).toEqual({
+      bookId: "ck1abc2def3ghi4jkl",
+      basename: "chapter3.xhtml",
+    });
+  });
+
+  it("returns null bookId for an unprefixed origin-book basename", () => {
+    expect(parseBookRef("chapter1.xhtml")).toEqual({
+      bookId: null,
+      basename: "chapter1.xhtml",
+    });
+  });
+
+  it("returns null bookId when the prefix is too short to be a cuid", () => {
+    // "part1" is 5 chars — below the 8-char cuid floor. Whole thing is the basename.
+    expect(parseBookRef("part1:chapter.xhtml")).toEqual({
+      bookId: null,
+      basename: "part1:chapter.xhtml",
+    });
+  });
+
+  it("returns null bookId when there is no colon", () => {
+    expect(parseBookRef("index.xhtml")).toEqual({
+      bookId: null,
+      basename: "index.xhtml",
+    });
+  });
+
+  it("splits on the first colon only (basenames should not contain colons, but be safe)", () => {
+    expect(parseBookRef("ck1abc2def3ghi4jkl:weird:name.xhtml")).toEqual({
+      bookId: "ck1abc2def3ghi4jkl",
+      basename: "weird:name.xhtml",
+    });
+  });
+
+  it("handles empty input", () => {
+    expect(parseBookRef("")).toEqual({ bookId: null, basename: "" });
+  });
+});
+
+describe("parseCitations (cross-book form)", () => {
+  // Regression: CITE_RE's [^)\s]+ already captures the cuid:basename form —
+  // no regex change needed. parseCitations returns the full prefixed href.
+  it("captures cuid-prefixed hrefs alongside origin-book hrefs", () => {
+    const out = parseCitations(
+      "see [Ch 1](#ch:chapter1.xhtml) and [Book2 Ch 3](#ch:ck1abc2def3ghi4jkl:chapter3.xhtml)"
+    );
+    expect(out).toEqual([
+      { label: "Ch 1", href: "chapter1.xhtml" },
+      { label: "Book2 Ch 3", href: "ck1abc2def3ghi4jkl:chapter3.xhtml" },
+    ]);
   });
 });
 

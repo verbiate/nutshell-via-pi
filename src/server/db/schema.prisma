@@ -433,6 +433,7 @@ model DiscussionAttachment {
   book         EpubFile?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@index([discussionId])
+  @@index([bookId, type])
 }
 
 model DiscussionMessage {

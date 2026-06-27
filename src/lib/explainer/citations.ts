@@ -17,6 +17,26 @@ export function hrefBasename(href: string): string {
   return href.split("#")[0].split("?")[0].split("/").pop() ?? "";
 }
 
+/**
+ * ponytail: discriminate a cross-book citation href from an origin-book
+ * basename. cuid() emits ~24-char base36 ids; the ^[a-z0-9]{8,}: floor is
+ * unambiguous against any real EPUB spine basename (none start with 8+
+ * lowercase-alphanumerics followed by ":"). Returns bookId null for the
+ * origin-book form so callers fall through to today's within-book path.
+ * Splits on the FIRST ":" only — basenames should never contain ":", but
+ * the split is defensive.
+ */
+const BOOK_PREFIX_RE = /^[a-z0-9]{8,}:/;
+export function parseBookRef(
+  href: string
+): { bookId: string | null; basename: string } {
+  if (!href) return { bookId: null, basename: "" };
+  const m = href.match(BOOK_PREFIX_RE);
+  if (!m) return { bookId: null, basename: href };
+  const bookId = m[0].slice(0, -1); // strip trailing ":"
+  return { bookId, basename: href.slice(m[0].length) };
+}
+
 export function parseCitations(text: string): Citation[] {
   const out: Citation[] = [];
   for (const m of text.matchAll(CITE_RE)) {
@@ -70,5 +90,11 @@ if (process.argv[1]?.endsWith("citations.ts")) {
   if (c.length !== 2) throw new Error("parseCitations failed");
   if (!isValidHref("chapter1.xhtml", ["OEBPS/chapter1.xhtml"])) throw new Error("isValidHref true");
   if (isValidHref("nope.xhtml", ["chapter1.xhtml"])) throw new Error("isValidHref false");
+  const cross = parseCitations("[Ch3](#ch:ck1abc2def3ghi4jkl:chapter3.xhtml)");
+  if (cross[0]?.href !== "ck1abc2def3ghi4jkl:chapter3.xhtml") throw new Error("cross href capture failed");
+  const ref = parseBookRef("ck1abc2def3ghi4jkl:chapter3.xhtml");
+  if (ref.bookId !== "ck1abc2def3ghi4jkl" || ref.basename !== "chapter3.xhtml") throw new Error("parseBookRef prefixed failed");
+  if (parseBookRef("chapter1.xhtml").bookId !== null) throw new Error("parseBookRef origin should be null");
+  if (parseBookRef("part1:x.xhtml").bookId !== null) throw new Error("parseBookRef short prefix should be null");
   console.log("citations self-check OK");
 }
