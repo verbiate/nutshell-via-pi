@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { ChevronLeft, PanelRightClose } from "lucide-react";
+import { ChevronLeft, Lightbulb, PanelRightClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ export interface ReaderChromeProps {
   sidebarOpen?: boolean;
   hidden?: boolean;
   onHideControls?: () => void;
+  onAskAboutSection?: () => void;
 }
 
 export function ReaderChrome({
@@ -19,6 +20,7 @@ export function ReaderChrome({
   sidebarOpen = false,
   hidden = false,
   onHideControls,
+  onAskAboutSection,
 }: ReaderChromeProps) {
   return (
     <header
@@ -55,6 +57,21 @@ export function ReaderChrome({
       {/* ponytail: container keeps gap-1, leaving a 4px residue after collapse — acceptable per spec */}
       <div className={cn("flex items-center gap-1 shrink-0", hidden ? "pointer-events-none" : "pointer-events-auto")}>
         {searchTrigger}
+        {/* ponytail: shown for the whole section per product decision (not literal
+            first-page only). Upgrade path: gate on location.start.displayed.page===1
+            plumbed from epub-viewer if "first page only" is ever wanted. Visibility
+            tracks the chrome fade (hidden prop) independently of sidebarOpen. */}
+        {onAskAboutSection && (
+          <Button
+            onClick={onAskAboutSection}
+            tabIndex={hidden ? -1 : 0}
+            aria-label="Ask about this section"
+            className="h-[46px] bg-transparent text-foreground"
+          >
+            <Lightbulb className="mr-2 h-4 w-4" />
+            Ask about this section
+          </Button>
+        )}
         <div
           aria-hidden={!sidebarOpen}
           className={cn(

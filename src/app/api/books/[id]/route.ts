@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-guards";
 import { getBookForUser } from "@/server/services/library";
 import { getOpenRouterConfig } from "@/server/services/openrouter";
 import { getContextWindow } from "@/server/services/model-info";
+import { getAttachBookMax } from "@/server/services/discussions";
 
 // ponytail: client-side book detail for the persistent ReaderMount. Returns
 // everything ReaderClient needs (book row + metadata + token-budget context
@@ -25,7 +26,10 @@ export async function GET(
       return NextResponse.json({ error: "Book not found" }, { status: 404 });
     }
 
-    const { contextLength: contextWindow } = await getContextWindow(model);
+    const [{ contextLength: contextWindow }, attachBookMax] = await Promise.all([
+      getContextWindow(model),
+      getAttachBookMax(session.role),
+    ]);
 
     return NextResponse.json({
       book: {
@@ -49,6 +53,7 @@ export async function GET(
       contextWindow,
       isAdmin: session.role === "admin",
       userName: session.name,
+      attachBookMax,
     });
   } catch (error: any) {
     if (error.statusCode === 401) {

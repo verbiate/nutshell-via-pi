@@ -7,6 +7,33 @@ import {
 } from "./explainer";
 import { recordError } from "./errors";
 import { getSetting } from "./settings";
+import { verifyBookAccess } from "./reader";
+import { getTierBookTokenLimit } from "./model-info";
+
+// ponytail: a discussion attachment the user can add mid-thread. Two slices:
+// sections of the current book (sectionHref) and whole OTHER books (bookId).
+// Both become permanent context re-sent on every follow-up via the attachment
+// suffix (see buildAttachmentSuffix). Cache key/versioning is unaffected.
+export type NewDiscussionAttachment =
+  | { type: "section"; sectionHref: string }
+  | { type: "book"; bookId: string };
+
+// ponytail: per-tier cap on how many OTHER books a discussion can attach.
+// Stored as `discussions.attachBook.max.<tier>` AppSetting (integer string),
+// mirroring the tts.quota.<tier>.generations pattern. Default 1 for every tier;
+// admin can raise/lower per tier. "Only one extra book" = max 1.
+const DEFAULT_ATTACH_BOOK_MAX: Record<string, number> = {
+  regular: 1,
+  pro: 1,
+  admin: 1,
+};
+export async function getAttachBookMax(tier: string): Promise<number> {
+  const raw = await getSetting(`discussions.attachBook.max.${tier}`);
+  const fallback = DEFAULT_ATTACH_BOOK_MAX[tier] ?? 1;
+  if (raw == null) return fallback;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
 
 // ponytail: follow-up turns rebuild the book template as the system message,
 // but the citation rule ends up buried under megabytes of {{book_text}} while
@@ -544,6 +571,16 @@ export async function getDiscussionWithMessages(discussionId: string, userId: st
     include: {
       explainer: { select: { id: true, content: true, modelId: true, promptVersion: true, version: true } },
       messages: { orderBy: { createdAt: "asc" } },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        // ponytail: book-type attachments carry only bookId; include the
+        // attached book's display fields (chip) + txtTokens (context indicator)
+        // so the UI can render + budget without a second round-trip. Sections
+        // ignore the relation.
+        include: {
+          book: { select: { id: true, title: true, author: true, coverPath: true, txtTokens: true } },
+        },
+      },
     },
   });
   if (!discussion || discussion.userId !== userId) return null;
@@ -574,6 +611,118 @@ export interface FollowupEvent {
   error?: string;
 }
 
+// ponytail: minimal row shape buildAttachmentSuffix and the in-memory merge
+// consume. Prisma's DiscussionAttachment rows are a structural superset, so
+// both real rows and the synthetic ones persistAttachments returns type-check
+// against this. Lifted out of streamFollowup so the blank first turn reuses it.
+type DiscussionAttachmentRow = {
+  id: string;
+  discussionId: string;
+  type: string;
+  sectionHref: string | null;
+  bookId: string | null;
+  passageText: string | null;
+  passageCfi: string | null;
+  createdAt: Date;
+};
+
+// Validate newly-attached context against access / per-tier-max / size rules.
+// Read-only — safe to call BEFORE a discussion row exists (the blank first turn
+// does this so a rejected attach can't leave a dangling empty discussion).
+// Sections need no validation (hrefs come from the current book's own ToC), so
+// only book attachments are checked.
+async function validateNewAttachments(args: {
+  userId: string;
+  bookId: string;
+  tier: string;
+  existing: readonly DiscussionAttachmentRow[];
+  incoming: readonly NewDiscussionAttachment[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const incomingBooks = args.incoming.filter(
+    (a): a is { type: "book"; bookId: string } => a.type === "book"
+  );
+  if (incomingBooks.length === 0) return { ok: true };
+
+  const max = await getAttachBookMax(args.tier);
+  const existingBookIds = new Set(
+    args.existing.filter((a) => a.type === "book" && a.bookId).map((a) => a.bookId!)
+  );
+  const uniqueNew = incomingBooks.filter((a) => !existingBookIds.has(a.bookId));
+  if (existingBookIds.size + uniqueNew.length > max) {
+    return {
+      ok: false,
+      error: `Your tier can attach at most ${max} additional book${max === 1 ? "" : "s"} per discussion.`,
+    };
+  }
+  for (const a of uniqueNew) {
+    if (!(await verifyBookAccess(args.userId, a.bookId))) {
+      return { ok: false, error: "You don't have access to that book." };
+    }
+  }
+  // ponytail: size guard — a whole second book frequently exceeds lower-tier
+  // context windows. Only enforced when both books report a cached txtTokens;
+  // otherwise we let the request through and rely on the client "X% full"
+  // indicator. Upgrade path: a server-side tokenizer count if txtTokens drifts.
+  const limit = await getTierBookTokenLimit(args.tier);
+  const b1 = await db.epubFile.findUnique({
+    where: { id: args.bookId },
+    select: { txtTokens: true },
+  });
+  for (const a of uniqueNew) {
+    const b2 = await db.epubFile.findUnique({
+      where: { id: a.bookId },
+      select: { txtTokens: true },
+    });
+    if (b1?.txtTokens != null && b2?.txtTokens != null) {
+      const total = b1.txtTokens + b2.txtTokens;
+      if (total > limit) {
+        return {
+          ok: false,
+          error: `That book is too large to attach here — together both books (~${total.toLocaleString()} tokens) would exceed this tier's context window.`,
+        };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+// Persist newly-attached context (dedup by composite key) and return the rows
+// to merge into the discussion's in-memory attachment list. Call AFTER the
+// discussion row exists and AFTER validateNewAttachments has passed.
+async function persistAttachments(args: {
+  discussionId: string;
+  existing: readonly DiscussionAttachmentRow[];
+  incoming: readonly NewDiscussionAttachment[];
+}): Promise<DiscussionAttachmentRow[]> {
+  const existingKeys = new Set(
+    args.existing.map((a) => `${a.type}|${a.sectionHref ?? ""}|${a.bookId ?? ""}`)
+  );
+  const toCreate = args.incoming.filter((a) => {
+    const key = a.type === "section" ? `section|${a.sectionHref}|` : `book||${a.bookId}`;
+    return !existingKeys.has(key);
+  });
+  if (toCreate.length === 0) return [];
+  await db.discussionAttachment.createMany({
+    data: toCreate.map((a) => ({
+      discussionId: args.discussionId,
+      type: a.type,
+      sectionHref: a.type === "section" ? a.sectionHref : null,
+      bookId: a.type === "book" ? a.bookId : null,
+    })),
+  });
+  const now = new Date();
+  return toCreate.map((a) => ({
+    id: "",
+    discussionId: args.discussionId,
+    type: a.type,
+    sectionHref: a.type === "section" ? a.sectionHref : null,
+    bookId: a.type === "book" ? a.bookId : null,
+    passageText: null,
+    passageCfi: null,
+    createdAt: now,
+  }));
+}
+
 /**
  * Stream a follow-up response in an existing discussion. Persists the user's
  * message immediately; accumulates the assistant response and persists it
@@ -592,17 +741,39 @@ export async function* streamFollowup(params: {
   discussionId: string;
   userId: string;
   userMessage: string;
+  // ponytail: new context the user attached in the composer for THIS turn.
+  // Persisted as DiscussionAttachment rows before generation, then re-sent on
+  // every future follow-up (see buildAttachmentSuffix). Sections or other books.
+  newAttachments?: NewDiscussionAttachment[];
 }): AsyncGenerator<FollowupEvent> {
   const discussion = await db.discussion.findUnique({
     where: { id: params.discussionId },
     include: {
       explainer: true,
       messages: { orderBy: { createdAt: "asc" } },
+      attachments: true,
     },
   });
   if (!discussion || discussion.userId !== params.userId) {
     yield { type: "error", error: "Discussion not found" };
     return;
+  }
+
+  // Validate attachments BEFORE persisting the user's message — a rejected
+  // attachment shouldn't leave a dangling user turn. Shared with the blank
+  // first turn (see streamBlankFirstTurn) so access/max/size rules can't drift.
+  if (params.newAttachments && params.newAttachments.length > 0) {
+    const v = await validateNewAttachments({
+      userId: params.userId,
+      bookId: discussion.bookId,
+      tier: discussion.tier,
+      existing: discussion.attachments,
+      incoming: params.newAttachments,
+    });
+    if (!v.ok) {
+      yield { type: "error", error: v.error };
+      return;
+    }
   }
 
   // Save the user's message immediately (even if streaming fails later —
@@ -615,16 +786,31 @@ export async function* streamFollowup(params: {
     },
   });
 
+  // Persist newly-attached context (dedup by composite key) before prompt build
+  // so this turn's prompt already includes them, then merge into the in-memory
+  // discussion so rebuildSystemPrompt/buildAttachmentSuffix see them.
+  if (params.newAttachments && params.newAttachments.length > 0) {
+    const created = await persistAttachments({
+      discussionId: discussion.id,
+      existing: discussion.attachments,
+      incoming: params.newAttachments,
+    });
+    if (created.length > 0) {
+      discussion.attachments = [...discussion.attachments, ...created];
+    }
+  }
+
   // Build the system message by re-filling the template with the source text.
   // ponytail: we stored passageText/sectionHref in the discussion row at
   // creation so we can rebuild the prompt without re-reading the book.
   const systemPrompt = await rebuildSystemPrompt(discussion);
+  const attachmentSuffix = await buildAttachmentSuffix(discussion);
 
   // Compose messages array. The explainer seed is optional — blank
   // discussions (started via "New discussion") have no cached first response,
   // so the model just sees system context + the conversation so far.
   const messages: { role: "system" | "user" | "assistant"; content: string }[] =
-    [{ role: "system", content: systemPrompt + FOLLOWUP_CITATION_SUFFIX }];
+    [{ role: "system", content: systemPrompt + attachmentSuffix + FOLLOWUP_CITATION_SUFFIX }];
   if (discussion.explainer) {
     messages.push({ role: "assistant", content: discussion.explainer.content });
   }
@@ -717,6 +903,114 @@ async function rebuildSystemPrompt(discussion: {
   return data.prompt;
 }
 
+/**
+ * Build the "additional context" suffix appended to the system prompt for any
+ * sections or other books the user has attached to the discussion. Section text
+ * is re-extracted from the EPUB (same path the origin section uses); an
+ * attached book's full .txt is loaded (same path buildBookPrompt uses). Returns
+ * "" when there are no attachments, so today's no-attachment discussions are
+ * byte-identical to before.
+ *
+ * ponytail: titles resolved from tocJson by basename match (mirrors
+ * buildSectionPrompt's logic) — duplicated rather than extracted into a shared
+ * helper because the helper would be one more file for a 10-line walk. Upgrade
+ * path: lift into a resolveSectionTitle(book, href) util if a third caller appears.
+ */
+async function buildAttachmentSuffix(discussion: {
+  bookId: string;
+  attachments?:
+    | { type: string; sectionHref: string | null; bookId: string | null }[]
+    | readonly { type: string; sectionHref: string | null; bookId: string | null }[];
+}): Promise<string> {
+  const attachments = discussion.attachments ?? [];
+  const sectionAttachments = attachments.filter(
+    (a) => a.type === "section" && a.sectionHref
+  );
+  const bookAttachments = attachments.filter(
+    (a) => a.type === "book" && a.bookId
+  );
+  if (sectionAttachments.length === 0 && bookAttachments.length === 0) return "";
+
+  // --- sections (from the discussion's own book) ---
+  let sectionBlock = "";
+  if (sectionAttachments.length > 0) {
+    const book = await db.epubFile.findUnique({
+      where: { id: discussion.bookId },
+      select: { epubPath: true, tocJson: true },
+    });
+    if (book) {
+      const { extractSectionText } = await import("./section-extractor");
+      const toc = book.tocJson
+        ? (JSON.parse(book.tocJson) as Array<{
+            label?: string;
+            title?: string;
+            href?: string;
+            subitems?: unknown[];
+          }>)
+        : [];
+      const titleByBasename = new Map<string, string>();
+      const walk = (items: typeof toc) => {
+        for (const item of items) {
+          const b = (item.href ?? "").split("#")[0].split("/").pop();
+          if (b && !titleByBasename.has(b)) {
+            const label = (item.label ?? item.title ?? "").trim();
+            if (label) titleByBasename.set(b, label);
+          }
+          if (item.subitems && Array.isArray(item.subitems))
+            walk(item.subitems as typeof toc);
+        }
+      };
+      walk(toc);
+
+      const parts: string[] = [];
+      for (const a of sectionAttachments) {
+        const href = a.sectionHref!;
+        try {
+          const text = await extractSectionText(book.epubPath, href);
+          const basename = href.split("#")[0].split("/").pop() ?? "";
+          const title = titleByBasename.get(basename) ?? href;
+          parts.push(`Section: ${title}\n${text}`);
+        } catch {
+          // Skip a section whose text can't be extracted rather than failing the
+          // whole follow-up — the user's question still goes through with the rest.
+        }
+      }
+      if (parts.length > 0) {
+        sectionBlock = `=== Additional context (sections the reader attached) ===\n\n${parts.join("\n\n")}`;
+      }
+    }
+  }
+
+  // --- attached books (full text, like the current book) ---
+  let bookBlock = "";
+  if (bookAttachments.length > 0) {
+    const { loadBookText } = await import("./prompt-builder");
+    const parts: string[] = [];
+    for (const a of bookAttachments) {
+      const ab = await db.epubFile.findUnique({
+        where: { id: a.bookId! },
+        select: { title: true, author: true, language: true, txtPath: true },
+      });
+      if (!ab) continue;
+      try {
+        const text = await loadBookText(ab.txtPath);
+        parts.push(
+          `Title: "${ab.title}" by ${ab.author ?? "Unknown"} (source language: ${ab.language})\n${text}`
+        );
+      } catch {
+        // Skip an unreadable attached book rather than failing the follow-up.
+      }
+    }
+    if (parts.length > 0) {
+      bookBlock = `=== Additional context (another book the reader attached) ===\n\n${parts.join("\n\n")}`;
+    }
+  }
+
+  const blocks = [sectionBlock, bookBlock].filter(Boolean);
+  if (blocks.length === 0) return "";
+  return `\n\n${blocks.join("\n\n")}`;
+}
+
 export interface BlankFirstTurnEvent {
   type: "discussion" | "chunk" | "error" | "done";
   discussionId?: string;
@@ -738,8 +1032,30 @@ export async function* streamBlankFirstTurn(params: {
   language: string;
   tier: "regular" | "pro" | "admin";
   userMessage: string;
+  // ponytail: context the user attached in the composer for this opening turn.
+  // Same rules as follow-ups (see streamFollowup) — validated before the
+  // discussion row exists so a rejected attach can't leave a dangling empty
+  // discussion, then persisted + folded into the system prompt as a suffix.
+  newAttachments?: NewDiscussionAttachment[];
 }): AsyncGenerator<BlankFirstTurnEvent> {
   const { userId, bookId, language, tier, userMessage } = params;
+
+  // Validate attachments BEFORE creating the discussion — a rejected attach
+  // shouldn't leave a dangling empty discussion. Shared validator with the
+  // follow-up path so access/max/size rules can't drift.
+  if (params.newAttachments && params.newAttachments.length > 0) {
+    const v = await validateNewAttachments({
+      userId,
+      bookId,
+      tier,
+      existing: [],
+      incoming: params.newAttachments,
+    });
+    if (!v.ok) {
+      yield { type: "error", error: v.error };
+      return;
+    }
+  }
 
   // Blank book-level discussion: no explainer, no cache key, no passage/section.
   const discussion = await db.discussion.create({
@@ -752,9 +1068,26 @@ export async function* streamBlankFirstTurn(params: {
     data: { discussionId: discussion.id, role: "user", content: userMessage },
   });
 
-  // System prompt = full-book context (the same template follow-ups reuse).
+  // Persist attachments (dedup is a no-op against empty existing) so they
+  // become permanent context re-sent on every future turn.
+  let attachments: DiscussionAttachmentRow[] = [];
+  if (params.newAttachments && params.newAttachments.length > 0) {
+    attachments = await persistAttachments({
+      discussionId: discussion.id,
+      existing: [],
+      incoming: params.newAttachments,
+    });
+  }
+
+  // System prompt = full-book context (the same template follow-ups reuse),
+  // plus the attachment suffix so the opening turn already sees any attached
+  // books/sections. Empty suffix => byte-identical to the pre-attach behavior.
   const { buildBookPrompt } = await import("./prompt-builder");
   const promptData = await buildBookPrompt(bookId, language);
+  const attachmentSuffix =
+    attachments.length > 0
+      ? await buildAttachmentSuffix({ bookId, attachments })
+      : "";
 
   const { streamChat, getOpenRouterConfig } = await import("./openrouter");
   const { apiKey, model } = await getOpenRouterConfig(tier);
@@ -764,7 +1097,7 @@ export async function* streamBlankFirstTurn(params: {
   }
 
   const messages: { role: "system" | "user"; content: string }[] = [
-    { role: "system", content: promptData.prompt + FOLLOWUP_CITATION_SUFFIX },
+    { role: "system", content: promptData.prompt + attachmentSuffix + FOLLOWUP_CITATION_SUFFIX },
     { role: "user", content: userMessage },
   ];
 

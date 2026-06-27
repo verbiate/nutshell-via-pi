@@ -24,7 +24,7 @@ export interface BuiltPrompt {
   metadataVersion?: string;
 }
 
-async function loadBookText(txtPath: string): Promise<string> {
+export async function loadBookText(txtPath: string): Promise<string> {
   const txtBuffer = await storage.read(txtPath);
   return txtBuffer.toString("utf-8");
 }

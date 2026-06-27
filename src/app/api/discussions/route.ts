@@ -6,6 +6,7 @@ import {
   streamInitialDiscussionResponse,
   streamBlankFirstTurn,
   listDiscussionsForBook,
+  type NewDiscussionAttachment,
 } from "@/server/services/discussions";
 
 /**
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
       sectionHref,
       language,
       message,
+      attachments: rawAttachments,
     } = body as {
       bookId?: string;
       type?: "passage" | "section" | "book";
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
       sectionHref?: string;
       language?: string;
       message?: string;
+      attachments?: unknown;
     };
 
     if (!bookId || !type) {
@@ -67,6 +70,34 @@ export async function POST(request: Request) {
     // have their own OpenRouterConfig row.
     const tier = user.role as "regular" | "pro" | "admin";
 
+    // ponytail: parse attachments (allow-list section/book) so a blank "New
+    // discussion" can launch with attached context. Mirrors the /messages route.
+    // Seeded mode ignores attachments — explainer generation is its own flow.
+    let newAttachments: NewDiscussionAttachment[] | undefined;
+    if (Array.isArray(rawAttachments)) {
+      const parsed: NewDiscussionAttachment[] = [];
+      for (const a of rawAttachments) {
+        if (!a || typeof a !== "object") continue;
+        const obj = a as Record<string, unknown>;
+        if (
+          obj.type === "section" &&
+          typeof obj.sectionHref === "string" &&
+          obj.sectionHref
+        ) {
+          parsed.push({ type: "section", sectionHref: obj.sectionHref });
+        } else if (
+          obj.type === "book" &&
+          typeof obj.bookId === "string" &&
+          obj.bookId
+        ) {
+          parsed.push({ type: "book", bookId: obj.bookId });
+        }
+        // Anything else is silently dropped — access/tier/size checks live in
+        // the service, which streams an error event on violation.
+      }
+      newAttachments = parsed.length > 0 ? parsed : undefined;
+    }
+
     // Blank "New discussion" first turn — no explainer generation.
     if (message !== undefined) {
       if (typeof message !== "string" || !message.trim()) {
@@ -85,6 +116,7 @@ export async function POST(request: Request) {
               language: preferredLanguage,
               tier,
               userMessage: message,
+              newAttachments,
             })) {
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify(event)}\n\n`)

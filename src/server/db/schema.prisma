@@ -148,6 +148,9 @@ model EpubFile {
   highlights        Highlight[]
   explainerRequests ExplainerRequest[]
   discussions       Discussion[]
+  // ponytail: second-book attachments — a discussion can attach at most `max`
+  // (per-tier AppSetting) OTHER books as permanent context. Back-relation only.
+  bookAttachments   DiscussionAttachment[]
   bookMetadata      BookMetadata?
 }
 
@@ -401,9 +404,35 @@ model Discussion {
   book         EpubFile   @relation(fields: [bookId], references: [id], onDelete: Cascade)
   explainer    Explainer? @relation(fields: [explainerId], references: [id], onDelete: Cascade)
   messages     DiscussionMessage[]
+  attachments  DiscussionAttachment[]
 
   @@unique([userId, contentHash, language, tier])
   @@index([userId, bookId])
+}
+
+// ponytail: extra context a user attached to a discussion mid-thread. Permanent
+// after the send that introduced them (re-sent on every follow-up, like the
+// origin context). Two slices: sections (sectionHref) and whole other books
+// (bookId). passageText/passageCfi are reserved for a queued passages slice.
+// Cache key/versioning is unaffected — attachments only shape the uncached
+// per-user follow-up prompt. "At most N book attachments per discussion" is
+// enforced in the service layer against the per-tier AppSetting
+// (discussions.attachBook.max.<tier>); upgrade path: a SQLite partial unique
+// index `WHERE type='book' AND bookId IS NOT NULL` if the guarantee must be DB-level.
+model DiscussionAttachment {
+  id           String   @id @default(cuid())
+  discussionId String
+  type         String   // "section" | "book" | "passage"(reserved)
+  sectionHref  String?
+  bookId       String?
+  passageText  String?  // reserved for the passages slice
+  passageCfi   String?  // reserved for the passages slice
+  createdAt    DateTime @default(now())
+
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  book         EpubFile?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([discussionId])
 }
 
 model DiscussionMessage {

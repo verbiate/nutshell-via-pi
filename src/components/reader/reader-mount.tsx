@@ -36,6 +36,7 @@ interface BookDetailResponse {
   contextWindow: number;
   isAdmin: boolean;
   userName: string | null;
+  attachBookMax: number;
 }
 
 export function ReaderMount() {
@@ -85,6 +86,7 @@ export function ReaderMount() {
       bookCreatedAt={b?.createdAt}
       bookTxtTokens={b?.txtTokens}
       contextWindow={data?.contextWindow}
+      attachBookMax={data?.attachBookMax ?? 0}
       librarySnapshot={libraryData?.books ?? []}
       libraryUserName={data?.userName ?? null}
       libraryDigestImage={null}

@@ -40,6 +40,8 @@ import {
   Code,
   Copy,
   Check,
+  Plus,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
@@ -51,6 +53,16 @@ import {
 import type { SpineItem } from "@/lib/reader/spine-playlist";
 import { ExplainerContent } from "../explainer/explainer-content";
 import { DiscussionLinksPanel } from "./discussion-links-panel";
+import { BookCover } from "../library/book-cover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
 // (list / discussion) gated by `activeDiscussionId`. Receives `pendingPassage` from
@@ -75,6 +87,19 @@ type DiscussionPreview = {
 };
 
 type Message = { role: "user" | "assistant"; content: string };
+
+// ponytail: an attached "other book" chip. Single-slot (the per-tier cap is
+// usually 1) so it's a nullable object, not an array like sections. Carries
+// just enough for the chip + picker row; the server stores only bookId.
+type BookAttachment = {
+  bookId: string;
+  title: string;
+  author: string | null;
+  coverPath: string | null;
+  // ponytail: cached token count of the book's full plaintext — feeds the
+  // "X% full" indicator so the cost of attaching shows before sending.
+  txtTokens: number | null;
+};
 
 // ponytail: discriminated union — one state slot for any kind of pending
 // explainer request (passage/section/book). Reader-client sets it, this
@@ -114,6 +139,15 @@ export interface DiscussionsPanelProps {
   // after the click-time title is gone (the title isn't persisted server-side).
   resolveSectionLabel?: (href: string) => string | undefined;
   spineItems?: SpineItem[];
+  // ponytail: picker source for "Add section" attachments. Flat ToC in spine
+  // reading order ({href,label}[]). Built by reader-client from the same
+  // buildSpinePlaylist it already computes; passed down so the composer can
+  // offer additional sections as permanent discussion context.
+  sectionOptions?: { href: string; label: string }[];
+  // ponytail: per-tier cap on how many OTHER books can be attached. 0 = the
+  // "+ book" affordance is hidden entirely (the unified attach button degrades
+  // to the plain section picker). Resolved reader-side from the admin setting.
+  attachBookMax?: number;
 }
 
 export function DiscussionsPanel({
@@ -128,6 +162,8 @@ export function DiscussionsPanel({
   onNavigateToCfi,
   resolveSectionLabel,
   spineItems,
+  sectionOptions,
+  attachBookMax,
 }: DiscussionsPanelProps) {
   const queryClient = useQueryClient();
   const { user } = useSession();
@@ -165,6 +201,24 @@ export function DiscussionsPanel({
     sectionHref: string | null;
     sectionTitle: string | null;
   } | null>(null);
+  // ponytail: sections the user has picked via "Add section" but not yet sent.
+  // Removable (x) until the next follow-up POST, at which point they're
+  // persisted server-side and become permanent (no x). Cleared on view change.
+  const [draftAttachments, setDraftAttachments] = useState<
+    { type: "section"; sectionHref: string; label: string }[]
+  >([]);
+  // ponytail: attachments just sent, awaiting the active-discussion refetch
+  // that confirms them as persisted. Rendered WITHOUT an x (they're committed);
+  // cleared by the confirm effect once persistedAttachments catches up. Bridges
+  // the gap between send and refetch-resolve so the chip never disappears.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    { type: "section"; sectionHref: string; label: string }[]
+  >([]);
+  // ponytail: attached "other book" — single-slot (per-tier cap, usually 1).
+  // Same draft→pending→persisted lifecycle as section attachments. Persisted is
+  // derived from activeData (see persistedBook below); draft/pending live here.
+  const [draftBook, setDraftBook] = useState<BookAttachment | null>(null);
+  const [pendingBook, setPendingBook] = useState<BookAttachment | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: StrictMode double-fire guard for the pendingRequest effect below.
   // Holds the last-processed request reference; the effect bails if the
@@ -360,6 +414,10 @@ export function DiscussionsPanel({
     setLocalMessages([]);
     setLocalContext(null);
     setDrafting(false);
+    setDraftAttachments([]);
+    setPendingAttachments([]);
+    setDraftBook(null);
+    setPendingBook(null);
   }
 
   function backToList() {
@@ -369,6 +427,10 @@ export function DiscussionsPanel({
     setLocalMessages([]);
     setLocalContext(null);
     setDrafting(false);
+    setDraftAttachments([]);
+    setPendingAttachments([]);
+    setDraftBook(null);
+    setPendingBook(null);
   }
 
   // ponytail: open a blank "New discussion" — no API call. The discussion is
@@ -445,17 +507,50 @@ export function DiscussionsPanel({
     setLocalMessages([...nextMessages, { role: "assistant", content: "" }]);
     setInput("");
     setStreaming(true);
+    // ponytail: snapshot drafts for the POST body, then move them to
+    // pendingAttachments (rendered without an x — they're committed) instead of
+    // clearing. The chip stays visible through the stream; the confirm effect
+    // retires them from pending once the active-discussion refetch lands them
+    // in persistedAttachments. This closes the "chip vanishes after send" gap.
+    const sendingAttachments = draftAttachments;
+    if (sendingAttachments.length > 0) {
+      setPendingAttachments((prev) => {
+        const seen = new Set(prev.map((a) => a.sectionHref));
+        return [
+          ...prev,
+          ...sendingAttachments.filter((a) => !seen.has(a.sectionHref)),
+        ];
+      });
+      setDraftAttachments([]);
+    }
+    // ponytail: snapshot the draft book (single slot) and move it to pending so
+    // the chip holds steady through the stream; the confirm effect retires it
+    // once the refetch lands it in persistedBook.
+    const sendingBook = draftBook;
+    if (sendingBook) {
+      setPendingBook(sendingBook);
+      setDraftBook(null);
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
+      const sectionPayload = sendingAttachments.map((a) => ({
+        type: a.type,
+        sectionHref: a.sectionHref,
+      }));
+      const bookPayload = sendingBook ? [{ type: "book", bookId: sendingBook.bookId }] : [];
+      const attachmentsPayload = [...sectionPayload, ...bookPayload];
       const res = await fetch(
         `/api/discussions/${activeDiscussionId}/messages`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({
+            content: text,
+            attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
+          }),
           signal: controller.signal,
         }
       );
@@ -504,6 +599,13 @@ export function DiscussionsPanel({
 
       // Invalidate list to refresh updatedAt ordering
       queryClient.invalidateQueries({ queryKey: ["discussions", bookId] });
+      // ponytail: refetch the active discussion so newly-persisted attachments
+      // surface as permanent chips (persistedAttachments derives from
+      // activeData.discussion.attachments). Without this the chip we just sent
+      // disappears — drafts were cleared optimistically and the server truth
+      // never arrives. Safe post-stream: messages are persisted, the sync
+      // effect resets localMessages from server truth as the correct end state.
+      queryClient.invalidateQueries({ queryKey: ["discussion", activeDiscussionId] });
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         console.error("Follow-up fetch failed:", err);
@@ -529,6 +631,33 @@ export function DiscussionsPanel({
     setInput("");
     setStreaming(true);
 
+    // ponytail: snapshot drafts → pending so chips hold steady through the
+    // stream; the confirm effect retires them once the active-discussion
+    // refetch lands them as persisted (same machinery sendFollowup uses —
+    // activeDiscussionId is pinned post-stream below).
+    const sendingAttachments = draftAttachments;
+    if (sendingAttachments.length > 0) {
+      setPendingAttachments((prev) => {
+        const seen = new Set(prev.map((a) => a.sectionHref));
+        return [
+          ...prev,
+          ...sendingAttachments.filter((a) => !seen.has(a.sectionHref)),
+        ];
+      });
+      setDraftAttachments([]);
+    }
+    const sendingBook = draftBook;
+    if (sendingBook) {
+      setPendingBook(sendingBook);
+      setDraftBook(null);
+    }
+    const sectionPayload = sendingAttachments.map((a) => ({
+      type: a.type,
+      sectionHref: a.sectionHref,
+    }));
+    const bookPayload = sendingBook ? [{ type: "book", bookId: sendingBook.bookId }] : [];
+    const attachmentsPayload = [...sectionPayload, ...bookPayload];
+
     const controller = new AbortController();
     abortRef.current = controller;
     let newDiscussionId: string | null = null;
@@ -537,7 +666,12 @@ export function DiscussionsPanel({
       const res = await fetch("/api/discussions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, type: "book", message: text }),
+        body: JSON.stringify({
+          bookId,
+          type: "book",
+          message: text,
+          ...(attachmentsPayload.length > 0 ? { attachments: attachmentsPayload } : {}),
+        }),
         signal: controller.signal,
       });
 
@@ -737,6 +871,110 @@ export function DiscussionsPanel({
         }
       : undefined;
 
+  // ponytail: permanently-attached sections (server-side). Labels resolved via
+  // resolveSectionLabel (ToC basename match); fall back to raw href. These have
+  // no "x" — once sent, they are re-sent on every follow-up (see services/discussions.ts).
+  const persistedAttachments: { type: "section"; sectionHref: string; label: string }[] = (
+    (activeData?.discussion as { attachments?: { type: string; sectionHref: string | null }[] } | undefined)
+      ?.attachments ?? []
+  )
+    .filter((a) => a.type === "section" && a.sectionHref)
+    .map((a) => ({
+      type: "section" as const,
+      sectionHref: a.sectionHref as string,
+      label: resolveSectionLabel?.(a.sectionHref as string) ?? (a.sectionHref as string),
+    }));
+
+  // ponytail: pending = sent-but-not-yet-confirmed. Once the active-discussion
+  // refetch lands them in persistedAttachments, the confirm effect below retires
+  // them. Dedup against persisted here so a chip never renders twice during the
+  // handoff window.
+  const pendingDisplay = pendingAttachments.filter(
+    (p) => !persistedAttachments.some((a) => a.sectionHref === p.sectionHref)
+  );
+
+  // Hrefs already represented in the context row (origin + draft + pending +
+  // persisted) — excluded from the picker so the user can't attach a duplicate.
+  const attachedHrefs = new Set<string>([
+    ...(discussionSectionHref ? [discussionSectionHref] : []),
+    ...draftAttachments.map((a) => a.sectionHref),
+    ...pendingDisplay.map((a) => a.sectionHref),
+    ...persistedAttachments.map((a) => a.sectionHref),
+  ]);
+  const pickerOptions = (sectionOptions ?? []).filter((s) => s.label && !attachedHrefs.has(s.href));
+
+  // ponytail: permanently-attached "other book" (server-side, single slot — the
+  // per-tier cap is usually 1). The API includes the book's display fields so we
+  // can render the chip directly. Reopened discussions restore from here.
+  const persistedBook: BookAttachment | null = (() => {
+    const att = (
+      activeData?.discussion as
+        | {
+            attachments?: {
+              type: string;
+              bookId: string | null;
+              book?: { id: string; title: string; author: string | null; coverPath: string | null; txtTokens: number | null } | null;
+            }[];
+          }
+        | undefined
+    )?.attachments;
+    const bookAtt = (att ?? []).find((a) => a.type === "book" && a.bookId && a.book);
+    if (!bookAtt || !bookAtt.book) return null;
+    return {
+      bookId: bookAtt.book.id,
+      title: bookAtt.book.title,
+      author: bookAtt.book.author,
+      coverPath: bookAtt.book.coverPath,
+      txtTokens: bookAtt.book.txtTokens,
+    };
+  })();
+  // ponytail: pending book chip retires once the refetch lands it in persistedBook.
+  const pendingBookDisplay =
+    pendingBook && persistedBook?.bookId !== pendingBook.bookId ? pendingBook : null;
+  // Slots remaining for attaching other books (0..max), counting persisted +
+  // draft + pending so the picker hides at the cap.
+  const bookSlotsRemaining = Math.max(
+    0,
+    (attachBookMax ?? 0) -
+      (persistedBook ? 1 : 0) -
+      (draftBook ? 1 : 0) -
+      (pendingBookDisplay ? 1 : 0)
+  );
+
+  // ponytail: retire pending attachments once the active-discussion refetch
+  // confirms them as persisted. Runs only when persistedAttachments changes
+  // (i.e. after a refetch), so spurious refetches can't drop unsent drafts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (pendingAttachments.length === 0) return;
+    const confirmed = new Set(persistedAttachments.map((a) => a.sectionHref));
+    setPendingAttachments((prev) =>
+      prev.filter((p) => !confirmed.has(p.sectionHref))
+    );
+  }, [persistedAttachments]);
+
+  function addDraftAttachment(href: string, label: string) {
+    if (attachedHrefs.has(href)) return;
+    setDraftAttachments((prev) => [...prev, { type: "section", sectionHref: href, label }]);
+  }
+  function removeDraftAttachment(href: string) {
+    setDraftAttachments((prev) => prev.filter((a) => a.sectionHref !== href));
+  }
+
+  // ponytail: retire pendingBook once the refetch lands it in persistedBook.
+  useEffect(() => {
+    if (!pendingBook) return;
+    if (persistedBook?.bookId === pendingBook.bookId) setPendingBook(null);
+  }, [persistedBook]);
+
+  function addDraftBook(b: BookAttachment) {
+    if (bookSlotsRemaining <= 0) return;
+    setDraftBook(b);
+  }
+  function removeDraftBook() {
+    setDraftBook(null);
+  }
+
   // ponytail: single render fn feeds both the sidebar slot and the pop-out
   // Dialog. State lives in this panel, so both views stay in sync by
   // construction. `inModal` flips the header's expand button off (redundant
@@ -779,6 +1017,19 @@ export function DiscussionsPanel({
           rerollContent={rerollContent}
           rerollPhase={rerollPhase}
           rerollResult={rerollResult}
+          persistedAttachments={persistedAttachments}
+          pendingAttachments={pendingDisplay}
+          draftAttachments={draftAttachments}
+          pickerOptions={pickerOptions}
+          onAddDraftAttachment={addDraftAttachment}
+          onRemoveDraftAttachment={removeDraftAttachment}
+          currentBookId={bookId}
+          persistedBook={persistedBook}
+          pendingBook={pendingBookDisplay}
+          draftBook={draftBook}
+          onAddDraftBook={addDraftBook}
+          onRemoveDraftBook={removeDraftBook}
+          attachBookMax={attachBookMax ?? 0}
         />
       );
     }
@@ -1015,6 +1266,19 @@ function DiscussionView({
   rerollContent,
   rerollPhase,
   rerollResult,
+  persistedAttachments,
+  pendingAttachments,
+  draftAttachments,
+  pickerOptions,
+  onAddDraftAttachment,
+  onRemoveDraftAttachment,
+  currentBookId,
+  persistedBook,
+  pendingBook,
+  draftBook,
+  onAddDraftBook,
+  onRemoveDraftBook,
+  attachBookMax,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -1051,7 +1315,49 @@ function DiscussionView({
   rerollContent?: string;
   rerollPhase?: "explaining" | "refining" | null;
   rerollResult?: number | null;
+  persistedAttachments?: { type: "section"; sectionHref: string; label: string }[];
+  pendingAttachments?: { type: "section"; sectionHref: string; label: string }[];
+  draftAttachments?: { type: "section"; sectionHref: string; label: string }[];
+  pickerOptions?: { href: string; label: string }[];
+  onAddDraftAttachment?: (href: string, label: string) => void;
+  onRemoveDraftAttachment?: (href: string) => void;
+  currentBookId?: string;
+  persistedBook?: BookAttachment | null;
+  pendingBook?: BookAttachment | null;
+  draftBook?: BookAttachment | null;
+  onAddDraftBook?: (b: BookAttachment) => void;
+  onRemoveDraftBook?: () => void;
+  attachBookMax?: number;
 }) {
+  // ponytail: library list for the "attach another book" picker. Reuses the
+  // existing GET /api/books (= getPersonalLibrary). Fetched lazily only when
+  // the book picker opens, cached globally by react-query so the shelf + this
+  // picker share one round-trip.
+  const bookEnabled = (attachBookMax ?? 0) >= 1;
+  // ponytail: the unified attach Popover is ONE floating layer whose content
+  // swaps between a kind chooser and a searchable Command. Chaining a menu item
+  // into a second Popover races the menu's teardown and the popover closes
+  // instantly — so we keep it single-layer with local view state.
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachView, setAttachView] = useState<"menu" | "section" | "book">("menu");
+  const [bookQueryEnabled, setBookQueryEnabled] = useState(false);
+  const { data: libraryData } = useQuery({
+    queryKey: ["library"],
+    queryFn: async () => {
+      const res = await fetch("/api/books");
+      if (!res.ok) throw new Error("Failed to load library");
+      return res.json();
+    },
+    enabled: bookEnabled && bookQueryEnabled,
+  });
+  const bookSlotsRemaining = Math.max(
+    0,
+    (attachBookMax ?? 0) -
+      (persistedBook ? 1 : 0) -
+      (draftBook ? 1 : 0) -
+      (pendingBook ? 1 : 0)
+  );
+
   const spineHrefs = (spineItems ?? []).map((s) => s.href);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1095,6 +1401,10 @@ function DiscussionView({
     inputDraft: input,
     discussionType,
     discussionPassageText,
+    // ponytail: count the attached book's full text so the bar reflects the
+    // real cost before the user sends. Prefer draft (about to be sent), then
+    // pending (just sent), then persisted (already in context).
+    attachedBookTokens: draftBook?.txtTokens ?? pendingBook?.txtTokens ?? persistedBook?.txtTokens ?? null,
   });
   const pct = indicator?.pct ?? null;
   const overBudget = indicator?.overBudget ?? false;
@@ -1314,6 +1624,247 @@ function DiscussionView({
               {discussionSectionLabel || discussionSectionHref}
             </button>
           )}
+          {/*
+            ponytail: permanently-attached sections (sent in a prior turn).
+            Clickable deeplink like the origin; no "x" — they are re-sent on
+            every follow-up by rebuildSystemPrompt's attachment suffix.
+          */}
+          {(persistedAttachments ?? []).map((a) => (
+            <button
+              key={`p-${a.sectionHref}`}
+              type="button"
+              className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
+              title={a.label}
+              onClick={() => onNavigateToHref?.(a.sectionHref)}
+              disabled={!onNavigateToHref}
+            >
+              {a.label}
+            </button>
+          ))}
+          {/*
+            ponytail: pending attachments — sent on the last turn, awaiting the
+            active-discussion refetch that retires them into persistedAttachments.
+            Same look as persisted (clickable deeplink, no x) so the chip holds
+            steady through the stream instead of blinking out.
+          */}
+          {(pendingAttachments ?? []).map((a) => (
+            <button
+              key={`k-${a.sectionHref}`}
+              type="button"
+              className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
+              title={a.label}
+              onClick={() => onNavigateToHref?.(a.sectionHref)}
+              disabled={!onNavigateToHref}
+            >
+              {a.label}
+            </button>
+          ))}
+          {/*
+            ponytail: draft attachments — picked but not yet sent. Removable
+            via "x" (onRemoveDraftAttachment). On send they flip to permanent
+            (persisted server-side). Cleared from draft state in sendFollowup.
+          */}
+          {(draftAttachments ?? []).map((a) => (
+            <span
+              key={`d-${a.sectionHref}`}
+              className="inline-flex max-w-[12rem] items-center gap-0.5 truncate rounded bg-muted px-1.5 py-0.5"
+              title={a.label}
+            >
+              <span className="truncate">{a.label}</span>
+              {onRemoveDraftAttachment && (
+                <button
+                  type="button"
+                  aria-label={`Remove ${a.label}`}
+                  onClick={() => onRemoveDraftAttachment(a.sectionHref)}
+                  className="text-muted-foreground/70 hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          ))}
+          {/*
+            ponytail: attached "other book" chips — single slot (persisted +
+            pending + draft). Persisted/pending carry no "x" (committed); the
+            draft is removable until sent. Chip shows a tiny cover + title.
+          */}
+          {(() => {
+            const chip = (
+              b: BookAttachment,
+              key: string,
+              onRemove?: () => void
+            ) => (
+              <span
+                key={key}
+                className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded bg-muted px-1.5 py-0.5"
+                title={`${b.title}${b.author ? ` — ${b.author}` : ""}`}
+              >
+                <span className="h-4 w-3 shrink-0 overflow-hidden rounded-sm">
+                  <BookCover coverPath={b.coverPath} title={b.title} cover />
+                </span>
+                <span className="truncate text-xs">{b.title}</span>
+                {onRemove && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${b.title}`}
+                    onClick={onRemove}
+                    className="text-muted-foreground/70 hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            );
+            return (
+              <>
+                {persistedBook && chip(persistedBook, `pb-${persistedBook.bookId}`)}
+                {pendingBook &&
+                  pendingBook.bookId !== persistedBook?.bookId &&
+                  chip(pendingBook, `kb-${pendingBook.bookId}`)}
+                {draftBook &&
+                  draftBook.bookId !== persistedBook?.bookId &&
+                  draftBook.bookId !== pendingBook?.bookId &&
+                  chip(draftBook, "db", onRemoveDraftBook)}
+              </>
+            );
+          })()}
+          {/*
+            ponytail: unified "Attach" affordance — ONE Popover whose content
+            swaps between a kind chooser ("Section" / "Other book") and the
+            matching searchable Command. Single floating layer by design: opening
+            a second Popover from a DropdownMenu item races the menu's teardown
+            (focus/pointer-event trap dismissal fires the new layer's outside
+            click) and the popover vanishes instantly. When the tier disallows
+            other-book attachments the trigger opens straight to the section list.
+          */}
+          {(() => {
+            const sectionAvailable =
+              !!onAddDraftAttachment && !!pickerOptions && pickerOptions.length > 0;
+            const booksAvailable = bookEnabled && !!onAddDraftBook && bookSlotsRemaining > 0;
+            if (!sectionAvailable && !booksAvailable && !attachOpen) return null;
+
+            const closeAttach = () => {
+              setAttachOpen(false);
+              setAttachView("menu");
+            };
+
+            return (
+              <Popover
+                open={attachOpen}
+                onOpenChange={(o) => {
+                  if (o) {
+                    // Opening fresh: skip the chooser when books aren't offered.
+                    setAttachView(bookEnabled ? "menu" : "section");
+                  } else {
+                    setAttachView("menu");
+                  }
+                  setAttachOpen(o);
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-0.5 rounded border border-dashed border-border px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title={bookEnabled ? "Attach more context" : "Attach another section"}
+                  >
+                    <Plus className="h-3 w-3" />
+                    {bookEnabled ? "Attach" : "Section"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72 p-0">
+                  {attachView === "menu" && (
+                    <div className="p-1">
+                      <button
+                        type="button"
+                        disabled={!sectionAvailable}
+                        onClick={() => setAttachView("section")}
+                        className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                      >
+                        Section from this book…
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!booksAvailable}
+                        onClick={() => {
+                          setBookQueryEnabled(true);
+                          setAttachView("book");
+                        }}
+                        className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                      >
+                        Other book…
+                      </button>
+                    </div>
+                  )}
+                  {attachView === "section" && (
+                    <Command>
+                      <CommandInput placeholder="Find a section…" />
+                      <CommandList className="max-h-60">
+                        <CommandEmpty>No sections.</CommandEmpty>
+                        <CommandGroup>
+                          {(pickerOptions ?? []).map((s) => (
+                            <CommandItem
+                              key={s.href}
+                              value={s.label}
+                              onSelect={() => {
+                                onAddDraftAttachment?.(s.href, s.label);
+                                closeAttach();
+                              }}
+                              className="text-xs"
+                            >
+                              <span className="truncate">{s.label}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  )}
+                  {attachView === "book" && (
+                    <Command>
+                      <CommandInput placeholder="Find a book…" />
+                      <CommandList className="max-h-72">
+                        <CommandEmpty>No books.</CommandEmpty>
+                        <CommandGroup>
+                          {((libraryData?.books as ({ id: string; title: string; author: string | null; coverPath: string | null; txtTokens: number | null })[] | undefined) ?? [])
+                            .filter((b) => b.id !== currentBookId)
+                            .map((b) => (
+                              <CommandItem
+                                key={b.id}
+                                value={`${b.title} ${b.author ?? ""}`}
+                                onSelect={() => {
+                                  onAddDraftBook?.({
+                                    bookId: b.id,
+                                    title: b.title,
+                                    author: b.author,
+                                    coverPath: b.coverPath,
+                                    txtTokens: b.txtTokens,
+                                  });
+                                  closeAttach();
+                                }}
+                                className="gap-2"
+                              >
+                                <span className="h-8 w-6 shrink-0 overflow-hidden rounded-sm">
+                                  <BookCover coverPath={b.coverPath} title={b.title} cover />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-medium">
+                                    {b.title}
+                                  </span>
+                                  {b.author && (
+                                    <span className="block truncate text-[11px] text-muted-foreground">
+                                      {b.author}
+                                    </span>
+                                  )}
+                                </span>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  )}
+                </PopoverContent>
+              </Popover>
+            );
+          })()}
         </div>
         <div className="flex items-end gap-2">
           <Textarea
@@ -1463,11 +2014,12 @@ function formatRelative(iso: string): string {
 // Token accounting follows what rebuildSystemPrompt actually puts on the wire
 // on a follow-up turn:
 //   1. Full book plaintext (book.txtTokens) — the dominant term; re-sent every turn
-//   2. Passage focus text (discussion.passageText) — passage type only
-//   3. Initial explainer response — sent as the first assistant message
-//   4. All follow-up messages (user + assistant)
-//   5. Current draft (so the bar moves as the user types)
-//   6. EXPLAINER_TEMPLATE_TOKENS — constant scaffolding around the substitutions
+//   2. Any attached "other book" plaintext (attachedBookTokens) — re-sent every turn
+//   3. Passage focus text (discussion.passageText) — passage type only
+//   4. Initial explainer response — sent as the first assistant message
+//   5. All follow-up messages (user + assistant)
+//   6. Current draft (so the bar moves as the user types)
+//   7. EXPLAINER_TEMPLATE_TOKENS — constant scaffolding around the substitutions
 //
 // Known undercount: section-type discussions re-extract section text from the EPUB
 // on every follow-up (not stored on the discussion), so we can't count it client-
@@ -1480,6 +2032,7 @@ function computeContextIndicator(args: {
   inputDraft: string;
   discussionType: DiscussionType;
   discussionPassageText: string | null;
+  attachedBookTokens?: number | null;
 }): { pct: number; overBudget: boolean; label: string } | null {
   const {
     bookTxtTokens,
@@ -1488,6 +2041,7 @@ function computeContextIndicator(args: {
     messages,
     inputDraft,
     discussionPassageText,
+    attachedBookTokens,
   } = args;
   // Hide while inputs are unresolved. bookTxtTokens === null means the lazy
   // backfill hasn't run; contextWindow === undefined/0 means the server
@@ -1503,6 +2057,7 @@ function computeContextIndicator(args: {
   );
   const usedTokens =
     bookTxtTokens +
+    (attachedBookTokens ?? 0) +
     countTokens(initialContent) +
     countTokens(discussionPassageText ?? "") +
     messagesTokens +

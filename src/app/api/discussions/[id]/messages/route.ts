@@ -1,16 +1,19 @@
 export const dynamic = "force-dynamic";
 
 import { requireAuth } from "@/lib/auth-guards";
-import { streamFollowup } from "@/server/services/discussions";
+import { streamFollowup, type NewDiscussionAttachment } from "@/server/services/discussions";
 
 /**
  * POST /api/discussions/[id]/messages
  *
- * Body: { content: string }
+ * Body: { content: string, attachments?: NewDiscussionAttachment[] }
+ *   attachments: sections ({type:"section", sectionHref}) or other books
+ *   ({type:"book", bookId}) the user added in the composer for this turn.
  *
  * Returns SSE stream of the assistant's follow-up response. The user's
  * message is persisted immediately; the assistant's response is persisted
- * on stream completion.
+ * on stream completion. `attachments` (newly-attached) are persisted as
+ * DiscussionAttachment rows before generation and become permanent context.
  */
 export async function POST(
   request: Request,
@@ -18,6 +21,7 @@ export async function POST(
 ) {
   let discussionId: string;
   let userMessage: string;
+  let newAttachments: NewDiscussionAttachment[] | undefined;
 
   try {
     const user = await requireAuth();
@@ -25,6 +29,31 @@ export async function POST(
     discussionId = id;
     const body = await request.json();
     userMessage = (body as { content?: string }).content ?? "";
+    const raw = (body as { attachments?: unknown }).attachments;
+    if (Array.isArray(raw)) {
+      const parsed: NewDiscussionAttachment[] = [];
+      for (const a of raw) {
+        if (!a || typeof a !== "object") continue;
+        const obj = a as Record<string, unknown>;
+        if (
+          obj.type === "section" &&
+          typeof obj.sectionHref === "string" &&
+          obj.sectionHref
+        ) {
+          parsed.push({ type: "section", sectionHref: obj.sectionHref });
+        } else if (
+          obj.type === "book" &&
+          typeof obj.bookId === "string" &&
+          obj.bookId
+        ) {
+          parsed.push({ type: "book", bookId: obj.bookId });
+        }
+        // Anything else is silently dropped — access/tier/size checks live in
+        // the service, which streams an error event on violation.
+      }
+      newAttachments = parsed.length > 0 ? parsed : undefined;
+    }
+    void user;
   } catch (error: any) {
     if (error.statusCode === 401) return sseError("Authentication required", 401);
     if (error.statusCode === 403) return sseError("Access denied", 403);
@@ -47,6 +76,7 @@ export async function POST(
           discussionId,
           userId: user.id,
           userMessage,
+          newAttachments,
         })) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`data: ${data}\n\n`));

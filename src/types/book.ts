@@ -24,6 +24,7 @@ export interface LibraryBook {
   author: string | null;
   language: string;
   coverPath: string | null;
+  txtTokens: number | null;
   progress: number | null;
   hasProgress: boolean;
 }

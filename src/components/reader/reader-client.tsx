@@ -95,6 +95,8 @@ export interface ReaderClientProps {
   // side via getOpenRouterConfig + getContextWindow.
   bookTxtTokens?: number | null;
   contextWindow?: number;
+  // ponytail: per-tier cap on attaching other books to a discussion (0 = hidden).
+  attachBookMax?: number;
 }
 
 export function ReaderClient({
@@ -115,6 +117,7 @@ export function ReaderClient({
   libraryDigestImage,
   bookTxtTokens,
   contextWindow,
+  attachBookMax,
 }: ReaderClientProps) {
   const { navigate: sceneNavigate, entering, forwardFlyActive } = useSceneTransition();
   // ponytail: mutable library snapshot state — updated synchronously on
@@ -1293,6 +1296,22 @@ export function ReaderClient({
     },
     [sectionLabelByBaseHref]
   );
+  // ponytail: ordered {href,label}[] for the discussion "Add section" picker.
+  // Same flat playlist as the label map; deduped by basename (first occurrence
+  // wins, matching sectionLabelByBaseHref) and filtered to labeled entries so
+  // front-matter stubs don't clutter the picker.
+  const sectionOptions = useMemo(() => {
+    const flat = buildSpinePlaylist(spineItems, toc);
+    const seen = new Set<string>();
+    const out: { href: string; label: string }[] = [];
+    for (const s of flat) {
+      const base = s.href.split("/").pop()?.split("#")[0];
+      if (!base || seen.has(base) || !s.label) continue;
+      seen.add(base);
+      out.push({ href: s.href, label: s.label });
+    }
+    return out;
+  }, [spineItems, toc]);
 
   const skeletonVisible =
     entering ||
@@ -1446,6 +1465,7 @@ export function ReaderClient({
           sidebarOpen={activeTool !== null}
           hidden={chromeHidden}
           onHideControls={() => setActiveTool(null)}
+          onAskAboutSection={() => handleAskAboutSection(currentHref, currentSectionLabel)}
           // ponytail: find-in-book hidden for now — restore by passing searchTrigger={<SearchPanel .../>}
         />
       )}
@@ -1547,6 +1567,8 @@ export function ReaderClient({
                   viewerRef.current?.flashCfi(cfi);
                 }}
                 resolveSectionLabel={resolveSectionLabel}
+                sectionOptions={sectionOptions}
+                attachBookMax={attachBookMax}
               />
             ),
             type: (

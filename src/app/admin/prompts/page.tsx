@@ -76,6 +76,10 @@ export default function PromptTemplatesPage() {
               pass2Version={bookPass2Template?.version || 1}
               loaded={!isPending}
             />
+            <AttachBookSection
+              values={data?.attachBookMax}
+              loaded={!isPending}
+            />
           </TabsContent>
           <TabsContent value="section">
             <PromptEditor
@@ -371,6 +375,121 @@ function TwoPassSection({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ponytail: per-tier cap on how many OTHER books a reader can attach to a single
+// discussion. Persisted as discussions.attachBook.max.<tier> AppSettings via the
+// shared PATCH /api/admin/prompts route. 0 disables the affordance for that tier.
+function AttachBookSection({
+  values,
+  loaded,
+}: {
+  values?: { regular: number; pro: number; admin: number };
+  loaded: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState({
+    regular: values?.regular ?? 1,
+    pro: values?.pro ?? 1,
+    admin: values?.admin ?? 1,
+  });
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!seededRef.current && values) {
+      setDraft({
+        regular: values.regular,
+        pro: values.pro,
+        admin: values.admin,
+      });
+      seededRef.current = true;
+    }
+  }, [values]);
+
+  const dirty =
+    values != null &&
+    (draft.regular !== values.regular ||
+      draft.pro !== values.pro ||
+      draft.admin !== values.admin);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/prompts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attachBookMax: {
+            regular: Math.max(0, Math.floor(draft.regular)),
+            pro: Math.max(0, Math.floor(draft.pro)),
+            admin: Math.max(0, Math.floor(draft.admin)),
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Save failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-prompts"] });
+      toast.success("Attach-book limits saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const tiers: { key: "regular" | "pro" | "admin"; label: string }[] = [
+    { key: "regular", label: "Regular" },
+    { key: "pro", label: "Pro" },
+    { key: "admin", label: "Admin" },
+  ];
+
+  return (
+    <div className="mt-8 border-t border-border pt-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">
+            Attach another book — per-tier limit
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Max other books a reader can attach to a single discussion (each
+            book&apos;s full text enters the model context). 0 hides the
+            affordance for that tier.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          disabled={!loaded || !dirty || saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-6">
+        {tiers.map((t) => (
+          <label key={t.key} className="flex items-center gap-2 text-xs">
+            <span className="font-medium uppercase tracking-wide text-muted-foreground">
+              {t.label}
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={Number.isFinite(draft[t.key]) ? draft[t.key] : 0}
+              disabled={!loaded || saveMutation.isPending}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setDraft((prev) => ({
+                  ...prev,
+                  [t.key]: Number.isFinite(n) && n >= 0 ? n : 0,
+                }));
+              }}
+              className="w-16 rounded border border-border bg-background px-2 py-1 text-sm"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

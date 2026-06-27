@@ -302,6 +302,51 @@ export async function updateBookTwoPassEnabled(
   });
 }
 
+// ---- Discussion "attach another book" per-tier cap ----
+// ponytail: stored as discussions.attachBook.max.<tier> AppSettings (integer
+// strings). Default 1 per tier. Mirrors the tts.quota.<tier>.generations shape.
+
+export async function getAttachBookMaxSettings(): Promise<
+  Record<"regular" | "pro" | "admin", number>
+> {
+  const tiers = ["regular", "pro", "admin"] as const;
+  const entries = await Promise.all(
+    tiers.map(async (t) => {
+      const raw = await getSetting(`discussions.attachBook.max.${t}`);
+      const n = raw == null ? 1 : parseInt(raw, 10);
+      return [t, Number.isFinite(n) && n >= 0 ? n : 1] as const;
+    })
+  );
+  return Object.fromEntries(entries) as Record<
+    "regular" | "pro" | "admin",
+    number
+  >;
+}
+
+export async function updateAttachBookMaxSettings(
+  adminId: string,
+  values: Partial<Record<"regular" | "pro" | "admin", number>>
+) {
+  const tiers = ["regular", "pro", "admin"] as const;
+  for (const t of tiers) {
+    const v = values[t];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) continue;
+    const key = `discussions.attachBook.max.${t}`;
+    const oldValue = await getSetting(key);
+    const newValue = String(Math.floor(v));
+    if (oldValue === newValue) continue;
+    await setSetting(key, newValue);
+    await auditLog({
+      actorId: adminId,
+      action: "ATTACH_BOOK_MAX_UPDATED",
+      entityType: "app_setting",
+      entityId: key,
+      oldValue,
+      newValue,
+    });
+  }
+}
+
 // ---- Explainer Cache Purge ----
 
 export async function purgeExplainerCache(adminId: string, explainerId: string) {

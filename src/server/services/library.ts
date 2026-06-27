@@ -42,6 +42,7 @@ export async function getPersonalLibrary(userId: string) {
         author: access.book.author,
         language: access.book.language,
         coverPath: access.book.coverPath,
+        txtTokens: access.book.txtTokens,
         progress,
         hasProgress,
       };

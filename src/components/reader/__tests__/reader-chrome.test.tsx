@@ -99,6 +99,64 @@ describe("ReaderChrome: sidebar-aware top bar", () => {
     }
   });
 
+  describe("Ask-about-this-section button", () => {
+    it("renders when onAskAboutSection is passed", () => {
+      const html = render(<ReaderChrome {...baseProps} onAskAboutSection={() => {}} />);
+      const btn = html.match(/<button[^>]*aria-label="Ask about this section"[^>]*>/)?.[0];
+      expect(btn, "Ask button should be present").toBeTruthy();
+      expect(html).toContain("Ask about this section");
+    });
+
+    it("does not render when onAskAboutSection is omitted", () => {
+      const html = render(<ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} />);
+      expect(html).not.toContain('aria-label="Ask about this section"');
+      expect(html).not.toContain("Ask about this section");
+    });
+
+    it("renders regardless of sidebarOpen (independent of Hide-controls collapse)", () => {
+      // sidebarOpen=false still shows the Ask button — only Hide-controls is sidebar-gated.
+      const closed = render(<ReaderChrome {...baseProps} onAskAboutSection={() => {}} />);
+      expect(closed).toContain('aria-label="Ask about this section"');
+      // And it does NOT inherit the grid-cols-[0fr] collapse that Hide-controls gets.
+      const askBtnContext = closed.split('aria-label="Ask about this section"')[0].slice(-200);
+      expect(askBtnContext).not.toContain("grid-cols-[0fr]");
+    });
+
+    it("shares the Add-a-book class with no fill or border", () => {
+      const html = render(<ReaderChrome {...baseProps} onAskAboutSection={() => {}} />);
+      const btn = html.match(/<button[^>]*aria-label="Ask about this section"[^>]*>/)?.[0];
+      expect(btn, "Ask button should be present").toBeTruthy();
+      expect(btn!).toContain("h-[46px]");
+      expect(btn!).toContain("bg-transparent");
+      expect(btn!).not.toMatch(/[\s"]bg-white[\s"]/);
+    });
+
+    it("is removed from tab order when hidden=true", () => {
+      const html = render(<ReaderChrome {...baseProps} hidden onAskAboutSection={() => {}} />);
+      const btn = html.match(/<button[^>]*aria-label="Ask about this section"[^>]*>/)?.[0];
+      expect(btn, "Ask button should be present").toBeTruthy();
+      expect(btn!).toMatch(/tabindex="-1"/);
+    });
+
+    it("is in tab order when hidden=false", () => {
+      const html = render(<ReaderChrome {...baseProps} onAskAboutSection={() => {}} />);
+      const btn = html.match(/<button[^>]*aria-label="Ask about this section"[^>]*>/)?.[0];
+      expect(btn, "Ask button should be present").toBeTruthy();
+      expect(btn!).not.toMatch(/tabindex="-1"/);
+    });
+
+    it("sits to the left of Hide-controls in the DOM order", () => {
+      const html = render(
+        <ReaderChrome {...baseProps} sidebarOpen onHideControls={() => {}} onAskAboutSection={() => {}} />
+      );
+      const askIdx = html.indexOf('aria-label="Ask about this section"');
+      const hideIdx = html.indexOf('aria-label="Hide controls"');
+      expect(askIdx, "Ask button must be present").toBeGreaterThan(-1);
+      expect(hideIdx, "Hide-controls must be present").toBeGreaterThan(-1);
+      expect(askIdx).toBeLessThan(hideIdx);
+    });
+  });
+
   describe("hidden prop fades chrome and disables interaction", () => {
     it("header has opacity-0 and aria-hidden when hidden=true", () => {
       const html = render(<ReaderChrome {...baseProps} hidden />);
