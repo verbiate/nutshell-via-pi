@@ -582,6 +582,11 @@ export async function getDiscussionWithMessages(discussionId: string, userId: st
     include: {
       explainer: { select: { id: true, content: true, modelId: true, promptVersion: true, version: true } },
       messages: { orderBy: { createdAt: "asc" } },
+      // ponytail: origin book fields — tocJson so the panel can build hrefs for
+      // the origin book's unprefixed #ch: citations when the discussion is
+      // viewed from a co-primary (non-origin) book. Without this, origin-book
+      // citations degrade to plain text when viewed cross-book.
+      book: { select: { id: true, title: true, tocJson: true } },
       attachments: {
         orderBy: { createdAt: "asc" },
         // ponytail: book-type attachments carry only bookId; include the

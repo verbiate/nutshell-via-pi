@@ -537,34 +537,52 @@ export function DiscussionsPanel({
   // book's hrefs (not the open book's spine — that's the origin book). Sourced
   // from each attachment's DB tocJson (included by getDiscussionWithMessages).
   // Recomputed when the discussion refetch lands new/removed attachments.
-  const attachedBookHrefs = useMemo(() => {
-    const att = (
-      activeData?.discussion as
-        | {
-            attachments?: {
-              type: string;
-              bookId: string | null;
-              book?: { id: string; tocJson: string | null } | null;
-            }[];
-          }
-        | undefined
-    )?.attachments;
-    if (!att) return undefined;
+  //
+  // ALSO includes the ORIGIN book's hrefs when viewing from a co-primary (non-
+  // origin) book — so the origin book's unprefixed #ch: citations get a second
+  // validation chance via the renderer's originBookId fallback. Without this,
+  // origin citations degrade to plain text when the discussion is opened from
+  // a different book's list.
+  const { attachedBookHrefs, originBookId } = useMemo(() => {
+    const d = activeData?.discussion as
+      | {
+          bookId: string;
+          book?: { id: string; title: string; tocJson: string | null } | null;
+          attachments?: {
+            type: string;
+            bookId: string | null;
+            book?: { id: string; tocJson: string | null } | null;
+          }[];
+        }
+      | undefined;
     const map: Record<string, string[]> = {};
-    for (const a of att) {
+
+    // Attached (co-primary) books
+    for (const a of d?.attachments ?? []) {
       if (a.type !== "book" || !a.bookId || !a.book) continue;
       try {
         const toc = JSON.parse(a.book.tocJson ?? "[]") as Array<{ href?: string }>;
-        const hrefs = toc
-          .map((t) => hrefBasename(t.href ?? ""))
-          .filter((h) => h.length > 0);
+        const hrefs = toc.map((t) => hrefBasename(t.href ?? "")).filter((h) => h.length > 0);
         if (hrefs.length > 0) map[a.book.id] = hrefs;
-      } catch {
-        // Skip a book with unparseable tocJson — its citations degrade to text.
-      }
+      } catch { /* skip unparseable */ }
     }
-    return Object.keys(map).length > 0 ? map : undefined;
-  }, [activeData]);
+
+    // Origin book — add its hrefs when viewing from a different book
+    let originId: string | undefined;
+    if (d?.book && d.book.id !== bookId) {
+      originId = d.book.id;
+      try {
+        const toc = JSON.parse(d.book.tocJson ?? "[]") as Array<{ href?: string }>;
+        const hrefs = toc.map((t) => hrefBasename(t.href ?? "")).filter((h) => h.length > 0);
+        if (hrefs.length > 0 && !map[d.book.id]) map[d.book.id] = hrefs;
+      } catch { /* skip unparseable */ }
+    }
+
+    return {
+      attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
+      originBookId: originId,
+    };
+  }, [activeData, bookId]);
 
   // ─── Follow-up composer ─────────────────────────────────────────────────
   const [input, setInput] = useState("");
@@ -1085,6 +1103,7 @@ export function DiscussionsPanel({
           onNavigateToCfi={navigateCfiAndCloseModal}
           onNavigateToBookSection={navigateBookAndCloseModal}
           attachedBookHrefs={attachedBookHrefs}
+          originBookId={originBookId}
           spineItems={spineItems}
           adminMeta={adminMeta}
           isAdmin={isAdmin}
@@ -1351,6 +1370,7 @@ function DiscussionView({
   onNavigateToCfi,
   onNavigateToBookSection,
   attachedBookHrefs,
+  originBookId,
   spineItems,
   adminMeta,
   isAdmin,
@@ -1397,6 +1417,7 @@ function DiscussionView({
   onNavigateToCfi?: (cfi: string) => void;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
+  originBookId?: string;
   spineItems?: SpineItem[];
   adminMeta?: {
     explainerId: string;
@@ -1658,6 +1679,7 @@ function DiscussionView({
             onNavigateToHref={onNavigateToHref}
             attachedBookHrefs={attachedBookHrefs}
             onNavigateToBookSection={onNavigateToBookSection}
+            originBookId={originBookId}
             isAdmin={isAdmin}
           />
         )}
@@ -1673,6 +1695,7 @@ function DiscussionView({
             onNavigateToHref={onNavigateToHref}
             attachedBookHrefs={attachedBookHrefs}
             onNavigateToBookSection={onNavigateToBookSection}
+            originBookId={originBookId}
             isAdmin={isAdmin}
           />
         ))}
@@ -2000,6 +2023,7 @@ function MessageBubble({
   onNavigateToHref,
   attachedBookHrefs,
   onNavigateToBookSection,
+  originBookId,
   isAdmin,
 }: {
   role: "user" | "assistant";
@@ -2009,6 +2033,7 @@ function MessageBubble({
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  originBookId?: string;
   isAdmin?: boolean;
 }) {
   // ponytail: admin-only debug affordance on rendered (assistant) bubbles.
@@ -2080,6 +2105,7 @@ function MessageBubble({
               onNavigateToHref={onNavigateToHref}
               attachedBookHrefs={attachedBookHrefs}
               onNavigateToBookSection={onNavigateToBookSection}
+              originBookId={originBookId}
             />
           )
         ) : pulsing ? (

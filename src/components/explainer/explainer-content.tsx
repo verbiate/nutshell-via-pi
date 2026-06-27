@@ -17,6 +17,11 @@ import { isValidHref, parseBookRef } from "@/lib/explainer/citations";
  * - Attached (co-primary) book: `[Label](#ch:<bookId>:<basename>)` — validated
  *   against that book's hrefs (attachedBookHrefs[bookId], sourced from its
  *   DB tocJson). Click routes cross-book via onNavigateToBookSection.
+ * - Origin fallback: when viewing from a co-primary book, the origin book's
+ *   unprefixed citations fail spine validation (the basename isn't in the open
+ *   book's spine). originBookId lets the renderer try the origin book's hrefs
+ *   and route the click cross-book back to the origin. Only active when
+ *   originBookId is set (i.e. discussion.bookId !== currentBookId).
  *
  * ponytail: react-markdown is safe by default — raw HTML is escaped (no
  * rehype-raw), so LLM-injected markup can't XSS. It re-parses on every prop
@@ -27,13 +32,14 @@ const components = (opts: {
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  originBookId?: string;
 }): Components => ({
   a({ href, children }) {
     if (href?.startsWith("#ch:")) {
       const target = href.slice(4);
       const { bookId, basename } = parseBookRef(target);
 
-      // Cross-book citation → validate against the target book's hrefs
+      // Cross-book citation (prefixed) → validate against the target book's hrefs
       if (bookId) {
         const bookHrefs = opts.attachedBookHrefs?.[bookId] ?? [];
         if (isValidHref(basename, bookHrefs) && opts.onNavigateToBookSection) {
@@ -61,7 +67,7 @@ const components = (opts: {
         return <span>{children}</span>;
       }
 
-      // Origin-book citation (today's path)
+      // Origin-book citation — validate against the open book's live spine
       if (isValidHref(target, opts.spineHrefs) && opts.onNavigateToHref) {
         return (
           <span
@@ -81,6 +87,36 @@ const components = (opts: {
           </span>
         );
       }
+
+      // Origin fallback: unprefixed citation whose basename isn't in the open
+      // spine (we're viewing from a co-primary book). Try the origin book's
+      // hrefs and route cross-book back to the origin.
+      if (opts.originBookId) {
+        const originHrefs = opts.attachedBookHrefs?.[opts.originBookId] ?? [];
+        if (isValidHref(target, originHrefs) && opts.onNavigateToBookSection) {
+          const onNav = opts.onNavigateToBookSection;
+          const oid = opts.originBookId;
+          return (
+            <span
+              role="button"
+              tabIndex={0}
+              data-book-id={oid}
+              data-book-href={target}
+              title="Opens in another book"
+              className="cursor-pointer underline decoration-primary/60 underline-offset-2 hover:decoration-primary"
+              onClick={() => onNav(oid, target)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onNav(oid, target);
+                }
+              }}
+            >
+              {children}
+            </span>
+          );
+        }
+      }
       return <span>{children}</span>;
     }
     return (
@@ -97,17 +133,19 @@ export const ExplainerContent = memo(function ExplainerContent({
   onNavigateToHref,
   attachedBookHrefs,
   onNavigateToBookSection,
+  originBookId,
 }: {
   content: string;
   spineHrefs: string[];
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  originBookId?: string;
 }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={components({ spineHrefs, onNavigateToHref, attachedBookHrefs, onNavigateToBookSection })}
+      components={components({ spineHrefs, onNavigateToHref, attachedBookHrefs, onNavigateToBookSection, originBookId })}
     >
       {content}
     </ReactMarkdown>
