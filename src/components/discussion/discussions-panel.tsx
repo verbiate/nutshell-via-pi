@@ -84,6 +84,10 @@ type DiscussionPreview = {
   updatedAt: string;
   explainer?: { id: string; content: string; modelId: string };
   _count: { messages: number };
+  // ponytail: origin book display fields. Included by the union list query so
+  // cross-listed rows (attached from another book) can show a hint. Null when
+  // the book relation wasn't selected (older callers).
+  book?: { id: string; title: string; coverPath: string | null } | null;
 };
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -1121,6 +1125,7 @@ export function DiscussionsPanel({
         <ListView
           discussions={discussions}
           loading={listLoading}
+          currentBookId={bookId}
           onSelect={selectDiscussion}
           onPopOut={popOutDiscussion}
           onDelete={handleDeleteDiscussion}
@@ -1185,6 +1190,7 @@ export function DiscussionsPanel({
 function ListView({
   discussions,
   loading,
+  currentBookId,
   onSelect,
   onPopOut,
   onDelete,
@@ -1195,6 +1201,7 @@ function ListView({
 }: {
   discussions: DiscussionPreview[];
   loading: boolean;
+  currentBookId?: string;
   onSelect: (id: string) => void;
   onPopOut: (id: string) => void;
   onDelete: (id: string) => void;
@@ -1271,6 +1278,18 @@ function ListView({
                   ? resolveSectionLabel?.(t.sectionHref) ?? t.sectionHref
                   : "Whole book"}
               </p>
+              {/*
+                ponytail: cross-listed hint. When this discussion's origin book
+                differs from the currently-open book (it was attached as co-
+                primary from another book), show a subtle "with {originTitle}"
+                line so the user understands why it's here — without implying
+                secondary status. Covers the union-query case in Part 5.
+              */}
+              {t.book && currentBookId && t.book.id !== currentBookId && (
+                <p className="mt-0.5 pr-6 text-[10px] italic text-muted-foreground/70">
+                  with {t.book.title}
+                </p>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button

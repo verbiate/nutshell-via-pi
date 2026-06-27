@@ -370,6 +370,15 @@ export interface EpubViewerProps {
 
 export interface EpubViewerHandle {
   navigateTo: (href: string, opts?: { ttsNav?: boolean }) => Promise<void>;
+  /**
+   * Resolve a bare basename (as emitted by the citation scheme) to the full
+   * spine href the rendition needs. Walks book.spine.each by basename suffix
+   * — the same logic normalizeTocHrefs uses at load time, but callable on
+   * demand so cross-book deep-link navigation doesn't depend on the
+   * reader-client's spineItems React state (which may be stale during a
+   * book swap). Returns null when the book isn't loaded or no match found.
+   */
+  resolveHref: (basename: string) => string | null;
   next: () => Promise<void>;
   prev: () => Promise<void>;
   getCurrentCfi: () => string | null;
@@ -591,6 +600,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           if (opts?.ttsNav) clearNavInFlight();
           console.warn("[EpubViewer] navigateTo failed:", err);
         }
+      },
+      resolveHref: (basename: string): string | null => {
+        const book = bookRef.current;
+        if (!book) return null;
+        const resolved = resolveSpineHref(book, basename);
+        return resolved === basename ? null : resolved;
       },
       waitForRender: async () => {
         const r = renditionRef.current;

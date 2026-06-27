@@ -577,10 +577,16 @@ export function ReaderClient({
 
     const { href, discussionId } = pendingReaderNav;
 
+    // ponytail: resolve the basename via the viewer's own book.spine walk,
+    // NOT the spineItems React state — spineItems may be stale or empty during
+    // a book swap even after isLoaded is true (the rendition is ready but the
+    // onSpineLoaded callback hasn't fired yet). The viewer's resolveHref reads
+    // bookRef.current.spine directly, which is guaranteed populated by the time
+    // the rendition exists.
     if (href) {
-      handleTocNavigate(
-        resolveToSpineHref(href, spineItems.map((s) => s.href))
-      );
+      const resolved = viewerRef.current?.resolveHref(href);
+      if (!resolved) return; // spine not ready yet — retry on next render
+      handleTocNavigate(resolved);
     }
     if (discussionId) {
       setActiveTool("bulb");
@@ -588,7 +594,7 @@ export function ReaderClient({
     }
 
     clearPendingReaderNav();
-  }, [isLoaded, pendingReaderNav, bookId, spineItems, handleTocNavigate, clearPendingReaderNav]);
+  }, [isLoaded, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
@@ -1218,6 +1224,7 @@ export function ReaderClient({
     setError(null);
     setSavedPosition(null);
     setToc([]);
+    setSpineItems([]);
     setCurrentHref("");
     chunkRestoredRef.current = false;
     ttsSyncedRef.current = false;
