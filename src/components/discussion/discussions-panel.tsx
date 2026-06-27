@@ -436,9 +436,14 @@ export function DiscussionsPanel({
   // ponytail: cross-book arrival — auto-select the discussion the user jumped
   // to from another book. Mirrors the pendingRequest consumption pattern: ref
   // guard against StrictMode double-fire, consume once, signal the parent.
+  // The ref resets when pendingOpenDiscussionId clears (null) so the SAME
+  // discussion can be re-opened on a later hop (e.g., A→B→A via chip clicks).
   const lastPendingDiscussionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!pendingOpenDiscussionId) return;
+    if (!pendingOpenDiscussionId) {
+      lastPendingDiscussionRef.current = null;
+      return;
+    }
     if (lastPendingDiscussionRef.current === pendingOpenDiscussionId) return;
     lastPendingDiscussionRef.current = pendingOpenDiscussionId;
     selectDiscussion(pendingOpenDiscussionId);
