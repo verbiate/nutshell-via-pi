@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { hrefBasename } from "@/lib/explainer/citations";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -134,6 +135,12 @@ export interface DiscussionsPanelProps {
   // ponytail: CFI-precise deeplink for the discussion's originating passage
   // (mirrors highlights). Falls back to section-level nav when no CFI.
   onNavigateToCfi?: (cfi: string) => void;
+  // ponytail: cross-book deep-link nav. Fired when the user clicks a
+  // #ch:<bookId>:<basename> citation targeting an ATTACHED book. The handler
+  // (in reader-client) closes the sidebar, marks a pending nav, and router-
+  // pushes to the target book; on arrival the reader opens at the cited
+  // section with this discussion open in the Discussions panel.
+  onNavigateToBookSection?: (bookId: string, basename: string) => void;
   // ponytail: resolve a section href to its ToC label, for discussions reopened
   // after the click-time title is gone (the title isn't persisted server-side).
   resolveSectionLabel?: (href: string) => string | undefined;
@@ -159,6 +166,7 @@ export function DiscussionsPanel({
   contextWindow,
   onNavigateToHref,
   onNavigateToCfi,
+  onNavigateToBookSection,
   resolveSectionLabel,
   spineItems,
   sectionOptions,
@@ -490,6 +498,47 @@ export function DiscussionsPanel({
         setPoppedOut(false);
       }
     : undefined;
+  // ponytail: cross-book deeplink, mirrors the two above.
+  const navigateBookAndCloseModal = onNavigateToBookSection
+    ? (bookId: string, basename: string) => {
+        onNavigateToBookSection(bookId, basename);
+        setPoppedOut(false);
+      }
+    : undefined;
+
+  // ponytail: hrefs for each ATTACHED (co-primary) book, keyed by bookId. The
+  // renderer validates #ch:<bookId>:<basename> citations against the TARGET
+  // book's hrefs (not the open book's spine — that's the origin book). Sourced
+  // from each attachment's DB tocJson (included by getDiscussionWithMessages).
+  // Recomputed when the discussion refetch lands new/removed attachments.
+  const attachedBookHrefs = useMemo(() => {
+    const att = (
+      activeData?.discussion as
+        | {
+            attachments?: {
+              type: string;
+              bookId: string | null;
+              book?: { id: string; tocJson: string | null } | null;
+            }[];
+          }
+        | undefined
+    )?.attachments;
+    if (!att) return undefined;
+    const map: Record<string, string[]> = {};
+    for (const a of att) {
+      if (a.type !== "book" || !a.bookId || !a.book) continue;
+      try {
+        const toc = JSON.parse(a.book.tocJson ?? "[]") as Array<{ href?: string }>;
+        const hrefs = toc
+          .map((t) => hrefBasename(t.href ?? ""))
+          .filter((h) => h.length > 0);
+        if (hrefs.length > 0) map[a.book.id] = hrefs;
+      } catch {
+        // Skip a book with unparseable tocJson — its citations degrade to text.
+      }
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  }, [activeData]);
 
   // ─── Follow-up composer ─────────────────────────────────────────────────
   const [input, setInput] = useState("");
@@ -1008,6 +1057,8 @@ export function DiscussionsPanel({
           onReturnToSidebar={returnToSidebar}
           onNavigateToHref={navigateAndCloseModal}
           onNavigateToCfi={navigateCfiAndCloseModal}
+          onNavigateToBookSection={navigateBookAndCloseModal}
+          attachedBookHrefs={attachedBookHrefs}
           spineItems={spineItems}
           adminMeta={adminMeta}
           isAdmin={isAdmin}
@@ -1257,6 +1308,8 @@ function DiscussionView({
   onReturnToSidebar,
   onNavigateToHref,
   onNavigateToCfi,
+  onNavigateToBookSection,
+  attachedBookHrefs,
   spineItems,
   adminMeta,
   isAdmin,
@@ -1301,6 +1354,8 @@ function DiscussionView({
   onReturnToSidebar: () => void;
   onNavigateToHref?: (href: string) => void;
   onNavigateToCfi?: (cfi: string) => void;
+  onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  attachedBookHrefs?: Record<string, string[]>;
   spineItems?: SpineItem[];
   adminMeta?: {
     explainerId: string;
@@ -1560,6 +1615,8 @@ function DiscussionView({
             pulsing={streamingInitial && !initialContent}
             spineHrefs={spineHrefs}
             onNavigateToHref={onNavigateToHref}
+            attachedBookHrefs={attachedBookHrefs}
+            onNavigateToBookSection={onNavigateToBookSection}
             isAdmin={isAdmin}
           />
         )}
@@ -1573,6 +1630,8 @@ function DiscussionView({
             pulsing={m.role === "assistant" && streaming && !m.content && i === messages.length - 1}
             spineHrefs={spineHrefs}
             onNavigateToHref={onNavigateToHref}
+            attachedBookHrefs={attachedBookHrefs}
+            onNavigateToBookSection={onNavigateToBookSection}
             isAdmin={isAdmin}
           />
         ))}
@@ -1898,6 +1957,8 @@ function MessageBubble({
   pulsing,
   spineHrefs,
   onNavigateToHref,
+  attachedBookHrefs,
+  onNavigateToBookSection,
   isAdmin,
 }: {
   role: "user" | "assistant";
@@ -1905,6 +1966,8 @@ function MessageBubble({
   pulsing?: boolean;
   spineHrefs: string[];
   onNavigateToHref?: (href: string) => void;
+  attachedBookHrefs?: Record<string, string[]>;
+  onNavigateToBookSection?: (bookId: string, basename: string) => void;
   isAdmin?: boolean;
 }) {
   // ponytail: admin-only debug affordance on rendered (assistant) bubbles.
@@ -1974,6 +2037,8 @@ function MessageBubble({
               content={content}
               spineHrefs={spineHrefs}
               onNavigateToHref={onNavigateToHref}
+              attachedBookHrefs={attachedBookHrefs}
+              onNavigateToBookSection={onNavigateToBookSection}
             />
           )
         ) : pulsing ? (
