@@ -46,7 +46,7 @@ export async function getAttachBookMax(tier: string): Promise<number> {
 // Upgrade path: promote to an AppSetting / *_followup_suffix template row if
 // it needs to be admin-editable.
 const FOLLOWUP_CITATION_SUFFIX =
-  "\n\nThe same citation rule applies to follow-up questions — especially \"which chapter?\" or \"where does the author …?\" Answer with a (#ch:…) link copied from the chapter map above. Shape (hrefs illustrative — always copy a real one): Q: \"In which chapter does the author discuss X?\" A: \"That's in [Chapter Title](#ch:<real-href>.xhtml), where …\"";
+  "\n\nThe same citation rule applies to follow-up questions — especially \"which chapter?\" or \"where does the author …?\" Answer with a (#ch:…) link copied from the chapter map above. Shape (hrefs illustrative — always copy a real one): Q: \"In which chapter does the author discuss X?\" A: \"That's in [Chapter Title](#ch:<real-href>.xhtml), where …\"\n\nFor citations to an ATTACHED book (the additional book(s) provided as context below), use the prefixed form `#ch:<bookId>:<href>` copied verbatim from that book's chapter map — the prefix routes the reader to the right book on click. Shape: Q: \"How does the second book handle X?\" A: \"In [Chapter 3](#ch:<bookId-from-its-map>:<real-href>.xhtml), the author …\"";
 
 // ponytail: discussions wraps the existing generateExplainer cache logic and
 // adds the per-user multi-turn discussion model. Initial response uses the
@@ -534,12 +534,23 @@ export async function* rerollExplainer(params: {
 }
 
 /**
- * List a user's discussions for a book, newest first.
+ * List a user's discussions for a book, newest first. A discussion appears
+ * under its origin book (Discussion.bookId) AND under every co-primary book
+ * attached to it (DiscussionAttachment type="book") — attach = co-primary.
+ * The origin `book` fields are included so the UI can show a "from {title}"
+ * hint on rows where discussion.bookId !== the list's currentBookId.
  */
 export async function listDiscussionsForBook(userId: string, bookId: string) {
   return db.discussion.findMany({
-    where: { userId, bookId },
+    where: {
+      userId,
+      OR: [
+        { bookId },
+        { attachments: { some: { type: "book", bookId } } },
+      ],
+    },
     include: {
+      book: { select: { id: true, title: true, coverPath: true } },
       explainer: { select: { id: true, content: true, modelId: true } },
       _count: { select: { messages: true } },
     },
@@ -575,10 +586,11 @@ export async function getDiscussionWithMessages(discussionId: string, userId: st
         orderBy: { createdAt: "asc" },
         // ponytail: book-type attachments carry only bookId; include the
         // attached book's display fields (chip) + txtTokens (context indicator)
-        // so the UI can render + budget without a second round-trip. Sections
-        // ignore the relation.
+        // + tocJson (so the panel can build attachedBookHrefs for cross-book
+        // citation validation without a second round-trip). Sections ignore
+        // the relation.
         include: {
-          book: { select: { id: true, title: true, author: true, coverPath: true, txtTokens: true } },
+          book: { select: { id: true, title: true, author: true, coverPath: true, txtTokens: true, tocJson: true } },
         },
       },
     },
@@ -982,20 +994,28 @@ async function buildAttachmentSuffix(discussion: {
   }
 
   // --- attached books (full text, like the current book) ---
+  // ponytail: each attached book is co-primary — its full text is re-sent every
+  // turn AND its ToC is injected as a prefixed chapter map so the model can
+  // emit cross-book deep links (#ch:<bookId>:<basename>) that the renderer
+  // routes to the right book on click. The prefix is the book's EpubFile id.
   let bookBlock = "";
   if (bookAttachments.length > 0) {
-    const { loadBookText } = await import("./prompt-builder");
+    const { loadBookText, buildChapterIndex } = await import("./prompt-builder");
     const parts: string[] = [];
     for (const a of bookAttachments) {
       const ab = await db.epubFile.findUnique({
         where: { id: a.bookId! },
-        select: { title: true, author: true, language: true, txtPath: true },
+        select: { id: true, title: true, author: true, language: true, txtPath: true, tocJson: true },
       });
       if (!ab) continue;
       try {
         const text = await loadBookText(ab.txtPath);
+        const chapterMap = buildChapterIndex(ab.tocJson, 200, ab.id);
+        const mapBlock = chapterMap
+          ? `\n\nChapter map for "${ab.title}" — copy these prefixed hrefs verbatim to cite this book:\n${chapterMap}`
+          : "";
         parts.push(
-          `Title: "${ab.title}" by ${ab.author ?? "Unknown"} (source language: ${ab.language})\n${text}`
+          `Title: "${ab.title}" by ${ab.author ?? "Unknown"} (source language: ${ab.language})\n${text}${mapBlock}`
         );
       } catch {
         // Skip an unreadable attached book rather than failing the follow-up.

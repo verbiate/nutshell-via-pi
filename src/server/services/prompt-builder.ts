@@ -81,10 +81,18 @@ type TocItem = { label?: string; title?: string; href?: string; subitems?: TocIt
  * `]`→`)`) so a `]` in a title can't terminate the link early: CITE_RE in
  * citations.ts captures `[^\]]+` for the label, so an unsanitized `]` would
  * silently break parsing downstream.
+ *
+ * When `bookId` is set, hrefs are prefixed as `#ch:<bookId>:<basename>` so
+ * cross-book citations carry their target book. The renderer's parseBookRef
+ * splits the prefix back out; isValidHref validates against the target book's
+ * hrefs. ponytail: cuid ids are unambiguous against real basenames (see
+ * parseBookRef's discriminator), and a coincidental prefix match still fails
+ * validation against the loaded attachedBookHrefs map — no dead jumps.
  */
 export function buildChapterIndex(
   tocJson: string | null | undefined,
-  cap = 200
+  cap = 200,
+  bookId?: string,
 ): string {
   if (!tocJson) return "";
   let toc: TocItem[];
@@ -94,6 +102,7 @@ export function buildChapterIndex(
     return "";
   }
   if (!Array.isArray(toc)) return "";
+  const prefix = bookId ? `${bookId}:` : "";
   const lines: string[] = [];
   for (const item of toc) {
     if (lines.length >= cap) break;
@@ -101,7 +110,7 @@ export function buildChapterIndex(
     const href = (item.href ?? "").split("#")[0].trim();
     if (!rawLabel || !href) continue;
     const label = rawLabel.replace(/[[\]]/g, (b) => (b === "[" ? "(" : ")"));
-    lines.push(`- [${label}](#ch:${hrefBasename(href)})`);
+    lines.push(`- [${label}](#ch:${prefix}${hrefBasename(href)})`);
   }
   return lines.length === 0 ? "" : lines.join("\n");
 }
