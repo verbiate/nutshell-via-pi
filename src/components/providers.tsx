@@ -5,6 +5,7 @@ import { ThemeProvider } from "@teispace/next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SceneTransitionProvider } from "@/components/transitions/scene-transition";
 import { AudioProvider } from "@/components/audio/audio-provider";
+import { ReaderNavProvider } from "@/components/reader/reader-nav-context";
 import { useState } from "react";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -31,7 +32,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       >
         <TooltipProvider>
           <SceneTransitionProvider>
-            <AudioProvider>{children}</AudioProvider>
+            <AudioProvider>
+              <ReaderNavProvider>{children}</ReaderNavProvider>
+            </AudioProvider>
           </SceneTransitionProvider>
         </TooltipProvider>
       </ThemeProvider>

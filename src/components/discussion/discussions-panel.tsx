@@ -113,6 +113,11 @@ export interface DiscussionsPanelProps {
   bookId: string;
   pendingRequest: PendingDiscussionRequest | null;
   onConsumed: () => void;
+  // ponytail: cross-book deep-link arrival. When set, the panel auto-selects
+  // this discussion on mount (used by reader-client's pending-nav consumption
+  // effect after navigating to a co-primary book). Cleared via the callback.
+  pendingOpenDiscussionId?: string | null;
+  onPendingDiscussionConsumed?: () => void;
   // ponytail: fired when the panel pops a discussion into the modal so the parent
   // can close the sidebar (gives the modal full focus). The bulb panel stays
   // mounted via reader-sidebar.tsx's lastTool pattern, so panel state
@@ -140,7 +145,10 @@ export interface DiscussionsPanelProps {
   // (in reader-client) closes the sidebar, marks a pending nav, and router-
   // pushes to the target book; on arrival the reader opens at the cited
   // section with this discussion open in the Discussions panel.
-  onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  // discussionId is injected by the panel's wrapper (navigateBookAndCloseModal)
+  // from its activeDiscussionId state — inner components (DiscussionView,
+  // MessageBubble, ExplainerContent) pass only (bookId, basename).
+  onNavigateToBookSection?: (bookId: string, basename: string, discussionId?: string) => void;
   // ponytail: resolve a section href to its ToC label, for discussions reopened
   // after the click-time title is gone (the title isn't persisted server-side).
   resolveSectionLabel?: (href: string) => string | undefined;
@@ -160,6 +168,8 @@ export function DiscussionsPanel({
   bookId,
   pendingRequest,
   onConsumed,
+  pendingOpenDiscussionId,
+  onPendingDiscussionConsumed,
   onCloseSidebar,
   onReturnToSidebar,
   bookTxtTokens,
@@ -414,6 +424,18 @@ export function DiscussionsPanel({
     onConsumed();
   }, [pendingRequest, startDiscussion, onConsumed]);
 
+  // ponytail: cross-book arrival — auto-select the discussion the user jumped
+  // to from another book. Mirrors the pendingRequest consumption pattern: ref
+  // guard against StrictMode double-fire, consume once, signal the parent.
+  const lastPendingDiscussionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingOpenDiscussionId) return;
+    if (lastPendingDiscussionRef.current === pendingOpenDiscussionId) return;
+    lastPendingDiscussionRef.current = pendingOpenDiscussionId;
+    selectDiscussion(pendingOpenDiscussionId);
+    onPendingDiscussionConsumed?.();
+  }, [pendingOpenDiscussionId, onPendingDiscussionConsumed]);
+
   function selectDiscussion(id: string) {
     if (streaming) return;
     setActiveDiscussionId(id);
@@ -501,7 +523,7 @@ export function DiscussionsPanel({
   // ponytail: cross-book deeplink, mirrors the two above.
   const navigateBookAndCloseModal = onNavigateToBookSection
     ? (bookId: string, basename: string) => {
-        onNavigateToBookSection(bookId, basename);
+        onNavigateToBookSection(bookId, basename, activeDiscussionId ?? undefined);
         setPoppedOut(false);
       }
     : undefined;

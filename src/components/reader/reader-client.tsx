@@ -30,6 +30,8 @@ import {
 } from "./book-settings-panel";
 import { DiscussionsPanel, type PendingDiscussionRequest } from "@/components/discussion/discussions-panel";
 import { resolveToSpineHref } from "@/lib/explainer/citations";
+import { useReaderNav } from "./reader-nav-context";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
@@ -215,7 +217,13 @@ export function ReaderClient({
   // toolbar passage, ToC dropdown section, "Ask the book" button) from the
    // reader to the DiscussionsPanel in the sidebar. The panel consumes
    // it (fires the create-discussion API) and calls onConsumed to clear it.
-   const [pendingRequest, setPendingRequest] = useState<PendingDiscussionRequest | null>(null);
+    const [pendingRequest, setPendingRequest] = useState<PendingDiscussionRequest | null>(null);
+  // ponytail: cross-book deep-link arrival. When the reader consumes a
+  // pendingReaderNav (set by onNavigateToBookSection before router.push), it
+  // stores the discussionId here so the DiscussionsPanel can auto-select it.
+  const [pendingOpenDiscussionId, setPendingOpenDiscussionId] = useState<string | null>(null);
+  const router = useRouter();
+  const { pendingReaderNav, markPendingReaderNav, clearPendingReaderNav } = useReaderNav();
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
   type SwapPhase = "idle" | "closing" | "placeholder" | "opening" | "revealed";
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
@@ -540,6 +548,47 @@ export function ReaderClient({
     setCurrentHref(href);
     await viewerRef.current?.navigateTo(href);
   }, []);
+
+  // ponytail: cross-book deep-link click handler. Closes the sidebar for a
+  // clean transit, marks the pending nav (consumed by the effect above on
+  // arrival), and router.pushes to the target book. Plain router.push (not
+  // scene navigate) — same decision the TTS player makes for book-to-book
+  // (tts-player.tsx:233): the reader stays mounted and swaps in place.
+  const handleNavigateToBookSection = useCallback(
+    (bookId: string, basename: string, discussionId?: string) => {
+      setActiveTool(null);
+      markPendingReaderNav({ bookId, href: basename, discussionId });
+      router.push(`/book/${bookId}/reader`);
+    },
+    [markPendingReaderNav, router]
+  );
+
+  // ponytail: consume a cross-book deep-link navigation. The click handler
+  // above closes the sidebar, marks the pending nav, and router.pushes to the
+  // target book. On arrival, this effect fires once the rendition is ready for
+  // the TARGET book — it navigates the viewer to the cited section and opens
+  // the Discussions panel to the source thread. Mirrors the TTS sync effect's
+  // isLoaded + bookId-match one-shot pattern. Lives after handleTocNavigate so
+  // the deps array can reference it without a temporal-dead-zone error.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!pendingReaderNav) return;
+    if (pendingReaderNav.bookId !== bookId) return;
+
+    const { href, discussionId } = pendingReaderNav;
+
+    if (href) {
+      handleTocNavigate(
+        resolveToSpineHref(href, spineItems.map((s) => s.href))
+      );
+    }
+    if (discussionId) {
+      setActiveTool("bulb");
+      setPendingOpenDiscussionId(discussionId);
+    }
+
+    clearPendingReaderNav();
+  }, [isLoaded, pendingReaderNav, bookId, spineItems, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);
@@ -1542,6 +1591,8 @@ export function ReaderClient({
                 bookId={bookId}
                 pendingRequest={pendingRequest}
                 onConsumed={() => setPendingRequest(null)}
+                pendingOpenDiscussionId={pendingOpenDiscussionId}
+                onPendingDiscussionConsumed={() => setPendingOpenDiscussionId(null)}
                 onCloseSidebar={() => setActiveTool(null)}
                 onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
@@ -1566,6 +1617,7 @@ export function ReaderClient({
                   // sidebar open so the discussion stays in view.
                   viewerRef.current?.flashCfi(cfi);
                 }}
+                onNavigateToBookSection={handleNavigateToBookSection}
                 resolveSectionLabel={resolveSectionLabel}
                 sectionOptions={sectionOptions}
                 attachBookMax={attachBookMax}
