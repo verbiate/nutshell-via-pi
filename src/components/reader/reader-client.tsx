@@ -605,8 +605,18 @@ export function ReaderClient({
     const { href, discussionId } = pendingReaderNav;
 
     if (href) {
-      const resolved = viewerRef.current?.resolveHref(href);
-      if (!resolved) return;
+      // ponytail: resolve via the lib helper against the React-state spine
+      // playlist — same path the in-reader citation click uses (the
+      // onNavigateToHref prop below). The viewer's resolveHref returns null
+      // when the input is already a canonical spine href (false "no match")
+      // AND depends on bookRef timing; resolveToSpineHref has neither bug and
+      // degrades gracefully (returns the input unchanged if nothing matches).
+      // No early-return: the discussionId block below must run regardless of
+      // whether the href resolved, so a stale citation still opens the thread.
+      const resolved = resolveToSpineHref(
+        href,
+        spineItems.map((s) => s.href)
+      );
       handleTocNavigate(resolved);
     }
     if (discussionId) {
@@ -616,7 +626,7 @@ export function ReaderClient({
 
     clearPendingReaderNav();
     setSwapPhase("idle");
-  }, [swapPhase, pendingReaderNav, bookId, isLoaded, handleTocNavigate, clearPendingReaderNav]);
+  }, [swapPhase, pendingReaderNav, bookId, isLoaded, spineItems, handleTocNavigate, clearPendingReaderNav]);
 
   const handleTocLoaded = useCallback((loadedToc: NavItem[]) => {
     setToc(loadedToc);

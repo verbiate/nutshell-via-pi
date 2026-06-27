@@ -242,4 +242,78 @@ describe("DiscussionDetail", () => {
     );
     expect(html).toContain("Two books: Origin Book + Attached Book");
   });
+
+  it("renders an in-explainer citation as a clickable deep-link when tocJson validates it, plain text otherwise", () => {
+    // ponytail: parity with reader-side ExplainerContent — a [Label](#ch:x)
+    // citation becomes role=button when x is in the origin book's hrefs, and
+    // degrades to plain text when it isn't. Uses the d.explainer.content
+    // fallback (the SSR useQuery mock doesn't populate the detail query).
+    const d = makeDiscussion({
+      type: "book",
+      book: {
+        id: "b1",
+        title: "Origin Book",
+        author: null,
+        coverPath: null,
+        tocJson: JSON.stringify([
+          { id: "t1", title: "Intro", href: "intro.xhtml" },
+          { id: "t2", title: "Chapter One", href: "ch1.xhtml" },
+        ]),
+      },
+      explainer: {
+        content: "See [Chapter One](#ch:ch1.xhtml) and [Nowhere](#ch:nope.xhtml).",
+      } as any,
+    });
+    const html = render(
+      <DiscussionDetail
+        discussion={d}
+        onBack={() => {}}
+        navigate={() => {}}
+        resolveLabel={() => undefined}
+      />
+    );
+    // valid citation → clickable span with data-href
+    expect(html).toContain('data-href="ch1.xhtml"');
+    expect(html).toContain("Chapter One");
+    // invalid citation degrades — label renders, no data-href for nope
+    expect(html).not.toContain('data-href="nope.xhtml"');
+  });
+
+  it("renders a cross-book citation as a clickable deep-link validated against the attached book's tocJson", () => {
+    // ponytail: prefixed #ch:<bookId>:<basename> citations route cross-book,
+    // validated against that book's hrefs (mirrors the reader sidebar).
+    const d = makeDiscussion({
+      type: "book",
+      book: { id: "b1", title: "Origin", author: null, coverPath: null, tocJson: "[]" },
+      attachments: [
+        {
+          id: "a1",
+          type: "book",
+          sectionHref: null,
+          bookId: "attachedbook0001",
+          createdAt: new Date().toISOString(),
+          book: {
+            id: "attachedbook0001",
+            title: "Other",
+            author: null,
+            coverPath: null,
+            tocJson: JSON.stringify([{ id: "x", title: "X", href: "part1.xhtml" }]),
+          },
+        },
+      ],
+      explainer: {
+        content: "See [Part 1](#ch:attachedbook0001:part1.xhtml).",
+      } as any,
+    });
+    const html = render(
+      <DiscussionDetail
+        discussion={d}
+        onBack={() => {}}
+        navigate={() => {}}
+        resolveLabel={() => undefined}
+      />
+    );
+    expect(html).toContain('data-book-id="attachedbook0001"');
+    expect(html).toContain('data-book-href="part1.xhtml"');
+  });
 });

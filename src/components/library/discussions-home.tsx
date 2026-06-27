@@ -567,6 +567,43 @@ export function DiscussionDetail({
       txtTokens: bookAtt.book.txtTokens,
     };
   }, [data]);
+
+  // ponytail: citation deep-link plumbing — mirrors discussions-panel.tsx:575-614.
+  // Origin book's hrefs validate unprefixed #ch: citations; attached books'
+  // hrefs validate prefixed #ch:<bookId>:<basename> cross-book citations.
+  // Sourced from the list item's tocJson (already fetched for resolveLabel).
+  const { originBookHrefs, attachedBookHrefs } = useMemo(() => {
+    const parseHrefs = (tocJson: string | null | undefined): string[] => {
+      if (!tocJson) return [];
+      try {
+        const toc = JSON.parse(tocJson) as Array<{ href?: string }>;
+        return toc
+          .map((t) => hrefBasename(t.href ?? ""))
+          .filter((h) => h.length > 0);
+      } catch {
+        return [];
+      }
+    };
+    const map: Record<string, string[]> = {};
+    for (const a of d.attachments) {
+      if (a.type !== "book" || !a.bookId || !a.book) continue;
+      const hrefs = parseHrefs(a.book.tocJson);
+      if (hrefs.length > 0) map[a.book.id] = hrefs;
+    }
+    return {
+      originBookHrefs: parseHrefs(d.book.tocJson),
+      attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
+    };
+  }, [d]);
+
+  // ponytail: route citation clicks through the SAME pendingReaderNav deep-link
+  // the chips use. On arrival the reader resolves the basename to its spine
+  // href (reader-client.tsx:608) and opens the sidebar to this thread.
+  const onNavigateToHref = (href: string) =>
+    navigate(d.book.id, { href, discussionId: d.id });
+  const onNavigateToBookSection = (bookId: string, basename: string) =>
+    navigate(bookId, { href: basename, discussionId: d.id });
+
   const pendingBookDisplay =
     pendingBook && persistedBook?.bookId !== pendingBook.bookId ? pendingBook : null;
 
@@ -824,7 +861,13 @@ export function DiscussionDetail({
         {/* Explainer */}
         {explainerContent && (
           <div className="mb-4 rounded-lg border border-border bg-muted p-3 prose prose-sm dark:prose-invert max-w-none">
-            <ExplainerContent content={explainerContent} spineHrefs={[]} />
+            <ExplainerContent
+              content={explainerContent}
+              spineHrefs={originBookHrefs}
+              attachedBookHrefs={attachedBookHrefs}
+              onNavigateToHref={onNavigateToHref}
+              onNavigateToBookSection={onNavigateToBookSection}
+            />
           </div>
         )}
 
@@ -845,6 +888,10 @@ export function DiscussionDetail({
                   i === localMessages.length - 1 &&
                   m.role === "assistant"
                 }
+                spineHrefs={originBookHrefs}
+                attachedBookHrefs={attachedBookHrefs}
+                onNavigateToHref={onNavigateToHref}
+                onNavigateToBookSection={onNavigateToBookSection}
               />
             ))}
           </div>
@@ -1253,10 +1300,20 @@ function MessageBubble({
   role,
   content,
   streaming,
+  spineHrefs,
+  attachedBookHrefs,
+  onNavigateToHref,
+  onNavigateToBookSection,
 }: {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  // ponytail: forwarded straight to ExplainerContent so in-message #ch:
+  // citations deep-link exactly like the reader sidebar's bubbles.
+  spineHrefs?: string[];
+  attachedBookHrefs?: Record<string, string[]>;
+  onNavigateToHref?: (href: string) => void;
+  onNavigateToBookSection?: (bookId: string, basename: string) => void;
 }) {
   return (
     <div
@@ -1282,7 +1339,13 @@ function MessageBubble({
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
           </span>
         ) : role === "assistant" ? (
-          <ExplainerContent content={content} spineHrefs={[]} />
+          <ExplainerContent
+            content={content}
+            spineHrefs={spineHrefs ?? []}
+            attachedBookHrefs={attachedBookHrefs}
+            onNavigateToHref={onNavigateToHref}
+            onNavigateToBookSection={onNavigateToBookSection}
+          />
         ) : (
           content
         )}
