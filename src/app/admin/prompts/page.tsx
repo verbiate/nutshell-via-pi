@@ -31,6 +31,7 @@ export default function PromptTemplatesPage() {
   const templates = data?.templates || [];
   const bookTemplate = templates.find((t: any) => t.type === "book");
   const sectionTemplate = templates.find((t: any) => t.type === "section");
+  const passageTemplate = templates.find((t: any) => t.type === "passage");
   const bookPass2Template = templates.find((t: any) => t.type === "book_pass2");
   const bookMetadataTemplate = templates.find(
     (t: any) => t.type === "book_metadata"
@@ -54,11 +55,18 @@ export default function PromptTemplatesPage() {
       <div className="mt-6">
         <Tabs defaultValue="book">
           <TabsList>
+            <TabsTrigger value="system">System Prompt</TabsTrigger>
             <TabsTrigger value="book">Book-Level</TabsTrigger>
             <TabsTrigger value="section">Section-Level</TabsTrigger>
+            <TabsTrigger value="passage">Passage-Level</TabsTrigger>
             <TabsTrigger value="metadata">Metadata</TabsTrigger>
-            <TabsTrigger value="system">System Prompt</TabsTrigger>
           </TabsList>
+          <TabsContent value="system">
+            {/* Canonical global system prompt. Persisted via the
+                globalSystemPrompt AppSetting; Playground reads the same value
+                for its "Reset to default" pull but never auto-applies it. */}
+            <SystemPromptEditor />
+          </TabsContent>
           <TabsContent value="book">
             <PromptEditor
               type="book"
@@ -88,6 +96,18 @@ export default function PromptTemplatesPage() {
               version={sectionTemplate?.version || 1}
             />
           </TabsContent>
+          <TabsContent value="passage">
+            {/* ponytail: selection-level explainer. Triggered by the floating
+                toolbar's "Explain this passage" on text selection (and by the
+                ⋯ menu on a saved highlight). Source text is the user's
+                selection — no {{section_title}}, just {{chosen_text}} +
+                {{book_text}} for grounding. */}
+            <PromptEditor
+              type="passage"
+              initialContent={passageTemplate?.content || ""}
+              version={passageTemplate?.version || 1}
+            />
+          </TabsContent>
           <TabsContent value="metadata">
             {/* ponytail: LLM book-metadata extraction prompt. Returns strict
                 JSON via response_format json_object. Only {{book_text}} is
@@ -104,12 +124,6 @@ export default function PromptTemplatesPage() {
               initialContent={bookMetadataTemplate?.content || ""}
               version={bookMetadataTemplate?.version || 1}
             />
-          </TabsContent>
-          <TabsContent value="system">
-            {/* Canonical global system prompt. Persisted via the
-                globalSystemPrompt AppSetting; Playground reads the same value
-                for its "Reset to default" pull but never auto-applies it. */}
-            <SystemPromptEditor />
           </TabsContent>
         </Tabs>
       </div>

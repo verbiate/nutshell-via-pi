@@ -118,30 +118,38 @@ export async function* streamInitialDiscussionResponse(
   // Reopen: if this user already has a discussion for the same context
   // (version-independent key), navigate them back to it instead of
   // regenerating. Their discussion stays pinned to the version they first saw.
+  // ponytail: only short-circuit when the pinned explainer actually has
+  // content. A prior stream that yielded zero chunks (OpenRouter hiccup)
+  // leaves an empty-content explainer linked to the discussion — reopening
+  // that would show a blank thread forever. Fall through to regenerate.
   const existingDiscussion = await db.discussion.findUnique({
     where: {
       userId_contentHash_language_tier: { userId, contentHash, language, tier },
     },
+    include: { explainer: { select: { content: true } } },
   });
-  if (existingDiscussion) {
+  if (existingDiscussion && existingDiscussion.explainer?.content) {
     yield { type: "existing", discussionId: existingDiscussion.id };
     return;
   }
 
-  // Check cache (shared across all users)
-  const cached = await getLatestExplainer({ contentHash, language, contentType: type, tier });
+  // Check cache (shared across all users). ponytail: treat empty-content
+  // rows as a miss — a prior failed stream may have persisted a stub.
+  const cached =
+    (await getLatestExplainer({ contentHash, language, contentType: type, tier })) ?? null;
+  const cachedUsable = cached && cached.content ? cached : null;
 
   let explainerId: string;
   let cachedFlag = false;
 
-  if (cached) {
-    explainerId = cached.id;
+  if (cachedUsable) {
+    explainerId = cachedUsable.id;
     cachedFlag = true;
     yield { type: "cached", cached: true };
     // ponytail: emit the full cached content as one chunk so the client UI
     // (which expects to accumulate chunks into the assistant message) just
     // works.
-    yield { type: "chunk", chunk: cached.content };
+    yield { type: "chunk", chunk: cachedUsable.content };
   } else {
     // Stream from OpenRouter (mirror explainer.ts:148-167 logic)
     const { streamExplainer, streamBookTwoPass, getOpenRouterConfig } = await import("./openrouter");
@@ -240,6 +248,25 @@ export async function* streamInitialDiscussionResponse(
       return;
     }
 
+    // ponytail: defensive — never persist an empty explainer. OpenRouter can
+    // resolve the stream successfully but yield zero chunks (upstream hiccup,
+    // content filter, bad model output). Without this guard we'd cache a stub
+    // and every future request for this context would reopen a blank thread.
+    if (!fullContent.trim()) {
+      await recordError({
+        category: "explainer_empty",
+        message: `${type} explainer stream returned empty content`,
+        userId,
+        bookId,
+        context: { tier, model, type, contentHash },
+      });
+      yield {
+        type: "error",
+        error: "The model returned an empty response. Please try again.",
+      };
+      return;
+    }
+
     // Save to cache. Handle race: a concurrent request for the same passage
     // (e.g. React StrictMode double-fire in dev, or two users hitting the same
     // passage) can win the create between our cache-miss check and now. On
@@ -278,9 +305,10 @@ export async function* streamInitialDiscussionResponse(
 
   // Upsert discussion on the version-independent key (one discussion per user
   // per context). Reopen above handles the common case; this upsert also
-  // covers a rare race where two concurrent starts slip past the check — the
-  // update branch just touches updatedAt and leaves the existing version pin
-  // intact.
+  // covers a rare race where two concurrent starts slip past the check, AND
+  // the recovery path where we fell through from `existing` because the
+  // pinned explainer was empty — in that case the update branch relinks the
+  // discussion to the freshly generated explainer.
   const discussion = await db.discussion.upsert({
     where: {
       userId_contentHash_language_tier: { userId, contentHash, language, tier },
@@ -298,7 +326,13 @@ export async function* streamInitialDiscussionResponse(
       tier,
       initialCacheHit: cachedFlag,
     },
-    update: { updatedAt: new Date() },
+    update: {
+      explainerId,
+      passageCfi: params.passageCfi,
+      passageText: params.passageText,
+      sectionHref: params.sectionHref,
+      initialCacheHit: cachedFlag,
+    },
   });
 
   // Record analytics (matches existing pattern)

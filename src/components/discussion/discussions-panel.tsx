@@ -1156,9 +1156,14 @@ export function DiscussionsPanel({
   useEffect(() => {
     if (pendingAttachments.length === 0) return;
     const confirmed = new Set(persistedAttachments.map((a) => a.sectionHref));
-    setPendingAttachments((prev) =>
-      prev.filter((p) => !confirmed.has(p.sectionHref))
-    );
+    setPendingAttachments((prev) => {
+      const next = prev.filter((p) => !confirmed.has(p.sectionHref));
+      // ponytail: bail when nothing retired — returning the same ref lets React
+      // skip the re-render. Without this, persistedAttachments being a fresh
+      // array every render + this setState = infinite loop when a pending
+      // section hasn't landed server-side yet (e.g. right after attach + follow-up).
+      return next.length === prev.length ? prev : next;
+    });
   }, [persistedAttachments]);
 
   function addDraftAttachment(href: string, label: string) {
