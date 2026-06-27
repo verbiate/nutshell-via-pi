@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
 import { LANGUAGES } from "@/lib/languages";
 import { countTokens, formatTokens } from "@/lib/client-tokens";
+import { PresetSelect } from "@/components/admin/preset-select";
 
 type Tier = "regular" | "pro" | "admin";
 
@@ -732,6 +733,14 @@ export default function PlaygroundPage() {
               disabled={streaming}
               placeholder="Empty = no system message sent. Edit canonical under Prompt Templates → System Prompt."
               minH="min-h-[80px]"
+              presetSlot={
+                <PresetSelect
+                  type="system"
+                  currentContent={systemOverride}
+                  onLoad={setSystemOverride}
+                  disabled={streaming}
+                />
+              }
             />
 
             {/* Book template: WIRED — filled per attached book and sent as system message. */}
@@ -744,6 +753,14 @@ export default function PlaygroundPage() {
               placeholder="Used when a book is attached. {{book_text}}, {{title}}, {{author}}, {{language}}, {{target_language}} available."
               minH="min-h-[120px]"
               mono
+              presetSlot={
+                <PresetSelect
+                  type="book"
+                  currentContent={bookOverride}
+                  onLoad={setBookOverride}
+                  disabled={streaming}
+                />
+              }
             />
 
             {/* Section template: NOT WIRED — visible for parity, disabled with tooltip. */}
@@ -785,6 +802,14 @@ export default function PlaygroundPage() {
               minH="min-h-[80px]"
               mono
               tooltip="Click 'Run two-pass' in the composer to test against the attached book. Pass 1 hidden, pass 2 streamed."
+              presetSlot={
+                <PresetSelect
+                  type="book_pass2"
+                  currentContent={bookPass2Override}
+                  onLoad={setBookPass2Override}
+                  disabled={streaming}
+                />
+              }
             />
           </div>
         )}
@@ -1100,6 +1125,7 @@ function OverrideRow({
   onReset,
   resetDisabled,
   resetLabel = "Reset to saved",
+  presetSlot,
   children,
 }: {
   label: string;
@@ -1107,6 +1133,7 @@ function OverrideRow({
   onReset: () => void;
   resetDisabled?: boolean;
   resetLabel?: string;
+  presetSlot?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -1130,6 +1157,7 @@ function OverrideRow({
         </Button>
       </div>
       {children}
+      {presetSlot}
     </div>
   );
 }
@@ -1144,6 +1172,7 @@ function OverrideTextareaRow({
   minH = "min-h-[80px]",
   mono = false,
   tooltip,
+  presetSlot,
 }: {
   label: string;
   value: string;
@@ -1154,6 +1183,7 @@ function OverrideTextareaRow({
   minH?: string;
   mono?: boolean;
   tooltip?: string;
+  presetSlot?: React.ReactNode;
 }) {
   const matchesSaved = value === savedValue;
   const badge = disabled
@@ -1167,6 +1197,7 @@ function OverrideTextareaRow({
       badge={badge}
       onReset={() => onChange(savedValue)}
       resetDisabled={disabled || matchesSaved}
+      presetSlot={presetSlot}
     >
       <Textarea
         value={value}

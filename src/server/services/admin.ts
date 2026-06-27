@@ -148,6 +148,110 @@ export async function updatePromptTemplate(
   });
 }
 
+// ---- Prompt Presets (admin-named test variants, one row per (type, name)) ----
+
+// ponytail: keep this list in sync with PromptTemplateType in src/lib/prompt-tokens.ts,
+// PLUS "system" — the global system prompt lives in AppSetting, not as a
+// PromptTemplate, but presets for it use the same PromptPreset table.
+const VALID_PRESET_TYPES = new Set([
+  "book",
+  "section",
+  "passage",
+  "book_pass2",
+  "book_metadata",
+  "system",
+]);
+
+function assertPresetType(type: string): asserts type is string {
+  if (!VALID_PRESET_TYPES.has(type)) {
+    throw new Error("Invalid preset type");
+  }
+}
+
+export async function getPromptPresets(type?: string) {
+  // ponytail: split branches (not a ternary) because Prisma's findMany overload
+  // rejects the union of a where-filtered arg and an unfiltered arg.
+  if (type) {
+    return db.promptPreset.findMany({
+      where: { type },
+      orderBy: [{ name: "asc" }],
+    });
+  }
+  return db.promptPreset.findMany({
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function createPromptPreset(
+  adminId: string,
+  input: { type: string; name: string; content: string }
+) {
+  assertPresetType(input.type);
+  const name = input.name.trim();
+  if (!name) throw new Error("Preset name required");
+  if (!input.content) throw new Error("Preset content required");
+
+  const created = await db.promptPreset.create({
+    data: { type: input.type, name, content: input.content },
+  });
+
+  await auditLog({
+    actorId: adminId,
+    action: "PROMPT_PRESET_CREATED",
+    entityType: "prompt_preset",
+    entityId: created.id,
+    newValue: JSON.stringify({ type: input.type, name }),
+  });
+
+  return created;
+}
+
+export async function updatePromptPreset(
+  adminId: string,
+  id: string,
+  patch: { name?: string; content?: string }
+) {
+  const existing = await db.promptPreset.findUnique({ where: { id } });
+  if (!existing) throw new Error("Preset not found");
+
+  const data: { name?: string; content?: string } = {};
+  if (typeof patch.name === "string") {
+    const name = patch.name.trim();
+    if (!name) throw new Error("Preset name required");
+    data.name = name;
+  }
+  if (typeof patch.content === "string") {
+    data.content = patch.content;
+  }
+  if (Object.keys(data).length === 0) throw new Error("Nothing to update");
+
+  await db.promptPreset.update({ where: { id }, data });
+
+  await auditLog({
+    actorId: adminId,
+    action: "PROMPT_PRESET_UPDATED",
+    entityType: "prompt_preset",
+    entityId: id,
+    oldValue: JSON.stringify({ name: existing.name }),
+    newValue: JSON.stringify(data),
+  });
+}
+
+export async function deletePromptPreset(adminId: string, id: string) {
+  const existing = await db.promptPreset.findUnique({ where: { id } });
+  if (!existing) throw new Error("Preset not found");
+
+  await db.promptPreset.delete({ where: { id } });
+
+  await auditLog({
+    actorId: adminId,
+    action: "PROMPT_PRESET_DELETED",
+    entityType: "prompt_preset",
+    entityId: id,
+    oldValue: JSON.stringify({ type: existing.type, name: existing.name }),
+  });
+}
+
 // ---- Two-pass book explainer toggle ----
 
 // Default pass-2 instruction. Keep in sync with prisma/seed.ts — seed is the

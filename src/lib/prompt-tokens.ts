@@ -30,7 +30,7 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
   {
     token: "language",
     description: "The book's source language (from EPUB metadata).",
-    appliesTo: ["book", "section", "passage", "book_pass2"],
+    appliesTo: ["book", "book_pass2"],
   },
   {
     token: "target_language",
@@ -42,12 +42,18 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
     description: "Full plaintext of the book (extracted at upload).",
     appliesTo: ["book", "section", "passage", "book_pass2", "book_metadata"],
   },
-  {
-    token: "expanded_metadata",
-    description:
-      "LLM-extracted Expanded Book Metadata block (all 6 fields: title, subtitle, author, author gender, narrative type, language, description). Empty when metadata hasn't been extracted yet.",
-    appliesTo: ["book", "section", "passage", "book_pass2"],
-  },
+    {
+      token: "expanded_metadata",
+      description:
+        "LLM-extracted Expanded Book Metadata block (all 6 fields: title, subtitle, author, author gender, narrative type, language, description). Empty when metadata hasn't been extracted yet.",
+      appliesTo: ["book", "section", "passage", "book_pass2"],
+    },
+    {
+      token: "chapter_index",
+      description:
+        "Ready-to-use markdown citation links for every ToC entry ([Label](#ch:href)). The model copies these verbatim to emit deep links to chapters. Required for explainer citations to render as clickable chapter links.",
+      appliesTo: ["book", "section", "passage"],
+    },
   {
     token: "text",
     description: "Alias of {{book_text}}. Kept for backwards compatibility.",

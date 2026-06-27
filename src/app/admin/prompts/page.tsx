@@ -6,8 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { AVAILABLE_TOKENS } from "@/lib/prompt-tokens";
+import { PresetSelect } from "@/components/admin/preset-select";
 
 export default function PromptTemplatesPage() {
   const queryClient = useQueryClient();
@@ -172,6 +181,23 @@ function PromptEditor({
 }) {
   const queryClient = useQueryClient();
   const [content, setContent] = useState(initialContent);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // ponytail: hydrate working copy once the saved template arrives. Without
+  // this, a cold visit mounts the editor while the ["admin-prompts"] query is
+  // still pending (initialContent=""), useState locks content to "", and the
+  // textarea renders empty even after data resolves — with hasChanges=true and
+  // an enabled Save button that would wipe the template. Same pattern as
+  // SystemPromptEditor below. seededRef gates one-shot seeding so refetches
+  // (e.g. after our own save) don't clobber the admin's buffer.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!seededRef.current && initialContent) {
+      setContent(initialContent);
+      seededRef.current = true;
+    }
+  }, [initialContent]);
+
   const hasChanges = content !== initialContent;
 
   const saveMutation = useMutation({
@@ -189,6 +215,24 @@ function PromptEditor({
     },
   });
 
+  // ponytail: guard against accidentally saving a test stub over a real live
+  // template. Triggers a confirm only when the saved template is substantial
+  // (>200 chars) and the new content is less than half its length — the
+  // signature of "I meant Save-as-preset, not Save Template". Ceiling: a
+  // legitimate large rewrite would also trip this; the confirm is a one-click
+  // ack, not a block. Does NOT protect the very first save of an empty DB row.
+  const wouldClobber =
+    initialContent.length > 200 &&
+    content.length < initialContent.length * 0.5;
+
+  const trySave = () => {
+    if (wouldClobber) {
+      setConfirmOpen(true);
+      return;
+    }
+    saveMutation.mutate();
+  };
+
   const wordCount = content.split(/\s+/).filter(Boolean).length;
 
   return (
@@ -199,6 +243,11 @@ function PromptEditor({
         className="min-h-[300px] font-mono text-sm"
         placeholder="Enter prompt template..."
       />
+      {/* Presets: per-level named scratchpads (NOT the live template). Loading
+          one sets this field dirty vs the saved template; "Save as" captures
+          the current buffer under a name for later recall here or in the
+          Playground. Presets are shared across all admins. */}
+      <PresetSelect type={type} currentContent={content} onLoad={setContent} />
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {wordCount} words · Version {version}
@@ -212,13 +261,43 @@ function PromptEditor({
             Discard Changes
           </Button>
           <Button
-            onClick={() => saveMutation.mutate()}
+            onClick={trySave}
             disabled={!hasChanges || saveMutation.isPending}
           >
-            Save Template
+            Use Template
           </Button>
         </div>
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Replace the live template?</DialogTitle>
+            <DialogDescription>
+              You&apos;re about to save a much shorter prompt over the live{" "}
+              <strong>{type}</strong> template
+              {" "}({initialContent.length} → {content.length} chars). This also
+              invalidates cached explainers. Did you mean{" "}
+              <strong>Save as…</strong> (a preset) instead?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={saveMutation.isPending}
+              onClick={() => {
+                setConfirmOpen(false);
+                saveMutation.mutate();
+              }}
+            >
+              Replace live template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -363,6 +442,7 @@ function SystemPromptEditor() {
         className="min-h-[160px] font-mono text-sm"
         placeholder="Empty = no system message sent."
       />
+      <PresetSelect type="system" currentContent={content} onLoad={setContent} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
@@ -380,13 +460,13 @@ function SystemPromptEditor() {
             onClick={() => setContent(savedPrompt ?? "")}
             disabled={!dirty || saveMutation.isPending}
           >
-            Revert
+            Discard Changes
           </Button>
           <Button
             onClick={() => saveMutation.mutate(content)}
             disabled={!dirty || saveMutation.isPending}
           >
-            Save
+            Use Template
           </Button>
         </div>
       </div>

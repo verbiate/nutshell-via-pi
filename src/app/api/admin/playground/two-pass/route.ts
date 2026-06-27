@@ -6,7 +6,11 @@ import {
   OpenRouterError,
   streamBookTwoPass,
 } from "@/server/services/openrouter";
-import { fillTemplate } from "@/server/services/prompt-builder";
+import {
+  buildChapterIndex,
+  fillTemplate,
+  formatExpandedMetadata,
+} from "@/server/services/prompt-builder";
 import { db } from "@/server/db";
 import { storage } from "@/server/storage/local";
 
@@ -95,7 +99,14 @@ export async function POST(request: Request) {
   // Load book + plaintext.
   const book = await db.epubFile.findUnique({
     where: { id: bookId },
-    select: { txtPath: true, title: true, author: true, language: true },
+    select: {
+      txtPath: true,
+      title: true,
+      author: true,
+      language: true,
+      tocJson: true,
+      bookMetadata: true,
+    },
   });
   if (!book) {
     return sseError(`Book not found: ${bookId}`, 400);
@@ -142,6 +153,8 @@ export async function POST(request: Request) {
     target_language: lang,
     book_text: bookText,
     text: bookText,
+    expanded_metadata: formatExpandedMetadata(book.bookMetadata),
+    chapter_index: buildChapterIndex(book.tocJson),
   };
   const pass1Prompt = fillTemplate(bookTemplate, templateVars);
 

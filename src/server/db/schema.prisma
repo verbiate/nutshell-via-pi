@@ -193,6 +193,24 @@ model PromptTemplate {
   updatedAt DateTime @updatedAt
 }
 
+// ponytail: admin-named prompt presets for testing/auditioning. One row per
+// (type, name). Unlike PromptTemplate these are scratchpads — NOT folded into
+// the explainer cache hash (loading a preset must never invalidate cached
+// explainers). Shared across all admins; provenance lives in AuditLog.
+// type ∈ PromptTemplateType (src/lib/prompt-tokens.ts) — stored as String since
+// SQLite has no native enums (same convention as UserRole).
+model PromptPreset {
+  id        String   @id @default(cuid())
+  type      String
+  name      String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, name])
+  @@index([type])
+}
+
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String
