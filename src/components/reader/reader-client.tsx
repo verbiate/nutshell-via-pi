@@ -580,29 +580,31 @@ export function ReaderClient({
   // above closes the sidebar, marks the pending nav, and router.pushes to the
   // target book. On arrival, this effect fires once the rendition is ready for
   // the TARGET book — it navigates the viewer to the cited section and opens
-  // the Discussions panel to the source thread. Mirrors the TTS sync effect's
-  // isLoaded + bookId-match one-shot pattern. Lives after handleTocNavigate so
-  // the deps array can reference it without a temporal-dead-zone error.
+  // the Discussions panel to the source thread. Lives after handleTocNavigate
+  // so the deps array can reference it without a temporal-dead-zone error.
+  //
+  // navConsumedRef: one-shot per swap-revealed cycle. swapPhase stays "revealed"
+  // after a swap completes — when the NEXT hop changes bookId, this effect would
+  // fire prematurely (before the swap reset effect runs), consuming the pending
+  // nav and getting overridden by the swap sequence. The ref prevents this: it's
+  // set true on first fire, and reset to false whenever swapPhase leaves "revealed"
+  // (entering the next swap's closing phase). Each swap cycle gets exactly one
+  // consumption opportunity.
+  const navConsumedRef = useRef(false);
   useEffect(() => {
-    // ponytail: gate on swapPhase === "revealed", NOT isLoaded. The swap
-    // sequence runs closing → placeholder → opening → revealed. Phase 2
-    // (placeholder→opening) calls setActiveTool("reader") which would
-    // overwrite our setActiveTool("bulb") if this effect fired at isLoaded
-    // (both fire in the same render; Phase 2 is declared later and wins).
-    // Waiting for "revealed" ensures our setActiveTool("bulb") runs LAST.
-    if (swapPhase !== "revealed") return;
+    if (swapPhase !== "revealed") {
+      navConsumedRef.current = false;
+      return;
+    }
+    if (navConsumedRef.current) return;
     if (!pendingReaderNav) return;
     if (pendingReaderNav.bookId !== bookId) return;
 
     const { href, discussionId } = pendingReaderNav;
 
-    // ponytail: resolve the basename via the viewer's own book.spine walk,
-    // NOT the spineItems React state — spineItems may be stale or empty during
-    // a book swap. The viewer's resolveHref reads bookRef.current.spine
-    // directly, which is guaranteed populated by the time the rendition exists.
     if (href) {
       const resolved = viewerRef.current?.resolveHref(href);
-      if (!resolved) return; // spine not ready yet — retry on next render
+      if (!resolved) return;
       handleTocNavigate(resolved);
     }
     if (discussionId) {
@@ -610,6 +612,7 @@ export function ReaderClient({
       setPendingOpenDiscussionId(discussionId);
     }
 
+    navConsumedRef.current = true;
     clearPendingReaderNav();
   }, [swapPhase, pendingReaderNav, bookId, handleTocNavigate, clearPendingReaderNav]);
 
