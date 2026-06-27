@@ -128,7 +128,7 @@ export function HomeView({ userName, books, digestImage, static: isStatic = fals
         <div className="px-12">
           <TabsList className="w-full grid grid-cols-3">
             <TabsTrigger value="bookshelf">Bookshelf</TabsTrigger>
-            <TabsTrigger value="explainers">Explainers</TabsTrigger>
+            <TabsTrigger value="explainers">Discussions</TabsTrigger>
             <TabsTrigger value="find">Find more books</TabsTrigger>
           </TabsList>
         </div>
@@ -189,10 +189,10 @@ export function HomeView({ userName, books, digestImage, static: isStatic = fals
               <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
                 <Sparkles className="h-16 w-16 text-muted-foreground" />
                 <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
-                  Explainers are brewing
+                  Discussions are brewing
                 </h2>
                 <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
-                  Your saved explainers will live here, ready to revisit anytime.
+                  Your saved discussions will live here, ready to revisit anytime.
                 </p>
               </div>
             </SmoothScrollArea>
