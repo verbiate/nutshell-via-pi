@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hrefBasename } from "@/lib/explainer/citations";
+import {
+  mergeTimeline,
+  isTurnZeroAttachment,
+  type TimelineEvent,
+} from "@/lib/discussion/timeline";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +48,7 @@ import {
   Check,
   Plus,
   X,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/hooks/use-session";
@@ -90,7 +96,10 @@ type DiscussionPreview = {
   book?: { id: string; title: string; coverPath: string | null } | null;
 };
 
-type Message = { role: "user" | "assistant"; content: string };
+// ponytail: createdAt is optional — present once the server round-trip lands,
+// missing on locally-streamed turns (sendFollowup/sendDraftMessage synthesize
+// it). mergeTimeline uses it to place attachment-event markers; missing => tail.
+type Message = { role: "user" | "assistant"; content: string; createdAt?: string };
 
 // ponytail: an attached "other book" chip. Single-slot (the per-tier cap is
 // usually 1) so it's a nullable object, not an array like sections. Carries
@@ -293,7 +302,7 @@ export function DiscussionsPanel({
       setLocalMessages(
         activeData.discussion.messages
           ?.filter((m: any) => m.role === "user" || m.role === "assistant")
-          .map((m: any) => ({ role: m.role, content: m.content })) ?? []
+          .map((m: any) => ({ role: m.role, content: m.content, createdAt: m.createdAt })) ?? []
       );
     }
   }, [activeData]);
@@ -614,9 +623,13 @@ export function DiscussionsPanel({
     // ponytail: index-based update — append placeholder assistant message
     // and update by index during streaming. Object-reference equality fails
     // after the first chunk update (see playground bug from earlier session).
+    // createdAt is synthesized so mergeTimeline can place attachment-event
+    // markers relative to this turn; the sync effect replaces it with server
+    // truth on the next refetch.
     const assistantIndex = localMessages.length + 1;
-    const nextMessages = [...localMessages, { role: "user" as const, content: text }];
-    setLocalMessages([...nextMessages, { role: "assistant", content: "" }]);
+    const nowIso = new Date().toISOString();
+    const nextMessages = [...localMessages, { role: "user" as const, content: text, createdAt: nowIso }];
+    setLocalMessages([...nextMessages, { role: "assistant", content: "", createdAt: nowIso }]);
     setInput("");
     setStreaming(true);
     // ponytail: snapshot drafts for the POST body, then move them to
@@ -738,8 +751,9 @@ export function DiscussionsPanel({
     if (!text || streaming || !drafting) return;
 
     const assistantIndex = localMessages.length + 1;
-    const nextMessages = [...localMessages, { role: "user" as const, content: text }];
-    setLocalMessages([...nextMessages, { role: "assistant", content: "" }]);
+    const nowIso = new Date().toISOString();
+    const nextMessages = [...localMessages, { role: "user" as const, content: text, createdAt: nowIso }];
+    setLocalMessages([...nextMessages, { role: "assistant", content: "", createdAt: nowIso }]);
     setInput("");
     setStreaming(true);
 
@@ -1063,6 +1077,68 @@ export function DiscussionsPanel({
   // ponytail: pending book chip retires once the refetch lands it in persistedBook.
   const pendingBookDisplay =
     pendingBook && persistedBook?.bookId !== pendingBook.bookId ? pendingBook : null;
+  // ponytail: timeline event markers for mid-conversation attachments (books +
+  // sections). Turn-0 attachments (created with the discussion in the same
+  // request) are foundational context, not events — suppressed via
+  // isTurnZeroAttachment. hasMidConvoBookAddition gates the "Original" badge
+  // AND the start-of-thread "Started from" marker: only show them when a book
+  // was genuinely added later, otherwise every book present at turn 0 is
+  // co-original and the label carries no information. originBook feeds the
+  // start marker (title + cover) — the discussion.book relation, regardless of
+  // which book the reader is currently viewing from. isOriginView tells the
+  // "This book" chip whether it represents the origin.
+  const {
+    timelineEvents,
+    hasMidConvoBookAddition,
+    isOriginView,
+    originBook,
+  } = (() => {
+    const d = activeData?.discussion as
+      | {
+          bookId: string;
+          createdAt?: string;
+          book?: { id: string; title: string; coverPath: string | null } | null;
+          attachments?: {
+            type: string;
+            sectionHref: string | null;
+            bookId: string | null;
+            createdAt: string;
+            book?: { id: string; title: string; coverPath: string | null } | null;
+          }[];
+        }
+      | undefined;
+    const dCreated = d?.createdAt;
+    const events: TimelineEvent[] = [];
+    let midConvoBook = false;
+    for (const a of d?.attachments ?? []) {
+      if (dCreated && isTurnZeroAttachment(a.createdAt, dCreated)) continue;
+      if (a.type === "book" && a.bookId && a.book) {
+        midConvoBook = true;
+        events.push({
+          kind: "book-added",
+          createdAt: a.createdAt,
+          label: a.book.title,
+          coverPath: a.book.coverPath,
+          bookId: a.book.id,
+        });
+      } else if (a.type === "section" && a.sectionHref) {
+        events.push({
+          kind: "section-added",
+          createdAt: a.createdAt,
+          label: resolveSectionLabel?.(a.sectionHref) ?? a.sectionHref,
+          sectionHref: a.sectionHref,
+        });
+      }
+    }
+    return {
+      timelineEvents: events,
+      hasMidConvoBookAddition: midConvoBook,
+      isOriginView: !!d && d.bookId === bookId,
+      originBook: d?.book
+        ? { bookId: d.book.id, title: d.book.title, coverPath: d.book.coverPath }
+        : null,
+    };
+  })();
   // Slots remaining for attaching other books (0..max), counting persisted +
   // draft + pending so the picker hides at the cap.
   const bookSlotsRemaining = Math.max(
@@ -1167,6 +1243,10 @@ export function DiscussionsPanel({
           onAddDraftBook={addDraftBook}
           onRemoveDraftBook={removeDraftBook}
           attachBookMax={attachBookMax ?? 0}
+          timelineEvents={timelineEvents}
+          hasMidConvoBookAddition={hasMidConvoBookAddition}
+          isOriginView={isOriginView}
+          originBook={originBook}
         />
       );
     }
@@ -1436,6 +1516,10 @@ function DiscussionView({
   onAddDraftBook,
   onRemoveDraftBook,
   attachBookMax,
+  timelineEvents,
+  hasMidConvoBookAddition,
+  isOriginView,
+  originBook,
 }: {
   initialContent: string;
   streamingInitial: boolean;
@@ -1490,6 +1574,19 @@ function DiscussionView({
   onAddDraftBook?: (b: BookAttachment) => void;
   onRemoveDraftBook?: () => void;
   attachBookMax?: number;
+  // ponytail: mid-conversation attachment events rendered inline in the message
+  // timeline (books + sections; turn-0 already filtered out by the caller).
+  timelineEvents?: TimelineEvent[];
+  // ponytail: gates the "Original" badge — true only when a book was added after
+  // turn 0. When false, all books are co-original and the label is noise.
+  hasMidConvoBookAddition?: boolean;
+  // ponytail: true when the currently-open book IS the discussion's origin book.
+  // Drives whether the "This book" chip (vs the originBookChip) wears the badge.
+  isOriginView?: boolean;
+  // ponytail: the discussion's origin book (id/title/cover), regardless of the
+  // current view. Feeds the start-of-thread "Started from" marker — the
+  // companion to the mid-conversation "Added" markers, pinned to the top.
+  originBook?: { bookId: string; title: string; coverPath: string | null } | null;
 }) {
   // ponytail: library list for the "attach another book" picker. Reuses the
   // existing GET /api/books (= getPersonalLibrary). Fetched lazily only when
@@ -1649,6 +1746,28 @@ function DiscussionView({
       )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {/*
+          ponytail: start-of-thread "Started from" marker — the companion to the
+          mid-conversation "Added" markers. Pinned to the top (before the first
+          message / explainer seed), gated on hasMidConvoBookAddition so it only
+          appears when there's a meaningful origin-vs-added distinction to draw.
+          Same visual as the "Added" rows; differentiated by wording. Clickable
+          to jump to the origin book only when viewing from a co-primary (a click
+          from the origin view would be a no-op).
+        */}
+        {hasMidConvoBookAddition && originBook && (
+          <TimelineEventRow
+            event={{
+              kind: "book-added",
+              createdAt: "",
+              label: originBook.title,
+              coverPath: originBook.coverPath,
+              bookId: originBook.bookId,
+            }}
+            variant="started"
+            onOpenBook={isOriginView ? undefined : onOpenBook}
+          />
+        )}
         {/* Initial explainer response */}
         {streamingInitial && phaseLabel && !initialContent && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1730,21 +1849,41 @@ function DiscussionView({
           />
         )}
 
-        {/* Follow-up messages */}
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={i}
-            role={m.role}
-            content={m.content}
-            pulsing={m.role === "assistant" && streaming && !m.content && i === messages.length - 1}
-            spineHrefs={spineHrefs}
-            onNavigateToHref={onNavigateToHref}
-            attachedBookHrefs={attachedBookHrefs}
-            onNavigateToBookSection={onNavigateToBookSection}
-            originBookId={originBookId}
-            isAdmin={isAdmin}
-          />
-        ))}
+        {/*
+          Follow-up messages interleaved with attachment "added" event markers.
+          mergeTimeline places each mid-conversation book/section addition at the
+          chronological point where it entered the conversation (between the
+          bracketing turns). Turn-0 attachments are already filtered out by the
+          panel derivation, so they don't render as events (co-original).
+        */}
+        {mergeTimeline(messages, timelineEvents ?? []).map((slot) =>
+          slot.type === "event" ? (
+            <TimelineEventRow
+              key={`evt-${slot.event.kind}-${slot.event.createdAt}`}
+              event={slot.event}
+              onOpenBook={onOpenBook}
+              onNavigateToHref={onNavigateToHref}
+            />
+          ) : (
+            <MessageBubble
+              key={`msg-${slot.index}`}
+              role={slot.message.role}
+              content={slot.message.content}
+              pulsing={
+                slot.message.role === "assistant" &&
+                streaming &&
+                !slot.message.content &&
+                slot.index === messages.length - 1
+              }
+              spineHrefs={spineHrefs}
+              onNavigateToHref={onNavigateToHref}
+              attachedBookHrefs={attachedBookHrefs}
+              onNavigateToBookSection={onNavigateToBookSection}
+              originBookId={originBookId}
+              isAdmin={isAdmin}
+            />
+          )
+        )}
       </div>
 
       <div className="border-t border-border p-2 flex flex-col gap-1.5">
@@ -1757,7 +1896,10 @@ function DiscussionView({
         */}
         <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
           <span className="font-medium uppercase tracking-wide">Context</span>
-          <span className="rounded bg-muted px-1.5 py-0.5">This book</span>
+          <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5">
+            This book
+            {isOriginView && hasMidConvoBookAddition && <OriginalBadge />}
+          </span>
           {discussionType === "passage" && discussionPassageText && (
             <button
               type="button"
@@ -1855,7 +1997,8 @@ function DiscussionView({
               b: BookAttachment,
               key: string,
               onRemove?: () => void,
-              onClick?: () => void
+              onClick?: () => void,
+              badge?: ReactNode
             ) => (
               <span
                 key={key}
@@ -1883,6 +2026,7 @@ function DiscussionView({
                   <BookCover coverPath={b.coverPath} title={b.title} cover />
                 </span>
                 <span className="truncate text-xs">{b.title}</span>
+                {badge && <span className="shrink-0">{badge}</span>}
                 {onRemove && (
                   <button
                     type="button"
@@ -1901,8 +2045,18 @@ function DiscussionView({
                 {/* ponytail: origin book chip — shown when viewing from a
                   co-primary. "This book" (above) means the open book; the
                   origin appears here as a named chip. Clickable → opens the
-                  origin book at its last-read position. */}
-                {originBookChip && chip(originBookChip, `ob-${originBookChip.bookId}`, undefined, open(originBookChip.bookId))}
+                  origin book at its last-read position. Wears the "Original"
+                  badge only when a book was added mid-conversation (else the
+                  origin and the turn-0 attached book are both co-original and
+                  the label is noise). */}
+                {originBookChip &&
+                  chip(
+                    originBookChip,
+                    `ob-${originBookChip.bookId}`,
+                    undefined,
+                    open(originBookChip.bookId),
+                    hasMidConvoBookAddition ? <OriginalBadge /> : undefined
+                  )}
                 {/* ponytail: hide persistedBook when it IS the current book —
                   it's already represented by "This book" and showing both is
                   redundant. Only hides the visual chip; the attachment still
@@ -2196,6 +2350,98 @@ function MessageBubble({
           ""
         )}
       </div>
+    </div>
+  );
+}
+
+// ponytail: small inline "Original" pill — marks the discussion's origin book
+// when a book was added mid-conversation. Rendered only when the distinction
+// carries information (hasMidConvoBookAddition); absent otherwise.
+function OriginalBadge() {
+  return (
+    <span className="rounded-sm border border-border bg-background px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+      Original
+    </span>
+  );
+}
+
+// ponytail: a centered system-event row marking when a book or section entered
+// the conversation (variant="added", placed by mergeTimeline between turns), OR
+// the conversation's origin book (variant="started", pinned to the top by the
+// caller). Same dashed-pill visual so they read as one provenance system; the
+// wording differentiates: "Added {title}" vs "Started from {title}". Books show
+// a tiny cover; sections show a FileText glyph. Clickable when a nav handler is
+// available (book → onOpenBook, section → onNavigateToHref), matching the chips.
+function TimelineEventRow({
+  event,
+  variant = "added",
+  onOpenBook,
+  onNavigateToHref,
+}: {
+  event: TimelineEvent;
+  variant?: "added" | "started";
+  onOpenBook?: (bookId: string) => void;
+  onNavigateToHref?: (href: string) => void;
+}) {
+  const started = variant === "started";
+  // "started" is only ever used for the origin book; "added" honors event.kind.
+  const isBook = started || event.kind === "book-added";
+  // ponytail: capture into consts so TS narrows through the closures below
+  // (property narrowing on `event` doesn't persist into nested arrows).
+  const bid = isBook ? event.bookId : undefined;
+  const href = !isBook ? event.sectionHref : undefined;
+  const clickable =
+    (isBook && !!bid && !!onOpenBook) ||
+    (!isBook && !!href && !!onNavigateToHref);
+  const onClick = bid
+    ? () => onOpenBook?.(bid)
+    : href
+      ? () => onNavigateToHref?.(href)
+      : undefined;
+  const prefix = started ? "Started from" : isBook ? "Added" : "Added section";
+  const tooltip = started
+    ? `Started from “${event.label}”`
+    : isBook
+      ? `Added “${event.label}” to the conversation`
+      : `Added section “${event.label}”`;
+  return (
+    <div className="flex items-center justify-center py-0.5">
+      <span
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onClick={onClick}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
+        className={
+          "inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground" +
+          (clickable ? " cursor-pointer hover:bg-muted hover:text-foreground" : "")
+        }
+        title={tooltip}
+      >
+        {isBook ? (
+          <>
+            <span className="h-3.5 w-2.5 shrink-0 overflow-hidden rounded-sm">
+              <BookCover coverPath={event.coverPath} title={event.label} cover />
+            </span>
+            <span>{prefix}</span>
+            <span className="max-w-[10rem] truncate font-medium text-foreground">{event.label}</span>
+          </>
+        ) : (
+          <>
+            <FileText className="h-3 w-3 shrink-0" />
+            <span>{prefix}</span>
+            <span className="max-w-[10rem] truncate font-medium text-foreground">{event.label}</span>
+          </>
+        )}
+      </span>
     </div>
   );
 }
