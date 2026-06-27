@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { requireAdmin } from "@/lib/auth-guards";
-import { rerollExplainer } from "@/server/services/explainer-threads";
+import { rerollExplainer } from "@/server/services/discussions";
 
 /**
  * POST /api/explainers/[id]/reroll  (admin-only, SSE)

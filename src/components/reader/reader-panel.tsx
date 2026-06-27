@@ -81,7 +81,7 @@ function TocEntry({
         </button>
         {/*
           ponytail: hover-revealed overflow menu. "Ask about this" opens the
-          section explainer as a thread in the sidebar's bulb tool — same UI as
+          section explainer as a discussion in the sidebar's bulb tool — same UI as
           passage explainers. The play affordance lives here too: one item when
           the playlist is empty ("Start reading from here"), three when it isn't
           (Play now / next / last) — inline items, never a submenu.

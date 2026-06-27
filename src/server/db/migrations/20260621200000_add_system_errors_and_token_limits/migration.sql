@@ -9,7 +9,7 @@ CREATE TABLE "SystemError" (
     "message" TEXT NOT NULL,
     "userId" TEXT,
     "bookId" TEXT,
-    "threadId" TEXT,
+    "discussionId" TEXT,
     "context" TEXT,
     "resolved" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

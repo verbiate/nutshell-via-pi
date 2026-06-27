@@ -12,44 +12,44 @@ datasource db {
 // Application-level validation enforces valid values
 
 model User {
-  id            String          @id
-  email         String          @unique
-  name          String?
-  image         String?
-  role              String          @default("regular")
-  preferredLanguage String        @default("en")
-  emailVerified     Boolean         @default(false)
-  playlistAutoAdvance Boolean     @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id                  String   @id
+  email               String   @unique
+  name                String?
+  image               String?
+  role                String   @default("regular")
+  preferredLanguage   String   @default("en")
+  emailVerified       Boolean  @default(false)
+  playlistAutoAdvance Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  sessions      Session[]
-  accounts      Account[]
-  bookAccesses  UserBookAccess[]
-  uploadedBooks EpubFile[]      @relation("UploadedBooks")
-  auditLogs     AuditLog[]
-  positions     UserBookPosition[]
-  bookmarks      Bookmark[]
-  highlights     Highlight[]
+  sessions          Session[]
+  accounts          Account[]
+  bookAccesses      UserBookAccess[]
+  uploadedBooks     EpubFile[]         @relation("UploadedBooks")
+  auditLogs         AuditLog[]
+  positions         UserBookPosition[]
+  bookmarks         Bookmark[]
+  highlights        Highlight[]
   explainerRequests ExplainerRequest[]
-  explainerThreads  ExplainerThread[]
+  discussions       Discussion[]
   playlistItems     PlaylistItem[]
 }
 
 model PlaylistItem {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookId        String
   sectionHref   String
   sectionLabel  String
   position      Int
-  status        String   @default("upcoming")
+  status        String    @default("upcoming")
   bookTitle     String?
   bookAuthor    String?
   bookCoverPath String?
-  bookLanguage  String   @default("und")
-  addedAt       DateTime @default(now())
+  bookLanguage  String    @default("und")
+  addedAt       DateTime  @default(now())
   playedAt      DateTime?
 
   @@unique([userId, position])
@@ -76,12 +76,12 @@ model Explainer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  requests    ExplainerRequest[]
+  discussions Discussion[]
+
   @@unique([contentHash, language, contentType, tier, version])
   @@index([contentHash])
   @@index([createdAt])
-
-  requests ExplainerRequest[]
-  threads  ExplainerThread[]
 }
 
 model Session {
@@ -125,30 +125,30 @@ model Verification {
 }
 
 model EpubFile {
-  id           String   @id @default(cuid())
-  md5          String   @unique
-  title        String
-  author       String?
-  language     String   @default("und")
-  coverPath    String?
-  epubPath     String
-  txtPath      String
-  txtTokens    Int?
-  tocJson      String?
-  fileSize     Int
+  id              String   @id @default(cuid())
+  md5             String   @unique
+  title           String
+  author          String?
+  language        String   @default("und")
+  coverPath       String?
+  epubPath        String
+  txtPath         String
+  txtTokens       Int?
+  tocJson         String?
+  fileSize        Int
   totalParagraphs Int?
-  uploadedById String?
-  uploadedBy   User?    @relation("UploadedBooks", fields: [uploadedById], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  uploadedById    String?
+  uploadedBy      User?    @relation("UploadedBooks", fields: [uploadedById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  userAccesses UserBookAccess[]
-  positions     UserBookPosition[]
-  bookmarks     Bookmark[]
-  highlights    Highlight[]
+  userAccesses      UserBookAccess[]
+  positions         UserBookPosition[]
+  bookmarks         Bookmark[]
+  highlights        Highlight[]
   explainerRequests ExplainerRequest[]
-  explainerThreads  ExplainerThread[]
-  bookMetadata     BookMetadata?
+  discussions       Discussion[]
+  bookMetadata      BookMetadata?
 }
 
 // ponytail: LLM-extracted metadata; canonical display source. EpubFile keeps
@@ -162,7 +162,7 @@ model BookMetadata {
   subtitle      String?
   description   String?
   author        String?
-  authorGender  String?  // null = LLM couldn't tell / undeclared; otherwise free-form ("male"/"female"/"nonbinary"/self-description)
+  authorGender  String? // null = LLM couldn't tell / undeclared; otherwise free-form ("male"/"female"/"nonbinary"/self-description)
   isNarrative   Boolean? // null = LLM couldn't tell
   language      String?
   promptVersion Int
@@ -251,19 +251,19 @@ model Bookmark {
 }
 
 model Highlight {
-  id             String   @id @default(cuid())
-  userId         String
-  bookId         String
-  cfi            String
-  paragraphIndex Int
+  id              String   @id @default(cuid())
+  userId          String
+  bookId          String
+  cfi             String
+  paragraphIndex  Int
   charOffsetStart Int
   charOffsetEnd   Int
-  selectedText   String
-  color          String
-  sectionHref    String?
-  pageNumber     Int?
-  note           String?
-  createdAt      DateTime @default(now())
+  selectedText    String
+  color           String
+  sectionHref     String?
+  pageNumber      Int?
+  note            String?
+  createdAt       DateTime @default(now())
 
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
@@ -326,7 +326,7 @@ model TtsProviderConfig {
 model TtsUsage {
   id          String   @id @default(cuid())
   userId      String
-  periodKey   String   // "YYYY-MM"
+  periodKey   String // "YYYY-MM"
   generations Int      @default(0)
   lastResetAt DateTime @default(now())
   createdAt   DateTime @default(now())
@@ -337,12 +337,12 @@ model TtsUsage {
 }
 
 model OpenRouterConfig {
-  id                String   @id @default(cuid())
-  userType          String   @unique
-  apiKey            String?
-  model             String?
-  maxContextTokens  Int?
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userType         String   @unique
+  apiKey           String?
+  model            String?
+  maxContextTokens Int?
+  updatedAt        DateTime @updatedAt
 }
 
 // ponytail: KV table for global admin-tunable settings (e.g. globalSystemPrompt).
@@ -355,17 +355,17 @@ model AppSetting {
 
 // ponytail: per-user multi-turn discussion threads. The initial response lives
 // in the cached `Explainer` row (globally shared, versioned); only follow-up
-// turns are stored as `ExplainerMessage`. Uniqueness is on the version-
+// turns are stored as `DiscussionMessage`. Uniqueness is on the version-
 // independent cache key (contentHash + language + tier) so re-asking the same
 // context reopens the existing discussion even after a re-reroll creates a new
 // explainer version. `explainerId` pins the exact version this discussion shows;
 // `initialCacheHit` records whether the first response was a cache hit (admin UX).
-model ExplainerThread {
+model Discussion {
   id              String   @id @default(cuid())
   userId          String
   bookId          String
   // ponytail: nullable — a "New discussion" starts blank (no explainer seed);
-  // the thread is created on the user's first message with the book as context.
+  // the discussion is created on the user's first message with the book as context.
   // "Ask about this" flows still pin a versioned explainer here.
   explainerId     String?
   contentHash     String?  // version-independent cache key (nullable for legacy rows pre-backfill + blank discussions)
@@ -382,38 +382,38 @@ model ExplainerThread {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   book         EpubFile   @relation(fields: [bookId], references: [id], onDelete: Cascade)
   explainer    Explainer? @relation(fields: [explainerId], references: [id], onDelete: Cascade)
-  messages     ExplainerMessage[]
+  messages     DiscussionMessage[]
 
   @@unique([userId, contentHash, language, tier])
   @@index([userId, bookId])
 }
 
-model ExplainerMessage {
-  id         String   @id @default(cuid())
-  threadId   String
-  role       String   // "user" | "assistant"
-  content    String
-  modelId    String?
-  createdAt  DateTime @default(now())
+model DiscussionMessage {
+  id            String   @id @default(cuid())
+  discussionId  String
+  role          String   // "user" | "assistant"
+  content       String
+  modelId       String?
+  createdAt     DateTime @default(now())
 
-  thread     ExplainerThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  discussion    Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
 
-  @@index([threadId, createdAt])
+  @@index([discussionId, createdAt])
 }
 
 // ponytail: admin-visible error log. Populated by explainer pipeline failures
 // (size, missing key, OpenRouter errors) and upload-time blocks. Generic shape
 // so future failure sources can record here without schema change.
 model SystemError {
-  id         String   @id @default(cuid())
-  category   String   // "explainer_too_large" | "missing_api_key" | "openrouter_error" | "upload_blocked" | ...
-  message    String
+  id           String   @id @default(cuid())
+  category     String // "explainer_too_large" | "missing_api_key" | "openrouter_error" | "upload_blocked" | ...
+  message      String
   userId     String?
   bookId     String?
-  threadId   String?
-  context    String?  // JSON string: { tier, model, tokenCount, limit, ... }
-  resolved   Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  discussionId String?
+  context      String? // JSON string: { tier, model, tokenCount, limit, ... }
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   @@index([createdAt])
   @@index([category, resolved])

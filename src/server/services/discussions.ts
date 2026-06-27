@@ -21,16 +21,16 @@ import { getSetting } from "./settings";
 const FOLLOWUP_CITATION_SUFFIX =
   "\n\nThe same citation rule applies to follow-up questions — especially \"which chapter?\" or \"where does the author …?\" Answer with a (#ch:…) link copied from the chapter map above. Shape (hrefs illustrative — always copy a real one): Q: \"In which chapter does the author discuss X?\" A: \"That's in [Chapter Title](#ch:<real-href>.xhtml), where …\"";
 
-// ponytail: explainer-threads wraps the existing generateExplainer cache logic
-// and adds the per-user multi-turn thread model. Initial response uses the
+// ponytail: discussions wraps the existing generateExplainer cache logic and
+// adds the per-user multi-turn discussion model. Initial response uses the
 // same global cache (Explainer table); only follow-up turns are per-user
-// (ExplainerMessage table).
+// (DiscussionMessage table).
 
 export interface InitialResponseEvent {
-  type: "chunk" | "cached" | "thread" | "error" | "status" | "existing";
+  type: "chunk" | "cached" | "discussion" | "error" | "status" | "existing";
   chunk?: string;
   cached?: boolean;
-  threadId?: string;
+  discussionId?: string;
   error?: string;
   // Two-pass progress: "explaining" = hidden pass 1 running; "refining" =
   // streamed pass 2 running. Only emitted for book type when the
@@ -38,7 +38,7 @@ export interface InitialResponseEvent {
   stage?: "explaining" | "refining";
 }
 
-export interface CreateThreadParams {
+export interface CreateDiscussionParams {
   userId: string;
   bookId: string;
   type: "passage" | "section" | "book";
@@ -50,12 +50,12 @@ export interface CreateThreadParams {
 }
 
 /**
- * Stream the initial response for a new thread. Reuses the existing
+ * Stream the initial response for a new discussion. Reuses the existing
  * prompt-builder + cache (Explainer table) so cache hits are instant.
- * On completion, upserts an ExplainerThread and yields its id.
+ * On completion, upserts a Discussion and yields its id.
  */
-export async function* streamInitialThreadResponse(
-  params: CreateThreadParams
+export async function* streamInitialDiscussionResponse(
+  params: CreateDiscussionParams
 ): AsyncGenerator<InitialResponseEvent> {
   const { userId, bookId, type, language, tier } = params;
 
@@ -90,14 +90,14 @@ export async function* streamInitialThreadResponse(
 
   // Reopen: if this user already has a discussion for the same context
   // (version-independent key), navigate them back to it instead of
-  // regenerating. Their thread stays pinned to the version they first saw.
-  const existingThread = await db.explainerThread.findUnique({
+  // regenerating. Their discussion stays pinned to the version they first saw.
+  const existingDiscussion = await db.discussion.findUnique({
     where: {
       userId_contentHash_language_tier: { userId, contentHash, language, tier },
     },
   });
-  if (existingThread) {
-    yield { type: "existing", threadId: existingThread.id };
+  if (existingDiscussion) {
+    yield { type: "existing", discussionId: existingDiscussion.id };
     return;
   }
 
@@ -249,11 +249,12 @@ export async function* streamInitialThreadResponse(
     explainerId = created.id;
   }
 
-  // Upsert thread on the version-independent key (one discussion per user per
-  // context). Reopen above handles the common case; this upsert also covers a
-  // rare race where two concurrent starts slip past the check — the update
-  // branch just touches updatedAt and leaves the existing version pin intact.
-  const thread = await db.explainerThread.upsert({
+  // Upsert discussion on the version-independent key (one discussion per user
+  // per context). Reopen above handles the common case; this upsert also
+  // covers a rare race where two concurrent starts slip past the check — the
+  // update branch just touches updatedAt and leaves the existing version pin
+  // intact.
+  const discussion = await db.discussion.upsert({
     where: {
       userId_contentHash_language_tier: { userId, contentHash, language, tier },
     },
@@ -286,13 +287,13 @@ export async function* streamInitialThreadResponse(
     },
   });
 
-  yield { type: "thread", threadId: thread.id, cached: cachedFlag };
+  yield { type: "discussion", discussionId: discussion.id, cached: cachedFlag };
 }
 
 /**
  * Build the prompt and source text for the given context. Shared by the
  * initial-response stream and the reroll path. Takes only what it needs so
- * reroll can reuse it without synthesizing a full CreateThreadParams.
+ * reroll can reuse it without synthesizing a full CreateDiscussionParams.
  */
 export async function buildPromptData(params: {
   type: "passage" | "section" | "book";
@@ -361,7 +362,7 @@ export async function* rerollExplainer(params: {
   }
 
   // Recover source context from any discussion linked to this cache key.
-  const thread = await db.explainerThread.findFirst({
+  const discussion = await db.discussion.findFirst({
     where: {
       contentHash: explainer.contentHash,
       language: explainer.language,
@@ -375,7 +376,7 @@ export async function* rerollExplainer(params: {
       language: true,
     },
   });
-  if (!thread) {
+  if (!discussion) {
     yield {
       type: "error",
       error: "Cannot reroll: no source context found for this explainer",
@@ -383,18 +384,18 @@ export async function* rerollExplainer(params: {
     return;
   }
 
-  const type = thread.type as "passage" | "section" | "book";
+  const type = discussion.type as "passage" | "section" | "book";
   const promptData = await buildPromptData({
     type,
-    bookId: thread.bookId,
-    language: thread.language,
-    passageText: thread.passageText ?? undefined,
-    sectionHref: thread.sectionHref ?? undefined,
+    bookId: discussion.bookId,
+    language: discussion.language,
+    passageText: discussion.passageText ?? undefined,
+    sectionHref: discussion.sectionHref ?? undefined,
   });
 
-  // Re-derive the salt exactly as streamInitialThreadResponse does so the new
-  // row shares the original cache key (→ a true new version). If two-pass /
-  // metadata config changed since the original, the hash differs and this
+  // Re-derive the salt exactly as streamInitialDiscussionResponse does so the
+  // new row shares the original cache key (→ a true new version). If two-pass
+  // / metadata config changed since the original, the hash differs and this
   // becomes v1 of a new key — still a valid fresh explainer.
   const twoPass = type === "book" && (await getSetting("bookTwoPassEnabled")) === "true";
   let pass2Version: number | undefined;
@@ -428,7 +429,7 @@ export async function* rerollExplainer(params: {
       for await (const evt of streamBookTwoPass({
         pass1Prompt: promptData.prompt,
         buildPass2Prompt: (pass1) =>
-          buildBookPass2Prompt(thread.bookId, thread.language, pass1, promptData.bookText).then(
+          buildBookPass2Prompt(discussion.bookId, discussion.language, pass1, promptData.bookText).then(
             (r) => r.prompt
           ),
         apiKey,
@@ -506,10 +507,10 @@ export async function* rerollExplainer(params: {
 }
 
 /**
- * List a user's threads for a book, newest first.
+ * List a user's discussions for a book, newest first.
  */
-export async function listThreadsForBook(userId: string, bookId: string) {
-  return db.explainerThread.findMany({
+export async function listDiscussionsForBook(userId: string, bookId: string) {
+  return db.discussion.findMany({
     where: { userId, bookId },
     include: {
       explainer: { select: { id: true, content: true, modelId: true } },
@@ -520,50 +521,50 @@ export async function listThreadsForBook(userId: string, bookId: string) {
 }
 
 /**
- * Delete a thread and its messages. Ownership-checked (matches the bookmark
- * and highlight delete pattern).
+ * Delete a discussion and its messages. Ownership-checked (matches the
+ * bookmark and highlight delete pattern).
  */
-export async function deleteThread(userId: string, threadId: string) {
-  const thread = await db.explainerThread.findUnique({
-    where: { id: threadId },
+export async function deleteDiscussion(userId: string, discussionId: string) {
+  const discussion = await db.discussion.findUnique({
+    where: { id: discussionId },
     select: { userId: true },
   });
-  if (!thread || thread.userId !== userId) {
-    throw new Error("Thread not found or access denied");
+  if (!discussion || discussion.userId !== userId) {
+    throw new Error("Discussion not found or access denied");
   }
-  await db.explainerThread.delete({ where: { id: threadId } });
+  await db.discussion.delete({ where: { id: discussionId } });
 }
 
 /**
- * Get a thread with its messages (ownership-checked).
+ * Get a discussion with its messages (ownership-checked).
  */
-export async function getThreadWithMessages(threadId: string, userId: string) {
-  const thread = await db.explainerThread.findUnique({
-    where: { id: threadId },
+export async function getDiscussionWithMessages(discussionId: string, userId: string) {
+  const discussion = await db.discussion.findUnique({
+    where: { id: discussionId },
     include: {
       explainer: { select: { id: true, content: true, modelId: true, promptVersion: true, version: true } },
       messages: { orderBy: { createdAt: "asc" } },
     },
   });
-  if (!thread || thread.userId !== userId) return null;
+  if (!discussion || discussion.userId !== userId) return null;
   // ponytail: latest version of this cache key, for the admin "newer version
-  // available" indicator. Falls back to the thread's own version when the
+  // available" indicator. Falls back to the discussion's own version when the
   // legacy contentHash is missing (pre-backfill).
-  const latest = thread.contentHash
+  const latest = discussion.contentHash
     ? await db.explainer.findFirst({
         where: {
-          contentHash: thread.contentHash,
-          language: thread.language,
-          contentType: thread.type,
-          tier: thread.tier,
+          contentHash: discussion.contentHash,
+          language: discussion.language,
+          contentType: discussion.type,
+          tier: discussion.tier,
         },
         orderBy: { version: "desc" },
         select: { version: true },
       })
     : null;
   return {
-    ...thread,
-    latestVersion: latest?.version ?? thread.explainer?.version ?? 1,
+    ...discussion,
+    latestVersion: latest?.version ?? discussion.explainer?.version ?? 1,
   };
 }
 
@@ -574,7 +575,7 @@ export interface FollowupEvent {
 }
 
 /**
- * Stream a follow-up response in an existing thread. Persists the user's
+ * Stream a follow-up response in an existing discussion. Persists the user's
  * message immediately; accumulates the assistant response and persists it
  * on completion.
  *
@@ -585,49 +586,49 @@ export interface FollowupEvent {
  *   [user: new message]
  *
  * Source text is ALWAYS re-sent on follow-ups (per product decision) so the
- * model has full context regardless of how long the thread grows.
+ * model has full context regardless of how long the discussion grows.
  */
 export async function* streamFollowup(params: {
-  threadId: string;
+  discussionId: string;
   userId: string;
   userMessage: string;
 }): AsyncGenerator<FollowupEvent> {
-  const thread = await db.explainerThread.findUnique({
-    where: { id: params.threadId },
+  const discussion = await db.discussion.findUnique({
+    where: { id: params.discussionId },
     include: {
       explainer: true,
       messages: { orderBy: { createdAt: "asc" } },
     },
   });
-  if (!thread || thread.userId !== params.userId) {
-    yield { type: "error", error: "Thread not found" };
+  if (!discussion || discussion.userId !== params.userId) {
+    yield { type: "error", error: "Discussion not found" };
     return;
   }
 
   // Save the user's message immediately (even if streaming fails later —
   // the user's intent is preserved).
-  await db.explainerMessage.create({
+  await db.discussionMessage.create({
     data: {
-      threadId: thread.id,
+      discussionId: discussion.id,
       role: "user",
       content: params.userMessage,
     },
   });
 
   // Build the system message by re-filling the template with the source text.
-  // ponytail: we stored passageText/sectionHref in the thread row at creation
-  // so we can rebuild the prompt without re-reading the book.
-  const systemPrompt = await rebuildSystemPrompt(thread);
+  // ponytail: we stored passageText/sectionHref in the discussion row at
+  // creation so we can rebuild the prompt without re-reading the book.
+  const systemPrompt = await rebuildSystemPrompt(discussion);
 
   // Compose messages array. The explainer seed is optional — blank
   // discussions (started via "New discussion") have no cached first response,
   // so the model just sees system context + the conversation so far.
   const messages: { role: "system" | "user" | "assistant"; content: string }[] =
     [{ role: "system", content: systemPrompt + FOLLOWUP_CITATION_SUFFIX }];
-  if (thread.explainer) {
-    messages.push({ role: "assistant", content: thread.explainer.content });
+  if (discussion.explainer) {
+    messages.push({ role: "assistant", content: discussion.explainer.content });
   }
-  for (const m of thread.messages) {
+  for (const m of discussion.messages) {
     if (m.role === "user" || m.role === "assistant") {
       messages.push({ role: m.role, content: m.content });
     }
@@ -637,7 +638,7 @@ export async function* streamFollowup(params: {
   // Resolve current tier model + key (per ponytail decision: follow-ups use
   // the user's CURRENT tier config, not frozen-from-initial-response).
   const { streamChat, getOpenRouterConfig } = await import("./openrouter");
-  const { apiKey, model } = await getOpenRouterConfig(thread.tier);
+  const { apiKey, model } = await getOpenRouterConfig(discussion.tier);
   if (!apiKey) {
     yield { type: "error", error: "OpenRouter API key not configured" };
     return;
@@ -656,18 +657,18 @@ export async function* streamFollowup(params: {
   }
 
   // Persist the assistant's response
-  await db.explainerMessage.create({
+  await db.discussionMessage.create({
     data: {
-      threadId: thread.id,
+      discussionId: discussion.id,
       role: "assistant",
       content: fullContent,
       modelId: model,
     },
   });
 
-  // Touch the thread's updatedAt so it bubbles to top of the list
-  await db.explainerThread.update({
-    where: { id: thread.id },
+  // Touch the discussion's updatedAt so it bubbles to top of the list
+  await db.discussion.update({
+    where: { id: discussion.id },
     data: { updatedAt: new Date() },
   });
 
@@ -675,61 +676,61 @@ export async function* streamFollowup(params: {
 }
 
 /**
- * Rebuild the system prompt for a thread by re-running the appropriate
+ * Rebuild the system prompt for a discussion by re-running the appropriate
  * prompt-builder. We need the original source text in the prompt so the
  * model has context for follow-up questions.
  */
-async function rebuildSystemPrompt(thread: {
+async function rebuildSystemPrompt(discussion: {
   type: string;
   bookId: string;
   language: string;
   passageText: string | null;
   sectionHref: string | null;
 }): Promise<string> {
-  if (thread.type === "passage") {
-    if (!thread.passageText) {
-      throw new Error("Thread has no passageText to rebuild prompt");
+  if (discussion.type === "passage") {
+    if (!discussion.passageText) {
+      throw new Error("Discussion has no passageText to rebuild prompt");
     }
     const { buildPassagePrompt } = await import("./prompt-builder");
     const data = await buildPassagePrompt(
-      thread.bookId,
-      thread.passageText,
-      thread.language
+      discussion.bookId,
+      discussion.passageText,
+      discussion.language
     );
     return data.prompt;
   }
-  if (thread.type === "section") {
-    if (!thread.sectionHref) {
-      throw new Error("Thread has no sectionHref to rebuild prompt");
+  if (discussion.type === "section") {
+    if (!discussion.sectionHref) {
+      throw new Error("Discussion has no sectionHref to rebuild prompt");
     }
     const { buildSectionPrompt } = await import("./prompt-builder");
     const data = await buildSectionPrompt(
-      thread.bookId,
-      thread.sectionHref,
-      thread.language
+      discussion.bookId,
+      discussion.sectionHref,
+      discussion.language
     );
     return data.prompt;
   }
   // book
   const { buildBookPrompt } = await import("./prompt-builder");
-  const data = await buildBookPrompt(thread.bookId, thread.language);
+  const data = await buildBookPrompt(discussion.bookId, discussion.language);
   return data.prompt;
 }
 
 export interface BlankFirstTurnEvent {
-  type: "thread" | "chunk" | "error" | "done";
-  threadId?: string;
+  type: "discussion" | "chunk" | "error" | "done";
+  discussionId?: string;
   chunk?: string;
   error?: string;
 }
 
 /**
- * Start a fresh, user-initiated discussion: create a thread with NO explainer
- * seed, then answer the user's opening question with the full book as system
- * context. Used by the "New discussion" button so clicking it never fires an
- * explainer-generation request — the conversation begins with the user's own
- * question. Emits the new threadId up front (so the client can pin it), then
- * streams the assistant reply.
+ * Start a fresh, user-initiated discussion: create a discussion with NO
+ * explainer seed, then answer the user's opening question with the full book
+ * as system context. Used by the "New discussion" button so clicking it never
+ * fires an explainer-generation request — the conversation begins with the
+ * user's own question. Emits the new discussionId up front (so the client can
+ * pin it), then streams the assistant reply.
  */
 export async function* streamBlankFirstTurn(params: {
   userId: string;
@@ -741,14 +742,14 @@ export async function* streamBlankFirstTurn(params: {
   const { userId, bookId, language, tier, userMessage } = params;
 
   // Blank book-level discussion: no explainer, no cache key, no passage/section.
-  const thread = await db.explainerThread.create({
+  const discussion = await db.discussion.create({
     data: { userId, bookId, type: "book", language, tier },
   });
-  yield { type: "thread", threadId: thread.id };
+  yield { type: "discussion", discussionId: discussion.id };
 
   // Persist the opening question immediately (intent survives a stream failure).
-  await db.explainerMessage.create({
-    data: { threadId: thread.id, role: "user", content: userMessage },
+  await db.discussionMessage.create({
+    data: { discussionId: discussion.id, role: "user", content: userMessage },
   });
 
   // System prompt = full-book context (the same template follow-ups reuse).
@@ -779,16 +780,16 @@ export async function* streamBlankFirstTurn(params: {
     return;
   }
 
-  await db.explainerMessage.create({
+  await db.discussionMessage.create({
     data: {
-      threadId: thread.id,
+      discussionId: discussion.id,
       role: "assistant",
       content: fullContent,
       modelId: model,
     },
   });
-  await db.explainerThread.update({
-    where: { id: thread.id },
+  await db.discussion.update({
+    where: { id: discussion.id },
     data: { updatedAt: new Date() },
   });
 

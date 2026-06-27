@@ -10,7 +10,7 @@ export function fillTemplate(
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
 }
 
-// ponytail: shared result shape so callers (explainer.ts, explainer-threads.ts)
+// ponytail: shared result shape so callers (explainer.ts, discussions.ts)
 // can hash, size-guard, and rebuild prompts without type drift between cases.
 // metadataVersion: updatedAt of the BookMetadata row (or undefined when no row).
 // Threaded into computeContentHash so re-extracting metadata invalidates

@@ -15,23 +15,23 @@ vi.mock("@/server/services/reader", () => ({
   verifyBookAccess: vi.fn(),
 }));
 
-vi.mock("@/server/services/explainer-threads", () => ({
-  streamInitialThreadResponse: vi.fn(),
-  listThreadsForBook: vi.fn(),
+vi.mock("@/server/services/discussions", () => ({
+  streamInitialDiscussionResponse: vi.fn(),
+  listDiscussionsForBook: vi.fn(),
 }));
 
-import { POST, GET } from "@/app/api/explainers/threads/route";
+import { POST, GET } from "@/app/api/discussions/route";
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
-import { listThreadsForBook } from "@/server/services/explainer-threads";
+import { listDiscussionsForBook } from "@/server/services/discussions";
 
-describe("POST /api/explainers/threads", () => {
+describe("POST /api/discussions", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 401 SSE error when unauthenticated", async () => {
     vi.mocked(requireAuth).mockRejectedValue({ statusCode: 401 } as any);
 
-    const req = new Request("http://localhost/api/explainers/threads", {
+    const req = new Request("http://localhost/api/discussions", {
       method: "POST",
       body: JSON.stringify({ bookId: "b1", type: "passage", passageText: "hi" }),
     });
@@ -43,7 +43,7 @@ describe("POST /api/explainers/threads", () => {
   it("returns SSE 400 when bookId or type is missing", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1", preferredLanguage: "en" } as any);
 
-    const req = new Request("http://localhost/api/explainers/threads", {
+    const req = new Request("http://localhost/api/discussions", {
       method: "POST",
       body: JSON.stringify({ bookId: "b1" }),
     });
@@ -56,7 +56,7 @@ describe("POST /api/explainers/threads", () => {
   it("returns SSE 400 when type is passage but passageText missing", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1", preferredLanguage: "en" } as any);
 
-    const req = new Request("http://localhost/api/explainers/threads", {
+    const req = new Request("http://localhost/api/discussions", {
       method: "POST",
       body: JSON.stringify({ bookId: "b1", type: "passage" }),
     });
@@ -70,7 +70,7 @@ describe("POST /api/explainers/threads", () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1", preferredLanguage: "en" } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(false);
 
-    const req = new Request("http://localhost/api/explainers/threads", {
+    const req = new Request("http://localhost/api/discussions", {
       method: "POST",
       body: JSON.stringify({
         bookId: "b1",
@@ -83,13 +83,13 @@ describe("POST /api/explainers/threads", () => {
   });
 });
 
-describe("GET /api/explainers/threads", () => {
+describe("GET /api/discussions", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 400 when bookId is missing", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
 
-    const req = new Request("http://localhost/api/explainers/threads");
+    const req = new Request("http://localhost/api/discussions");
     const res = await GET(req);
     expect(res.status).toBe(400);
   });
@@ -99,16 +99,16 @@ describe("GET /api/explainers/threads", () => {
     vi.mocked(verifyBookAccess).mockResolvedValue(false);
 
     const req = new Request(
-      "http://localhost/api/explainers/threads?bookId=b1"
+      "http://localhost/api/discussions?bookId=b1"
     );
     const res = await GET(req);
     expect(res.status).toBe(403);
   });
 
-  it("returns threads list for accessible book", async () => {
+  it("returns discussions list for accessible book", async () => {
     vi.mocked(requireAuth).mockResolvedValue({ id: "u1" } as any);
     vi.mocked(verifyBookAccess).mockResolvedValue(true);
-    vi.mocked(listThreadsForBook).mockResolvedValue([
+    vi.mocked(listDiscussionsForBook).mockResolvedValue([
       {
         id: "t1",
         type: "passage",
@@ -120,12 +120,12 @@ describe("GET /api/explainers/threads", () => {
     ]);
 
     const req = new Request(
-      "http://localhost/api/explainers/threads?bookId=b1"
+      "http://localhost/api/discussions?bookId=b1"
     );
     const res = await GET(req);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.threads).toHaveLength(1);
-    expect(body.threads[0].id).toBe("t1");
+    expect(body.discussions).toHaveLength(1);
+    expect(body.discussions[0].id).toBe("t1");
   });
 });

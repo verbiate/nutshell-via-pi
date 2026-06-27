@@ -3,22 +3,22 @@ export const dynamic = "force-dynamic";
 import { requireAuth } from "@/lib/auth-guards";
 import { verifyBookAccess } from "@/server/services/reader";
 import {
-  streamInitialThreadResponse,
+  streamInitialDiscussionResponse,
   streamBlankFirstTurn,
-  listThreadsForBook,
-} from "@/server/services/explainer-threads";
+  listDiscussionsForBook,
+} from "@/server/services/discussions";
 
 /**
- * POST /api/explainers/threads
+ * POST /api/discussions
  *
  * Two modes:
  *  1. Seeded ("Ask about this"): { bookId, type, passageText?/sectionHref?, language? }
  *     — generates (or serves cached) the explainer as the first response.
  *  2. Blank ("New discussion"):  { bookId, type: "book", message, language? }
- *     — creates a thread with NO explainer and answers the user's opening
- *       question with the book as context. Emits `thread` then `chunk`s.
+ *     — creates a discussion with NO explainer and answers the user's opening
+ *       question with the book as context. Emits `discussion` then `chunk`s.
  *
- * GET /api/explainers/threads?bookId=X — list user's threads for a book.
+ * GET /api/discussions?bookId=X — list user's discussions for a book.
  */
 export async function POST(request: Request) {
   try {
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const event of streamInitialThreadResponse({
+          for await (const event of streamInitialDiscussionResponse({
             userId: user.id,
             bookId,
             type,
@@ -174,8 +174,8 @@ export async function GET(request: Request) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const threads = await listThreadsForBook(user.id, bookId);
-    return Response.json({ threads });
+    const discussions = await listDiscussionsForBook(user.id, bookId);
+    return Response.json({ discussions });
   } catch (error: any) {
     if (error.statusCode === 401)
       return Response.json({ error: "Authentication required" }, { status: 401 });

@@ -37,7 +37,7 @@ export async function getLatestExplainer(params: ExplainerLookup) {
 
 /**
  * Single source of truth for the explainer cache key. Both generation paths
- * (explainer.ts + explainer-threads.ts) call this so the hash can never drift
+ * (explainer.ts + discussions.ts) call this so the hash can never drift
  * between writer and reader. bookMd5 is folded in only for section/passage;
  * twoPass + metadata salts are optional.
  */

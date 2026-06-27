@@ -28,7 +28,7 @@ import {
   SANS_STACK,
   type BookSettings,
 } from "./book-settings-panel";
-import { ExplainerThreadsPanel, type PendingExplainerRequest } from "@/components/explainer/explainer-threads-panel";
+import { DiscussionsPanel, type PendingDiscussionRequest } from "@/components/discussion/discussions-panel";
 import { resolveToSpineHref } from "@/lib/explainer/citations";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -210,9 +210,9 @@ export function ReaderClient({
   const pointerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ponytail: pendingRequest communicates any "ask about" click (floating
   // toolbar passage, ToC dropdown section, "Ask the book" button) from the
-  // reader to the ExplainerThreadsPanel in the sidebar. The panel consumes
-  // it (fires the create-thread API) and calls onConsumed to clear it.
-  const [pendingRequest, setPendingRequest] = useState<PendingExplainerRequest | null>(null);
+   // reader to the DiscussionsPanel in the sidebar. The panel consumes
+   // it (fires the create-discussion API) and calls onConsumed to clear it.
+   const [pendingRequest, setPendingRequest] = useState<PendingDiscussionRequest | null>(null);
   const [currentCfi, setCurrentCfi] = useState<string | undefined>(undefined);
   type SwapPhase = "idle" | "closing" | "placeholder" | "opening" | "revealed";
   const [activeTool, setActiveTool] = useState<ReaderTool["id"] | null>(null);
@@ -751,7 +751,7 @@ export function ReaderClient({
   );
 
   const handleExplainPassage = useCallback(() => {
-    // ponytail: floating toolbar → passage thread. Set the pending request,
+    // ponytail: floating toolbar → passage discussion. Set the pending request,
     // open the bulb tool, dismiss the toolbar. The panel picks it up via effect.
     if (!selectedText.trim()) return;
     setPendingRequest({ type: "passage", text: selectedText, cfi: selectedCfi });
@@ -761,7 +761,7 @@ export function ReaderClient({
   }, [selectedText, selectedCfi]);
 
   const handleAskAboutSection = useCallback((href: string, _label: string) => {
-    // ponytail: ToC ⋯ menu → section thread. _label reserved for future
+    // ponytail: ToC ⋯ menu → section discussion. _label reserved for future
     // UI affordance (e.g. toast "Asking about <chapter>"); not currently used.
     setPendingRequest({ type: "section", sectionHref: href, sectionTitle: _label });
     setActiveTool("bulb");
@@ -1275,7 +1275,7 @@ export function ReaderClient({
   }, [spineItems, toc, currentHref, panel.bookTitle]);
 
   // ponytail: basename → ToC label map for discussion context chips. A section
-  // discussion's title isn't persisted server-side, so reopened threads resolve
+  // discussion's title isn't persisted server-side, so reopened discussions resolve
   // their label here from the live ToC. Built once per spine/toc change.
   const sectionLabelByBaseHref = useMemo(() => {
     const flat = buildSpinePlaylist(spineItems, toc);
@@ -1436,8 +1436,8 @@ export function ReaderClient({
 
       {/* ponytail: all three "ask about" entry points (passage via floating
           toolbar, section via ToC dropdown, book via button) now flow into
-          the sidebar's bulb tool as threads. The old Sheet-based ExplainerPanel
-          is gone; the ExplainerThreadsPanel handles every case. */}
+           the sidebar's bulb tool as discussions. The old Sheet-based ExplainerPanel
+          is gone; the DiscussionsPanel handles every case. */}
 
       {/* Reader chrome — only shown once loaded and no error */}
       {isLoaded && !error && (
@@ -1518,7 +1518,7 @@ export function ReaderClient({
               />
             ),
             bulb: (
-              <ExplainerThreadsPanel
+              <DiscussionsPanel
                 bookId={bookId}
                 pendingRequest={pendingRequest}
                 onConsumed={() => setPendingRequest(null)}

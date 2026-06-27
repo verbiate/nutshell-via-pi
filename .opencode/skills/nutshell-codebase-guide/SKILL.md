@@ -55,7 +55,8 @@ On every load:
 ## What this is
 
 An **AI-powered EPUB web reader**. Users upload EPUBs and get AI-generated
-**Explainers** (never "summaries" — hard product rule), **text-to-speech audio**,
+**Explainers** (never "summaries" — hard product rule) and per-user multi-turn
+**Discussions** seeded by them, **text-to-speech audio**,
 bookmarks/highlights/search, and three reading themes — on top of a polished
 reader. Status: **v1.0 shipped May 2026** (6 phases, 25/25 plans, 47/52
 requirements verified, 5 deferred). Active post-v1.0 iteration since — chiefly
@@ -85,13 +86,23 @@ Two-tier library + generate-once caching:
     rows.
   - TTS: `(contentHash, language, voiceId, model)` where
     `contentHash = SHA-256(sourceText)` (no prompt — TTS has none).
+- **Discussions ride on top of the Explainer cache.** A `Discussion` (with
+  `DiscussionMessage` rows) is a per-user, multi-turn conversation about a
+  book/passage/section. It may be **seeded by an Explainer** (the cached first
+  response is shared globally; only follow-ups are per-user) or start **blank**
+  ("New discussion" — no explainer, opens with the user's own question). A
+  Discussion pins the explainer version it first saw (`explainerId`); re-asking
+  the same context **reopens** the existing discussion. Naming rule: the old
+  `ExplainerThread`/`ExplainerMessage` were renamed — "explainer" means ONLY the
+  cached artifact, never the conversation. API: `/api/discussions`, service
+  `services/discussions.ts`, UI `components/discussion/` (`DiscussionsPanel`).
 - **Tiered quality**: `User.role` ∈ `regular | pro | admin`; OpenRouter model +
   TTS provider/voice are admin-configured per tier.
 
 If a feature touches books, AI output, or reader state, this model is the
 context. Full detail in `data-model.md`.
 
-_Verified 2026-06-21 against `src/server/db/schema.prisma` + `services/explainer.ts` + `services/tts.ts`._
+_Verified 2026-06-26 against `src/server/db/schema.prisma` + `services/explainer.ts` + `services/discussions.ts` + `services/tts.ts`._
 
 ## Stack
 
@@ -121,7 +132,7 @@ src/
     api/                   # REST handlers — see api-and-ops.md
     layout.tsx page.tsx globals.css
   components/
-    reader/ library/ explainer/ admin/ auth/ profile/ ui/   # ui/ = shadcn
+    reader/ library/ explainer/ discussion/ admin/ auth/ profile/ ui/   # ui/ = shadcn; explainer/ = artifact renderer (ExplainerContent), discussion/ = conversations (DiscussionsPanel)
     transitions/           # scene-transition.tsx (GSAP bookshelf↔reader handoff, post-v1.0)
     providers.tsx          # root client wrapper: QueryClient + Theme + Tooltip + SceneTransition
   hooks/                   # session, tts-playback, media-query, mobile, prefers-reduced-motion
@@ -142,7 +153,7 @@ top glassmorphism chrome (`reader-chrome.tsx`, `h-12`, hide-on-idle) + left
 sidebar rail (`reader-sidebar.tsx`) hosting a panel system (`reader-panel.tsx`
 + bookmarks/highlights/search/book-settings/themes/tts panels).
 
-_Verified 2026-06-21 against `src/` filesystem._
+_Verified 2026-06-26 against `src/` filesystem._
 
 ## The auth gate (read before any protected work)
 

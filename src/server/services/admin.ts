@@ -212,7 +212,7 @@ export async function purgeExplainerCache(adminId: string, explainerId: string) 
   // discussion pinned to it. If a newer/other version of the same cache key
   // exists, reassign those discussions to it first so readers keep their
   // conversation (just on the surviving version). If no other version exists,
-  // the threads cascade as before — purge is the destructive nuke; reroll is
+  // the discussions cascade as before — purge is the destructive nuke; reroll is
   // the gentle tool.
   const replacement = await db.explainer.findFirst({
     where: {
@@ -225,7 +225,7 @@ export async function purgeExplainerCache(adminId: string, explainerId: string) 
     orderBy: { version: "desc" },
   });
   if (replacement) {
-    await db.explainerThread.updateMany({
+    await db.discussion.updateMany({
       where: { explainerId: explainer.id },
       data: { explainerId: replacement.id },
     });

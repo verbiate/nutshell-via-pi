@@ -3,15 +3,15 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
 import {
-  deleteThread,
-  getThreadWithMessages,
-} from "@/server/services/explainer-threads";
+  deleteDiscussion,
+  getDiscussionWithMessages,
+} from "@/server/services/discussions";
 
 /**
- * GET /api/explainers/threads/[id]
+ * GET /api/discussions/[id]
  *
- * Returns a thread with its initial explainer content + all follow-up
- * messages. Ownership-checked (only the thread's owner can read it).
+ * Returns a discussion with its initial explainer content + all follow-up
+ * messages. Ownership-checked (only the discussion's owner can read it).
  */
 export async function GET(
   _request: Request,
@@ -21,12 +21,12 @@ export async function GET(
     const user = await requireAuth();
     const { id } = await params;
 
-    const thread = await getThreadWithMessages(id, user.id);
-    if (!thread) {
-      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    const discussion = await getDiscussionWithMessages(id, user.id);
+    if (!discussion) {
+      return NextResponse.json({ error: "Discussion not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ thread });
+    return NextResponse.json({ discussion });
   } catch (error: any) {
     if (error.statusCode === 401)
       return NextResponse.json(
@@ -43,9 +43,9 @@ export async function GET(
 }
 
 /**
- * DELETE /api/explainers/threads/[id]
+ * DELETE /api/discussions/[id]
  *
- * Deletes the thread and its follow-up messages for the requesting user.
+ * Deletes the discussion and its follow-up messages for the requesting user.
  * The shared Explainer cache row is NOT deleted. Ownership-checked.
  */
 export async function DELETE(
@@ -56,7 +56,7 @@ export async function DELETE(
     const user = await requireAuth();
     const { id } = await params;
 
-    await deleteThread(user.id, id);
+    await deleteDiscussion(user.id, id);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     if (error.statusCode === 401)
@@ -66,9 +66,9 @@ export async function DELETE(
       );
     if (error.statusCode === 403)
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    if (error.message === "Thread not found or access denied")
+    if (error.message === "Discussion not found or access denied")
       return NextResponse.json({ error: error.message }, { status: 404 });
-    console.error("[DELETE /api/explainers/threads/[id]]", error);
+    console.error("[DELETE /api/discussions/[id]]", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

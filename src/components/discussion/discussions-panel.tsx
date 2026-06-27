@@ -49,23 +49,23 @@ import {
   EXPLAINER_TEMPLATE_TOKENS,
 } from "@/lib/client-tokens";
 import type { SpineItem } from "@/lib/reader/spine-playlist";
-import { ExplainerContent } from "./explainer-content";
+import { ExplainerContent } from "../explainer/explainer-content";
 import { DiscussionLinksPanel } from "./discussion-links-panel";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
-// (list / thread) gated by `activeThreadId`. Receives `pendingPassage` from
+// (list / discussion) gated by `activeDiscussionId`. Receives `pendingPassage` from
 // the parent reader-client when the user clicks "Explain this" — fires the
-// create-thread API and streams the initial response into a fresh thread view.
+// create-discussion API and streams the initial response into a fresh discussion view.
 //
 // No zustand — follows codebase convention of React Query + local state.
 // Streaming uses index-based message updates (lesson from playground/page.tsx:
 // never compare streaming placeholders by object reference).
 
-type ThreadType = "passage" | "section" | "book";
+type DiscussionType = "passage" | "section" | "book";
 
-type ThreadPreview = {
+type DiscussionPreview = {
   id: string;
-  type: ThreadType;
+  type: DiscussionType;
   passageText: string | null;
   sectionHref: string | null;
   language: string;
@@ -79,23 +79,23 @@ type Message = { role: "user" | "assistant"; content: string };
 // ponytail: discriminated union — one state slot for any kind of pending
 // explainer request (passage/section/book). Reader-client sets it, this
 // panel consumes it, parent clears it via onConsumed.
-export type PendingExplainerRequest =
+export type PendingDiscussionRequest =
   | { type: "passage"; text: string; cfi: string | null }
   | { type: "section"; sectionHref: string; sectionTitle: string }
   | { type: "book" };
 
-export interface ExplainerThreadsPanelProps {
+export interface DiscussionsPanelProps {
   bookId: string;
-  pendingRequest: PendingExplainerRequest | null;
+  pendingRequest: PendingDiscussionRequest | null;
   onConsumed: () => void;
-  // ponytail: fired when the panel pops a thread into the modal so the parent
+  // ponytail: fired when the panel pops a discussion into the modal so the parent
   // can close the sidebar (gives the modal full focus). The bulb panel stays
   // mounted via reader-sidebar.tsx's lastTool pattern, so panel state
-  // (activeThreadId, streaming, poppedOut) is preserved while hidden.
+  // (activeDiscussionId, streaming, poppedOut) is preserved while hidden.
   onCloseSidebar?: () => void;
   // ponytail: fired when the user "returns" the discussion from the modal
   // back to the sidebar. Parent reopens the bulb tool; the panel was never
-  // unmounted (lastTool), so the active thread is still intact.
+  // unmounted (lastTool), so the active discussion is still intact.
   onReturnToSidebar?: () => void;
   // ponytail: token-budget inputs for the "X% full" indicator. Both come from
   // the reader server component (resolved via tier config + getContextWindow).
@@ -104,7 +104,7 @@ export interface ExplainerThreadsPanelProps {
   bookTxtTokens?: number | null;
   contextWindow?: number;
   // ponytail: citation deep-link plumbing. spineItems is the reader's spine
-  // (used to validate hrefs by basename + provided to ThreadView/MessageBubble);
+  // (used to validate hrefs by basename + provided to DiscussionView/MessageBubble);
   // onNavigateToHref reuses the reader's existing ToC navigation path.
   onNavigateToHref?: (href: string) => void;
   // ponytail: CFI-precise deeplink for the discussion's originating passage
@@ -116,7 +116,7 @@ export interface ExplainerThreadsPanelProps {
   spineItems?: SpineItem[];
 }
 
-export function ExplainerThreadsPanel({
+export function DiscussionsPanel({
   bookId,
   pendingRequest,
   onConsumed,
@@ -128,14 +128,14 @@ export function ExplainerThreadsPanel({
   onNavigateToCfi,
   resolveSectionLabel,
   spineItems,
-}: ExplainerThreadsPanelProps) {
+}: DiscussionsPanelProps) {
   const queryClient = useQueryClient();
   const { user } = useSession();
   const isAdmin = ((user as any)?.role as string) === "admin";
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [activeDiscussionId, setActiveDiscussionId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
-  const [threadToPurge, setThreadToPurge] = useState<ThreadPreview | null>(null);
-  // ponytail: pop-out modal state. When true, the same panel view (thread or
+  const [discussionToPurge, setDiscussionToPurge] = useState<DiscussionPreview | null>(null);
+  // ponytail: pop-out modal state. When true, the same panel view (discussion or
   // list) renders inside a Dialog at max-w-2xl h-[80vh] for "elbow room".
   // Sidebar keeps rendering behind the dimmed/blurred overlay (Radix blocks
   // pointer events), so closing the modal returns focus with state intact.
@@ -148,18 +148,18 @@ export function ExplainerThreadsPanel({
   const [rerollPhase, setRerollPhase] = useState<"explaining" | "refining" | null>(null);
   const [rerollResult, setRerollResult] = useState<number | null>(null);
   // ponytail: draft mode for "New discussion" — the button opens an empty
-  // composer WITHOUT firing an explainer request. The thread row is only
+  // composer WITHOUT firing an explainer request. The discussion row is only
   // created (server-side) when the user sends their opening question, which the
   // book answers with full-book context. Lets a user start fresh from their own
   // question instead of a generated explainer.
   const [drafting, setDrafting] = useState(false);
   // ponytail: click-time context captured so the Context chips render
-  // IMMEDIATELY (during generation), before the server thread row loads. Holds
+  // IMMEDIATELY (during generation), before the server discussion row loads. Holds
   // the section's ToC title too — which isn't persisted server-side. Cleared
-  // on back/list-select so a reopened thread falls back to activeThread +
+  // on back/list-select so a reopened discussion falls back to activeDiscussion +
   // resolveSectionLabel.
   const [localContext, setLocalContext] = useState<{
-    type: ThreadType;
+    type: DiscussionType;
     passageText: string | null;
     passageCfi: string | null;
     sectionHref: string | null;
@@ -169,28 +169,28 @@ export function ExplainerThreadsPanel({
   // ponytail: StrictMode double-fire guard for the pendingRequest effect below.
   // Holds the last-processed request reference; the effect bails if the
   // incoming request matches (same reference = same render's StrictMode re-fire).
-  const lastProcessedRef = useRef<PendingExplainerRequest | null>(null);
+  const lastProcessedRef = useRef<PendingDiscussionRequest | null>(null);
 
-  // List of threads for this book (sidebar list view)
+  // List of discussions for this book (sidebar list view)
   const { data: listData, isLoading: listLoading } = useQuery({
-    queryKey: ["explainer-threads", bookId],
+    queryKey: ["discussions", bookId],
     queryFn: async () => {
-      const res = await fetch(`/api/explainers/threads?bookId=${bookId}`);
-      if (!res.ok) throw new Error("Failed to load threads");
+      const res = await fetch(`/api/discussions?bookId=${bookId}`);
+      if (!res.ok) throw new Error("Failed to load discussions");
       return res.json();
     },
   });
-  const threads: ThreadPreview[] = listData?.threads ?? [];
+  const discussions: DiscussionPreview[] = listData?.discussions ?? [];
 
-  // Active thread content + messages
+  // Active discussion content + messages
   const { data: activeData } = useQuery({
-    queryKey: ["explainer-thread", activeThreadId],
+    queryKey: ["discussion", activeDiscussionId],
     queryFn: async () => {
-      const res = await fetch(`/api/explainers/threads/${activeThreadId}`);
-      if (!res.ok) throw new Error("Failed to load thread");
+      const res = await fetch(`/api/discussions/${activeDiscussionId}`);
+      if (!res.ok) throw new Error("Failed to load discussion");
       return res.json();
     },
-    enabled: !!activeThreadId,
+    enabled: !!activeDiscussionId,
   });
 
   // Local copy of messages so we can stream chunks into the last assistant
@@ -202,16 +202,16 @@ export function ExplainerThreadsPanel({
   // Drives a "Explaining…" / "Refining…" label during pass 1's silent window.
   const [phase, setPhase] = useState<"explaining" | "refining" | null>(null);
 
-  // ponytail: when activeThreadId changes (or active data loads), reset local
+  // ponytail: when activeDiscussionId changes (or active data loads), reset local
   // state from server truth. This is the only place setState is called in an
-  // effect intentionally — we want to sync from server when the thread changes.
+  // effect intentionally — we want to sync from server when the discussion changes.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (activeData?.thread) {
-      // explainer is optional (blank "New discussion" threads have no seed).
-      setInitialContent(activeData.thread.explainer?.content ?? "");
+    if (activeData?.discussion) {
+      // explainer is optional (blank "New discussion" discussions have no seed).
+      setInitialContent(activeData.discussion.explainer?.content ?? "");
       setLocalMessages(
-        activeData.thread.messages
+        activeData.discussion.messages
           ?.filter((m: any) => m.role === "user" || m.role === "assistant")
           .map((m: any) => ({ role: m.role, content: m.content })) ?? []
       );
@@ -220,13 +220,13 @@ export function ExplainerThreadsPanel({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handle a new pending passage from the parent (user clicked "Explain this")
-  // ponytail: defined after startPassageThread below to satisfy declaration order.
+  // ponytail: defined after startPassageDiscussion below to satisfy declaration order.
   // (See effect placement at bottom of this section.)
 
-  const startThread = useCallback(
-    async (request: PendingExplainerRequest) => {
-      // Reset state for the new thread
-      setActiveThreadId(null);
+  const startDiscussion = useCallback(
+    async (request: PendingDiscussionRequest) => {
+      // Reset state for the new discussion
+      setActiveDiscussionId(null);
       setInitialContent("");
       setLocalMessages([]);
       setStreamingInitial(true);
@@ -244,7 +244,7 @@ export function ExplainerThreadsPanel({
       abortRef.current = controller;
 
       let accumulated = "";
-      let newThreadId: string | null = null;
+      let newDiscussionId: string | null = null;
 
       // Build POST body from the discriminated union
       const body: Record<string, unknown> = { bookId, type: request.type };
@@ -256,7 +256,7 @@ export function ExplainerThreadsPanel({
       }
 
       try {
-        const res = await fetch("/api/explainers/threads", {
+        const res = await fetch("/api/discussions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -287,7 +287,7 @@ export function ExplainerThreadsPanel({
             try {
               const parsed = JSON.parse(data);
               if (parsed.type === "error") {
-                console.error("Thread creation failed:", parsed.error);
+                console.error("Discussion creation failed:", parsed.error);
                 setStreamingInitial(false);
                 setStreaming(false);
                 setPhase(null);
@@ -296,19 +296,19 @@ export function ExplainerThreadsPanel({
               if (parsed.type === "status" && parsed.stage) {
                 setPhase(parsed.stage as "explaining" | "refining");
               }
-              if (parsed.type === "existing" && parsed.threadId) {
+              if (parsed.type === "existing" && parsed.discussionId) {
                 // ponytail: user already has a discussion for this context —
                 // reopen it instead of regenerating. Just navigate; the active-
-                // thread query loads its content.
-                newThreadId = parsed.threadId;
+                // discussion query loads its content.
+                newDiscussionId = parsed.discussionId;
                 break;
               }
               if (parsed.type === "chunk" && parsed.chunk) {
                 accumulated += parsed.chunk;
                 setInitialContent(accumulated);
               }
-              if (parsed.type === "thread" && parsed.threadId) {
-                newThreadId = parsed.threadId;
+              if (parsed.type === "discussion" && parsed.discussionId) {
+                newDiscussionId = parsed.discussionId;
               }
             } catch {
               // Skip malformed lines
@@ -316,17 +316,17 @@ export function ExplainerThreadsPanel({
           }
         }
 
-        // Invalidate the list so the new thread appears
-        queryClient.invalidateQueries({ queryKey: ["explainer-threads", bookId] });
+        // Invalidate the list so the new discussion appears
+        queryClient.invalidateQueries({ queryKey: ["discussions", bookId] });
 
-        // Set the active thread id so the active-thread query fires and
+        // Set the active discussion id so the active-discussion query fires and
         // populates messages from server truth.
-        if (newThreadId) {
-          setActiveThreadId(newThreadId);
+        if (newDiscussionId) {
+          setActiveDiscussionId(newDiscussionId);
         }
       } catch (err: any) {
         if (err?.name !== "AbortError") {
-          console.error("Initial thread stream failed:", err);
+          console.error("Initial discussion stream failed:", err);
         }
       } finally {
         setStreamingInitial(false);
@@ -349,13 +349,13 @@ export function ExplainerThreadsPanel({
     if (!pendingRequest) return;
     if (lastProcessedRef.current === pendingRequest) return;
     lastProcessedRef.current = pendingRequest;
-    startThread(pendingRequest);
+    startDiscussion(pendingRequest);
     onConsumed();
-  }, [pendingRequest, startThread, onConsumed]);
+  }, [pendingRequest, startDiscussion, onConsumed]);
 
-  function selectThread(id: string) {
+  function selectDiscussion(id: string) {
     if (streaming) return;
-    setActiveThreadId(id);
+    setActiveDiscussionId(id);
     setInitialContent("");
     setLocalMessages([]);
     setLocalContext(null);
@@ -364,20 +364,20 @@ export function ExplainerThreadsPanel({
 
   function backToList() {
     if (streaming) return;
-    setActiveThreadId(null);
+    setActiveDiscussionId(null);
     setInitialContent("");
     setLocalMessages([]);
     setLocalContext(null);
     setDrafting(false);
   }
 
-  // ponytail: open a blank "New discussion" — no API call. The thread is
+  // ponytail: open a blank "New discussion" — no API call. The discussion is
   // created only when the user sends their opening question (sendDraftMessage).
-  // Book is the in-context subject, so threadType resolves to "book" and the
+  // Book is the in-context subject, so discussionType resolves to "book" and the
   // context chip shows "This book".
   function startDraft() {
     if (streaming) return;
-    setActiveThreadId(null);
+    setActiveDiscussionId(null);
     setInitialContent("");
     setLocalMessages([]);
     setStreamingInitial(false);
@@ -392,20 +392,20 @@ export function ExplainerThreadsPanel({
     setDrafting(true);
   }
 
-  // ponytail: pop a thread into the modal. Called from ThreadView's header
-  // expand button (no id — keep the current thread) or ListView's per-row ⋯
+  // ponytail: pop a discussion into the modal. Called from DiscussionView's header
+  // expand button (no id — keep the current discussion) or ListView's per-row ⋯
   // menu (id given — select first, then open). Selecting from the list only
-  // happens when no thread is active, so selectThread's `if (streaming) return`
+  // happens when no discussion is active, so selectDiscussion's `if (streaming) return`
   // guard can't fire here. Closes the sidebar so the modal gets full focus —
   // the bulb panel stays mounted (reader-sidebar lastTool), preserving state.
-  function popOutThread(id?: string) {
-    if (id) selectThread(id);
+  function popOutDiscussion(id?: string) {
+    if (id) selectDiscussion(id);
     setPoppedOut(true);
     onCloseSidebar?.();
   }
 
-  // ponytail: inverse of popOutThread — close the modal and reopen the
-  // sidebar. The active thread survives because the bulb panel never
+  // ponytail: inverse of popOutDiscussion — close the modal and reopen the
+  // sidebar. The active discussion survives because the bulb panel never
   // unmounted (reader-sidebar lastTool keeps it alive while hidden).
   function returnToSidebar() {
     setPoppedOut(false);
@@ -414,7 +414,7 @@ export function ExplainerThreadsPanel({
 
   // ponytail: wrap navigation so a citation jump from the panel OR an inline
   // link also closes the pop-out modal, revealing the reader. Built only when
-  // the parent supplied onNavigateToHref; passed down to ThreadView so both
+  // the parent supplied onNavigateToHref; passed down to DiscussionView so both
   // the aggregate panel and inline MessageBubble links benefit.
   const navigateAndCloseModal = onNavigateToHref
     ? (href: string) => {
@@ -435,7 +435,7 @@ export function ExplainerThreadsPanel({
 
   async function sendFollowup() {
     const text = input.trim();
-    if (!text || streaming || !activeThreadId) return;
+    if (!text || streaming || !activeDiscussionId) return;
 
     // ponytail: index-based update — append placeholder assistant message
     // and update by index during streaming. Object-reference equality fails
@@ -451,7 +451,7 @@ export function ExplainerThreadsPanel({
 
     try {
       const res = await fetch(
-        `/api/explainers/threads/${activeThreadId}/messages`,
+        `/api/discussions/${activeDiscussionId}/messages`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -503,7 +503,7 @@ export function ExplainerThreadsPanel({
       }
 
       // Invalidate list to refresh updatedAt ordering
-      queryClient.invalidateQueries({ queryKey: ["explainer-threads", bookId] });
+      queryClient.invalidateQueries({ queryKey: ["discussions", bookId] });
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         console.error("Follow-up fetch failed:", err);
@@ -515,9 +515,9 @@ export function ExplainerThreadsPanel({
   }
 
   // ponytail: the opening turn of a blank "New discussion". POSTs {message}
-  // to the threads endpoint, which creates the thread (no explainer) and
-  // streams the book's answer. The threadId arrives in the stream; we pin
-  // activeThreadId only AFTER streaming completes to avoid the active-thread
+  // to the discussions endpoint, which creates the discussion (no explainer) and
+  // streams the book's answer. The discussionId arrives in the stream; we pin
+  // activeDiscussionId only AFTER streaming completes to avoid the active-discussion
   // query racing in and clobbering the in-flight assistant bubble.
   async function sendDraftMessage() {
     const text = input.trim();
@@ -531,10 +531,10 @@ export function ExplainerThreadsPanel({
 
     const controller = new AbortController();
     abortRef.current = controller;
-    let newThreadId: string | null = null;
+    let newDiscussionId: string | null = null;
 
     try {
-      const res = await fetch("/api/explainers/threads", {
+      const res = await fetch("/api/discussions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookId, type: "book", message: text }),
@@ -567,8 +567,8 @@ export function ExplainerThreadsPanel({
               );
               return;
             }
-            if (parsed.type === "thread" && parsed.threadId) {
-              newThreadId = parsed.threadId;
+            if (parsed.type === "discussion" && parsed.discussionId) {
+              newDiscussionId = parsed.discussionId;
             }
             if (parsed.type === "chunk" && parsed.chunk) {
               acc += parsed.chunk;
@@ -584,7 +584,7 @@ export function ExplainerThreadsPanel({
           }
         }
       }
-      queryClient.invalidateQueries({ queryKey: ["explainer-threads", bookId] });
+      queryClient.invalidateQueries({ queryKey: ["discussions", bookId] });
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         console.error("Draft first turn failed:", err);
@@ -592,54 +592,54 @@ export function ExplainerThreadsPanel({
     } finally {
       setStreaming(false);
       abortRef.current = null;
-      // Pin the thread now that streaming is done — the active-thread query
+      // Pin the discussion now that streaming is done — the active-discussion query
       // loads the fully-persisted conversation (no race on the assistant msg).
       setDrafting(false);
-      if (newThreadId) setActiveThreadId(newThreadId);
+      if (newDiscussionId) setActiveDiscussionId(newDiscussionId);
     }
   }
 
-  async function handleDeleteThread(id: string) {
+  async function handleDeleteDiscussion(id: string) {
     try {
-      const res = await fetch(`/api/explainers/threads/${id}`, {
+      const res = await fetch(`/api/discussions/${id}`, {
         method: "DELETE",
       });
       if (res.ok) {
         queryClient.invalidateQueries({
-          queryKey: ["explainer-threads", bookId],
+          queryKey: ["discussions", bookId],
         });
-        if (id === activeThreadId) backToList();
+        if (id === activeDiscussionId) backToList();
       } else {
         console.error(
-          "[ExplainerThreadsPanel] delete thread failed:",
+          "[DiscussionsPanel] delete discussion failed:",
           res.status
         );
       }
     } catch (err) {
-      console.error("[ExplainerThreadsPanel] delete thread failed:", err);
+      console.error("[DiscussionsPanel] delete discussion failed:", err);
     }
   }
 
-  async function handlePurgeCache(thread: ThreadPreview) {
-    if (!thread.explainer) return;
+  async function handlePurgeCache(discussion: DiscussionPreview) {
+    if (!discussion.explainer) return;
     try {
-      const res = await fetch(`/api/explainers/${thread.explainer.id}`, {
+      const res = await fetch(`/api/explainers/${discussion.explainer.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
         queryClient.invalidateQueries({
-          queryKey: ["explainer-threads", bookId],
+          queryKey: ["discussions", bookId],
         });
-        setThreadToPurge(null);
-        if (thread.id === activeThreadId) backToList();
+        setDiscussionToPurge(null);
+        if (discussion.id === activeDiscussionId) backToList();
       } else {
         console.error(
-          "[ExplainerThreadsPanel] purge cache failed:",
+          "[DiscussionsPanel] purge cache failed:",
           res.status
         );
       }
     } catch (err) {
-      console.error("[ExplainerThreadsPanel] purge cache failed:", err);
+      console.error("[DiscussionsPanel] purge cache failed:", err);
     }
   }
 
@@ -680,10 +680,10 @@ export function ExplainerThreadsPanel({
           }
         }
       }
-      // Refresh latestVersion on the active thread so the "newer version"
+      // Refresh latestVersion on the active discussion so the "newer version"
       // indicator updates immediately.
       queryClient.invalidateQueries({
-        queryKey: ["explainer-thread", activeThreadId],
+        queryKey: ["discussion", activeDiscussionId],
       });
     } catch (err) {
       console.error("[reroll] failed:", err);
@@ -694,11 +694,11 @@ export function ExplainerThreadsPanel({
 
   // ─── Render ─────────────────────────────────────────────────────────────
   // ponytail: during initial stream, activeData isn't loaded yet — derive the
-  // thread type + passage text from the pendingRequest so the indicator can
+  // discussion type + passage text from the pendingRequest so the indicator can
   // render meaningfully before the server roundtrip completes.
-  const activeThread = activeData?.thread as
+  const activeDiscussion = activeData?.discussion as
     | {
-        type?: ThreadType;
+        type?: DiscussionType;
         passageText?: string | null;
         passageCfi?: string | null;
         sectionHref?: string | null;
@@ -707,33 +707,33 @@ export function ExplainerThreadsPanel({
         explainer?: { id?: string; version?: number };
       }
     | undefined;
-  const threadType: ThreadType =
-    activeThread?.type ?? localContext?.type ?? pendingRequest?.type ?? "book";
-  const threadPassageText: string | null =
-    activeThread?.passageText ??
+  const discussionType: DiscussionType =
+    activeDiscussion?.type ?? localContext?.type ?? pendingRequest?.type ?? "book";
+  const discussionPassageText: string | null =
+    activeDiscussion?.passageText ??
     localContext?.passageText ??
     (pendingRequest?.type === "passage" ? pendingRequest.text : null) ??
     null;
-  const threadPassageCfi: string | null =
-    activeThread?.passageCfi ?? localContext?.passageCfi ?? null;
-  const threadSectionHref: string | null =
-    activeThread?.sectionHref ?? localContext?.sectionHref ?? null;
+  const discussionPassageCfi: string | null =
+    activeDiscussion?.passageCfi ?? localContext?.passageCfi ?? null;
+  const discussionSectionHref: string | null =
+    activeDiscussion?.sectionHref ?? localContext?.sectionHref ?? null;
   // ponytail: prefer the click-time ToC title (localContext, shown immediately),
-  // then the ToC resolver (reopened threads), then the raw href as last resort.
-  const threadSectionLabel: string =
+  // then the ToC resolver (reopened discussions), then the raw href as last resort.
+  const discussionSectionLabel: string =
     localContext?.sectionTitle ??
-    (threadSectionHref ? resolveSectionLabel?.(threadSectionHref) : undefined) ??
-    threadSectionHref ??
+    (discussionSectionHref ? resolveSectionLabel?.(discussionSectionHref) : undefined) ??
+    discussionSectionHref ??
     "";
   // ponytail: admin-only metadata for the explainer badge / cache chip /
   // newer-version indicator / regenerate action.
   const adminMeta =
-    isAdmin && activeThread?.explainer
+    isAdmin && activeDiscussion?.explainer
       ? {
-          explainerId: activeThread.explainer.id!,
-          version: activeThread.explainer.version ?? 1,
-          latestVersion: activeThread.latestVersion ?? activeThread.explainer.version ?? 1,
-          initialCacheHit: activeThread.initialCacheHit ?? null,
+          explainerId: activeDiscussion.explainer.id!,
+          version: activeDiscussion.explainer.version ?? 1,
+          latestVersion: activeDiscussion.latestVersion ?? activeDiscussion.explainer.version ?? 1,
+          initialCacheHit: activeDiscussion.initialCacheHit ?? null,
         }
       : undefined;
 
@@ -744,9 +744,9 @@ export function ExplainerThreadsPanel({
   // Plain function (not useCallback) — closes over fresh state every render,
   // and no memoized child needs a stable reference.
   function renderPanelContent(inModal: boolean) {
-    if (activeThreadId || streamingInitial || drafting) {
+    if (activeDiscussionId || streamingInitial || drafting) {
       return (
-        <ThreadView
+        <DiscussionView
           initialContent={initialContent}
           streamingInitial={streamingInitial}
           phase={phase}
@@ -759,15 +759,15 @@ export function ExplainerThreadsPanel({
             drafting ? "Ask anything about this book…" : "Ask a follow-up…"
           }
           onBack={backToList}
-          threadType={threadType}
-          threadPassageText={threadPassageText}
-          threadPassageCfi={threadPassageCfi}
-          threadSectionHref={threadSectionHref}
-          threadSectionLabel={threadSectionLabel}
+          discussionType={discussionType}
+          discussionPassageText={discussionPassageText}
+          discussionPassageCfi={discussionPassageCfi}
+          discussionSectionHref={discussionSectionHref}
+          discussionSectionLabel={discussionSectionLabel}
           bookTxtTokens={bookTxtTokens}
           contextWindow={contextWindow}
           inModal={inModal}
-          onPopOut={() => popOutThread()}
+          onPopOut={() => popOutDiscussion()}
           onReturnToSidebar={returnToSidebar}
           onNavigateToHref={navigateAndCloseModal}
           onNavigateToCfi={navigateCfiAndCloseModal}
@@ -796,12 +796,12 @@ export function ExplainerThreadsPanel({
           </Button>
         </div>
         <ListView
-          threads={threads}
+          discussions={discussions}
           loading={listLoading}
-          onSelect={selectThread}
-          onPopOut={popOutThread}
-          onDelete={handleDeleteThread}
-          onPurge={setThreadToPurge}
+          onSelect={selectDiscussion}
+          onPopOut={popOutDiscussion}
+          onDelete={handleDeleteDiscussion}
+          onPurge={setDiscussionToPurge}
           isAdmin={isAdmin}
           emptyHint="Start a 'New discussion' about the whole book, or select text and click 'Ask about this' for a passage."
           resolveSectionLabel={resolveSectionLabel}
@@ -817,7 +817,7 @@ export function ExplainerThreadsPanel({
         <DialogContent className="flex h-[80vh] max-h-[80vh] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
           {/*
             ponytail: Radix requires a DialogTitle for SR announcement. The
-            visible header inside ThreadView already says "Discussion"; this
+            visible header inside DiscussionView already says "Discussion"; this
             sr-only title satisfies the a11y requirement without duplicating
             visible text.
           */}
@@ -826,8 +826,8 @@ export function ExplainerThreadsPanel({
         </DialogContent>
       </Dialog>
       <AlertDialog
-        open={!!threadToPurge}
-        onOpenChange={(open) => !open && setThreadToPurge(null)}
+        open={!!discussionToPurge}
+        onOpenChange={(open) => !open && setDiscussionToPurge(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -841,12 +841,12 @@ export function ExplainerThreadsPanel({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setThreadToPurge(null)}>
+            <AlertDialogCancel onClick={() => setDiscussionToPurge(null)}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => threadToPurge && handlePurgeCache(threadToPurge)}
+              onClick={() => discussionToPurge && handlePurgeCache(discussionToPurge)}
             >
               Purge
             </AlertDialogAction>
@@ -860,7 +860,7 @@ export function ExplainerThreadsPanel({
 // ─── Sub-components (same file, ponytail) ──────────────────────────────────
 
 function ListView({
-  threads,
+  discussions,
   loading,
   onSelect,
   onPopOut,
@@ -870,12 +870,12 @@ function ListView({
   emptyHint,
   resolveSectionLabel,
 }: {
-  threads: ThreadPreview[];
+  discussions: DiscussionPreview[];
   loading: boolean;
   onSelect: (id: string) => void;
   onPopOut: (id: string) => void;
   onDelete: (id: string) => void;
-  onPurge: (thread: ThreadPreview) => void;
+  onPurge: (discussion: DiscussionPreview) => void;
   isAdmin: boolean;
   emptyHint: string;
   resolveSectionLabel?: (href: string) => string | undefined;
@@ -887,7 +887,7 @@ function ListView({
       </div>
     );
   }
-  if (threads.length === 0) {
+  if (discussions.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
         <Lightbulb className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
@@ -906,7 +906,7 @@ function ListView({
         Discussions
       </p>
       <ul className="space-y-1">
-        {threads.map((t) => (
+        {discussions.map((t) => (
           <li key={t.id}>
             {/*
               ponytail: row is a div role=button (not a <button>) so the
@@ -984,7 +984,7 @@ function ListView({
   );
 }
 
-function ThreadView({
+function DiscussionView({
   initialContent,
   streamingInitial,
   phase,
@@ -995,11 +995,11 @@ function ThreadView({
   onSend,
   composerPlaceholder,
   onBack,
-  threadType,
-  threadPassageText,
-  threadPassageCfi,
-  threadSectionHref,
-  threadSectionLabel,
+  discussionType,
+  discussionPassageText,
+  discussionPassageCfi,
+  discussionSectionHref,
+  discussionSectionLabel,
   bookTxtTokens,
   contextWindow,
   inModal,
@@ -1026,11 +1026,11 @@ function ThreadView({
   onSend: () => void;
   composerPlaceholder?: string;
   onBack: () => void;
-  threadType: ThreadType;
-  threadPassageText: string | null;
-  threadPassageCfi?: string | null;
-  threadSectionHref?: string | null;
-  threadSectionLabel?: string;
+  discussionType: DiscussionType;
+  discussionPassageText: string | null;
+  discussionPassageCfi?: string | null;
+  discussionSectionHref?: string | null;
+  discussionSectionLabel?: string;
   bookTxtTokens?: number | null;
   contextWindow?: number;
   inModal?: boolean;
@@ -1081,8 +1081,8 @@ function ThreadView({
 
   // ponytail: X% full indicator. The dominant term is bookTxtTokens — the
   // full book plaintext is re-sent in the system prompt on every follow-up
-  // (see rebuildSystemPrompt in explainer-threads.ts). Also counts the
-  // passage focus text (passage threads), the initial explainer response
+  // (see rebuildSystemPrompt in discussions.ts). Also counts the
+  // passage focus text (passage discussions), the initial explainer response
   // (sent as the first assistant message), all follow-up messages, the
   // current draft, and a small per-type template-overhead constant.
   // Returns null when inputs are missing (book size pending or window
@@ -1093,8 +1093,8 @@ function ThreadView({
     initialContent,
     messages,
     inputDraft: input,
-    threadType,
-    threadPassageText,
+    discussionType,
+    discussionPassageText,
   });
   const pct = indicator?.pct ?? null;
   const overBudget = indicator?.overBudget ?? false;
@@ -1133,7 +1133,7 @@ function ThreadView({
             </span>
           )}
           {/*
-            ponytail: Maximize2 pops the thread into the modal (sidebar only);
+            ponytail: Maximize2 pops the discussion into the modal (sidebar only);
             Minimize2 returns it to the sidebar (modal only). Symmetric icons
             convey the inverse actions. size="icon-sm" is h-7 w-7, matching
             the Back button's height.
@@ -1247,7 +1247,7 @@ function ThreadView({
           </div>
         )}
 
-        {/* Initial explainer response (blank "New discussion" threads have
+        {/* Initial explainer response (blank "New discussion" discussions have
             no explainer seed — skip the bubble entirely so the conversation
             starts at the user's own first message). */}
         {(initialContent || streamingInitial) && (
@@ -1286,32 +1286,32 @@ function ThreadView({
         <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
           <span className="font-medium uppercase tracking-wide">Context</span>
           <span className="rounded bg-muted px-1.5 py-0.5">This book</span>
-          {threadType === "passage" && threadPassageText && (
+          {discussionType === "passage" && discussionPassageText && (
             <button
               type="button"
               className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
-              title={threadPassageText}
+              title={discussionPassageText}
               onClick={() =>
-                threadPassageCfi && onNavigateToCfi
-                  ? onNavigateToCfi(threadPassageCfi)
-                  : threadSectionHref && onNavigateToHref
-                    ? onNavigateToHref(threadSectionHref)
+                discussionPassageCfi && onNavigateToCfi
+                  ? onNavigateToCfi(discussionPassageCfi)
+                  : discussionSectionHref && onNavigateToHref
+                    ? onNavigateToHref(discussionSectionHref)
                     : undefined
               }
-              disabled={!threadPassageCfi || !onNavigateToCfi}
+              disabled={!discussionPassageCfi || !onNavigateToCfi}
             >
-              “{threadPassageText.slice(0, 60)}…”
+              “{discussionPassageText.slice(0, 60)}…”
             </button>
           )}
-          {threadType === "section" && threadSectionHref && (
+          {discussionType === "section" && discussionSectionHref && (
             <button
               type="button"
               className="max-w-[12rem] truncate rounded bg-muted px-1.5 py-0.5 underline-offset-2 hover:underline disabled:no-underline"
-              title={threadSectionLabel || threadSectionHref}
-              onClick={() => onNavigateToHref?.(threadSectionHref)}
+              title={discussionSectionLabel || discussionSectionHref}
+              onClick={() => onNavigateToHref?.(discussionSectionHref)}
               disabled={!onNavigateToHref}
             >
-              {threadSectionLabel || threadSectionHref}
+              {discussionSectionLabel || discussionSectionHref}
             </button>
           )}
         </div>
@@ -1457,20 +1457,20 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-// ponytail: advisory "X% full" estimate for an explainer thread. Returns null
+// ponytail: advisory "X% full" estimate for an explainer discussion. Returns null
 // when bookTxtTokens or contextWindow is missing — caller hides the indicator.
 //
 // Token accounting follows what rebuildSystemPrompt actually puts on the wire
 // on a follow-up turn:
 //   1. Full book plaintext (book.txtTokens) — the dominant term; re-sent every turn
-//   2. Passage focus text (thread.passageText) — passage type only
+//   2. Passage focus text (discussion.passageText) — passage type only
 //   3. Initial explainer response — sent as the first assistant message
 //   4. All follow-up messages (user + assistant)
 //   5. Current draft (so the bar moves as the user types)
 //   6. EXPLAINER_TEMPLATE_TOKENS — constant scaffolding around the substitutions
 //
-// Known undercount: section-type threads re-extract section text from the EPUB
-// on every follow-up (not stored on the thread), so we can't count it client-
+// Known undercount: section-type discussions re-extract section text from the EPUB
+// on every follow-up (not stored on the discussion), so we can't count it client-
 // side. Typically 1-5% of the book — well under the template-overhead slack.
 function computeContextIndicator(args: {
   bookTxtTokens?: number | null;
@@ -1478,8 +1478,8 @@ function computeContextIndicator(args: {
   initialContent: string;
   messages: Message[];
   inputDraft: string;
-  threadType: ThreadType;
-  threadPassageText: string | null;
+  discussionType: DiscussionType;
+  discussionPassageText: string | null;
 }): { pct: number; overBudget: boolean; label: string } | null {
   const {
     bookTxtTokens,
@@ -1487,7 +1487,7 @@ function computeContextIndicator(args: {
     initialContent,
     messages,
     inputDraft,
-    threadPassageText,
+    discussionPassageText,
   } = args;
   // Hide while inputs are unresolved. bookTxtTokens === null means the lazy
   // backfill hasn't run; contextWindow === undefined/0 means the server
@@ -1504,7 +1504,7 @@ function computeContextIndicator(args: {
   const usedTokens =
     bookTxtTokens +
     countTokens(initialContent) +
-    countTokens(threadPassageText ?? "") +
+    countTokens(discussionPassageText ?? "") +
     messagesTokens +
     countTokens(inputDraft) +
     EXPLAINER_TEMPLATE_TOKENS;

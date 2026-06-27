@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { requireAuth } from "@/lib/auth-guards";
-import { streamFollowup } from "@/server/services/explainer-threads";
+import { streamFollowup } from "@/server/services/discussions";
 
 /**
- * POST /api/explainers/threads/[id]/messages
+ * POST /api/discussions/[id]/messages
  *
  * Body: { content: string }
  *
@@ -16,13 +16,13 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let threadId: string;
+  let discussionId: string;
   let userMessage: string;
 
   try {
     const user = await requireAuth();
     const { id } = await params;
-    threadId = id;
+    discussionId = id;
     const body = await request.json();
     userMessage = (body as { content?: string }).content ?? "";
   } catch (error: any) {
@@ -44,7 +44,7 @@ export async function POST(
       try {
         const user = await requireAuth();
         for await (const event of streamFollowup({
-          threadId,
+          discussionId,
           userId: user.id,
           userMessage,
         })) {

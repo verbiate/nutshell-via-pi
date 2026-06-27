@@ -114,8 +114,8 @@ export function ReaderSidebar({
               </header>
             )}
             {tool.id === "bulb" ? (
-              // ponytail: bulb (explainer threads) is chat-shaped — its
-              // ThreadView anchors a header at top and composer at bottom with
+              // ponytail: bulb (discussions) is chat-shaped — its
+              // DiscussionView anchors a header at top and composer at bottom with
               // the messages scrolling between. Skipping the outer ScrollArea
               // lets the panel's internal `h-full + flex-1 overflow-y-auto`
               // layout work; otherwise heights don't propagate and the whole

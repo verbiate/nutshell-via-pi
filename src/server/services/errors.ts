@@ -9,7 +9,7 @@ export interface RecordErrorInput {
   message: string;
   userId?: string;
   bookId?: string;
-  threadId?: string;
+  discussionId?: string;
   context?: Record<string, unknown>;  // serialized to JSON
 }
 
@@ -21,7 +21,7 @@ export async function recordError(input: RecordErrorInput): Promise<void> {
         message: input.message,
         userId: input.userId ?? null,
         bookId: input.bookId ?? null,
-        threadId: input.threadId ?? null,
+        discussionId: input.discussionId ?? null,
         context: input.context ? JSON.stringify(input.context) : null,
       },
     });
@@ -64,7 +64,7 @@ export async function listErrors(params: {
       message: r.message,
       userId: r.userId,
       bookId: r.bookId,
-      threadId: r.threadId,
+      discussionId: r.discussionId,
       context: r.context,
       resolved: r.resolved,
       createdAt: r.createdAt.toISOString(),
