@@ -320,4 +320,54 @@ describe("build() — full pipeline with all sub-modules mocked", () => {
     // nothing rendered after the failure
     expect(writeWikiFile).not.toHaveBeenCalled();
   });
+
+  it("concurrent calls share ONE build (in-process mutex): pipeline runs once, both callers get a result", async () => {
+    // ponytail: force overlap by blocking extractBookConcepts on a deferred
+    // promise until both callers have entered build(). The second caller must
+    // hit the buildInFlight guard and join the in-flight build.
+    let resolveExtract!: () => void;
+    let extractEntered = 0;
+    const bothEntered = new Promise<void>((resolve) => {
+      resolveExtract = resolve;
+    });
+    // The first extract call resolves the gate; subsequent extract calls run
+    // normally. We just need to hold the FIRST call until we kick it from the
+    // test (which we do after firing both build()s).
+    vi.mocked(extractBookConcepts).mockImplementation(async (book) => {
+      extractEntered++;
+      if (extractEntered === 1) await bothEntered;
+      if (book.id === "bookA")
+        return { concepts: [conceptA1, conceptA2], topic: "heroism", form: "narrative" };
+      if (book.id === "bookB")
+        return { concepts: [conceptB1], topic: "heroism", form: "narrative" };
+      return { concepts: [conceptC1], topic: "cooking", form: "unknown" };
+    });
+
+    // Fire both without awaiting — they race into build().
+    const p1 = build();
+    const p2 = build();
+    // Let the event loop tick so caller 1 enters the IIFE and sets the mutex,
+    // and caller 2 observes it.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Release the held extract so the single shared build can finish.
+    resolveExtract();
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+
+    // Both callers got a valid BuildResult (the shared one).
+    expect(r1).toEqual({ concepts: 4, themes: 1, files: 6 });
+    expect(r2).toEqual(r1);
+
+    // The pipeline ran EXACTLY ONCE — no interleaved duplicate writes.
+    expect(extractBookConcepts).toHaveBeenCalledTimes(3);
+    expect(clusterByTopic).toHaveBeenCalledTimes(1);
+    expect(synthesizeClusterTheme).toHaveBeenCalledTimes(1);
+    expect(writeWikiFile).toHaveBeenCalledTimes(6);
+    // status 'building' set exactly once (not twice from two overlapping builds)
+    const buildingCalls = vi.mocked(setSetting).mock.calls.filter((c) =>
+      (c[1] as string).includes('"building"'),
+    );
+    expect(buildingCalls.length).toBe(1);
+  });
 });
