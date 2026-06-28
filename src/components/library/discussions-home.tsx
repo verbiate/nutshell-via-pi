@@ -17,6 +17,7 @@ import {
   BookOpen,
   FileText,
   Quote,
+  Library,
   Loader2,
   Send,
   Plus,
@@ -180,6 +181,30 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, boo
   const active = activeId ? discussions.find((d) => d.id === activeId) : null;
 
   if (active) {
+    // ponytail: shelf discussions don't yet have a chat-shaped detail view —
+    // the SSE first-turn stream + reader-style layout is Plan 3. For Plan 1
+    // we surface a placeholder so the row click doesn't crash on a null book.
+    if (active.type === "shelf") {
+      return (
+        <div className="flex h-full min-h-[60vh] flex-col items-center justify-center lg:min-h-0">
+          <Library className="h-12 w-12 text-muted-foreground" />
+          <h2 className="mt-4 font-serif text-[24px] font-medium text-espresso">
+            Ask your bookshelf
+          </h2>
+          <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
+            This thread lives on the full library. A dedicated view is coming soon.
+          </p>
+          <button
+            type="button"
+            onClick={() => setActiveId(null)}
+            className="mt-6 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        </div>
+      );
+    }
     // ponytail: chat-shaped — NO SmoothScrollArea wrapper. DiscussionDetail's
     // internal `flex h-full flex-col` + `flex-1 overflow-y-auto` middle needs
     // height to propagate from TabsContent (lg:absolute lg:inset-0) so the
@@ -272,7 +297,13 @@ function DiscussionRow({
   // render and the title becomes "Two books: T1 + T2". The 2nd book is NOT
   // shown as an attachment chip (it's a co-owner, represented by its cover).
   const isMulti = attachedBooks.length > 0;
-  const involvedTitles = [d.book.title, ...attachedBooks.map((a) => a.book!.title)];
+  // ponytail: shelf discussions are book-less; use a fixed title (the list
+  // payload doesn't include the opening message — see decision #2; refine
+  // in Plan 3 when list view carries the first user message).
+  const isShelf = d.type === "shelf";
+  const involvedTitles = [d.book?.title, ...attachedBooks.map((a) => a.book!.title)].filter(
+    (t): t is string => !!t
+  );
 
   return (
     <div
@@ -292,7 +323,11 @@ function DiscussionRow({
     >
       <div className="min-w-0 flex-1">
         <h3 className="truncate font-serif text-base font-medium text-espresso">
-          {isMulti ? booksLabel(involvedTitles) : d.book.title}
+          {isShelf
+            ? "Ask your bookshelf"
+            : isMulti
+              ? booksLabel(involvedTitles)
+              : d.book?.title ?? "Untitled"}
         </h3>
         <ContextChips
           discussion={d}
@@ -308,21 +343,29 @@ function DiscussionRow({
       {/* ponytail: covers on the right so all rows share a left detail scanline
           regardless of 1 vs 2 books (single source of width variance). */}
       <div className={"flex shrink-0" + (isMulti ? " gap-1" : "")}>
-        <BookCover
-          coverPath={d.book.coverPath}
-          title={d.book.title}
-          className="h-14 w-10 rounded"
-          cover
-        />
-        {attachedBooks.map((a) => (
-          <BookCover
-            key={a.id}
-            coverPath={a.book!.coverPath}
-            title={a.book!.title}
-            className="h-14 w-10 rounded"
-            cover
-          />
-        ))}
+        {isShelf ? (
+          <div className="flex h-14 w-10 items-center justify-center rounded bg-muted text-muted-foreground">
+            <Library className="h-5 w-5" />
+          </div>
+        ) : (
+          <>
+            <BookCover
+              coverPath={d.book?.coverPath}
+              title={d.book?.title ?? ""}
+              className="h-14 w-10 rounded"
+              cover
+            />
+            {attachedBooks.map((a) => (
+              <BookCover
+                key={a.id}
+                coverPath={a.book!.coverPath}
+                title={a.book!.title}
+                className="h-14 w-10 rounded"
+                cover
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -353,6 +396,7 @@ function ContextChips({
         {d.type === "passage" && <Quote className="h-3 w-3" />}
         {d.type === "section" && <FileText className="h-3 w-3" />}
         {d.type === "book" && <BookOpen className="h-3 w-3" />}
+        {d.type === "shelf" && <Library className="h-3 w-3" />}
         {d.type}
       </span>
       {d._count.messages > 0 && (
@@ -364,10 +408,10 @@ function ContextChips({
       {/* primary section (the discussion's own type=section context) */}
       {primarySection && (
         <SectionPill
-          label={resolveLabel(d.book.id, primarySection) ?? hrefBasename(primarySection)}
+          label={resolveLabel(d.book!.id, primarySection) ?? hrefBasename(primarySection)}
           onClick={(e) => {
             e.stopPropagation();
-            navigate(d.book.id, { href: primarySection, discussionId: d.id });
+            navigate(d.book!.id, { href: primarySection, discussionId: d.id });
           }}
         />
       )}
@@ -376,14 +420,14 @@ function ContextChips({
         <SectionPill
           key={s.id}
           label={
-            (s.sectionHref && resolveLabel(d.book.id, s.sectionHref)) ||
+            (s.sectionHref && resolveLabel(d.book!.id, s.sectionHref)) ||
             (s.sectionHref && hrefBasename(s.sectionHref)) ||
             ""
           }
           onClick={(e) => {
             e.stopPropagation();
             if (s.sectionHref) {
-              navigate(d.book.id, { href: s.sectionHref, discussionId: d.id });
+              navigate(d.book!.id, { href: s.sectionHref, discussionId: d.id });
             }
           }}
         />
@@ -511,10 +555,10 @@ export function DiscussionDetail({
   // walker uses above). First-occurrence wins per basename.
   const sectionOptions = useMemo(() => {
     const out: { href: string; label: string }[] = [];
-    if (!d.book.tocJson) return out;
+    if (!d.book!.tocJson) return out;
     let toc: TocItem[];
     try {
-      toc = JSON.parse(d.book.tocJson);
+      toc = JSON.parse(d.book!.tocJson);
     } catch {
       return out;
     }
@@ -533,7 +577,7 @@ export function DiscussionDetail({
     };
     walk(toc);
     return out;
-  }, [d.book.tocJson]);
+  }, [d.book!.tocJson]);
 
   // ponytail: permanently-attached sections (server-side). Labels resolved via
   // resolveLabel; fall back to raw href.
@@ -544,9 +588,9 @@ export function DiscussionDetail({
       .map((a) => ({
         type: "section" as const,
         sectionHref: a.sectionHref as string,
-        label: resolveLabel(d.book.id, a.sectionHref as string) ?? hrefBasename(a.sectionHref as string),
+        label: resolveLabel(d.book!.id, a.sectionHref as string) ?? hrefBasename(a.sectionHref as string),
       }));
-  }, [data, d.book.id, resolveLabel]);
+  }, [data, d.book!.id, resolveLabel]);
 
   // ponytail: pending = sent-but-not-yet-confirmed; dedup against persisted so
   // a chip never renders twice during the handoff window.
@@ -591,7 +635,7 @@ export function DiscussionDetail({
       if (hrefs.length > 0) map[a.book.id] = hrefs;
     }
     return {
-      originBookHrefs: parseHrefs(d.book.tocJson),
+      originBookHrefs: parseHrefs(d.book!.tocJson),
       attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
     };
   }, [d]);
@@ -600,7 +644,7 @@ export function DiscussionDetail({
   // the chips use. On arrival the reader resolves the basename to its spine
   // href (reader-client.tsx:608) and opens the sidebar to this thread.
   const onNavigateToHref = (href: string) =>
-    navigate(d.book.id, { href, discussionId: d.id });
+    navigate(d.book!.id, { href, discussionId: d.id });
   const onNavigateToBookSection = (bookId: string, basename: string) =>
     navigate(bookId, { href: basename, discussionId: d.id });
 
@@ -792,7 +836,7 @@ export function DiscussionDetail({
   // ownership (a second book attached) shows BOTH covers and the "Two books:"
   // label treatment. Each cover opens its own book in the reader.
   const isMulti = attachedBooks.length > 0;
-  const involvedTitles = [d.book.title, ...attachedBooks.map((a) => a.book!.title)];
+  const involvedTitles = [d.book!.title, ...attachedBooks.map((a) => a.book!.title)];
 
   return (
     <div className="flex h-full flex-col">
@@ -813,13 +857,13 @@ export function DiscussionDetail({
           <div className={"flex shrink-0" + (isMulti ? " gap-2" : "")}>
             <button
               type="button"
-              onClick={() => navigate(d.book.id, { discussionId: d.id })}
+              onClick={() => navigate(d.book!.id, { discussionId: d.id })}
               className="rounded-lg transition-colors hover:bg-muted/40"
-              title={`Open ${d.book.title}`}
+              title={`Open ${d.book!.title}`}
             >
               <BookCover
-                coverPath={d.book.coverPath}
-                title={d.book.title}
+                coverPath={d.book!.coverPath}
+                title={d.book!.title}
                 className="h-16 w-12 rounded"
                 cover
               />
@@ -843,10 +887,10 @@ export function DiscussionDetail({
           </div>
           <div className="min-w-0 self-center">
             <h2 className="font-serif text-lg font-medium text-espresso">
-              {isMulti ? booksLabel(involvedTitles) : d.book.title}
+              {isMulti ? booksLabel(involvedTitles) : d.book!.title}
             </h2>
-            {!isMulti && d.book.author && (
-              <p className="text-xs text-muted-foreground">{d.book.author}</p>
+            {!isMulti && d.book!.author && (
+              <p className="text-xs text-muted-foreground">{d.book!.author}</p>
             )}
           </div>
         </div>
@@ -902,18 +946,18 @@ export function DiscussionDetail({
       <div className="shrink-0 border-t border-line p-2 flex flex-col gap-1.5">
         <ComposerContextRow
           originBook={{
-            bookId: d.book.id,
-            title: d.book.title,
-            author: d.book.author,
-            coverPath: d.book.coverPath,
+            bookId: d.book!.id,
+            title: d.book!.title,
+            author: d.book!.author,
+            coverPath: d.book!.coverPath,
           }}
-          originBookId={d.book.id}
+          originBookId={d.book!.id}
           primarySection={
             primarySection
               ? {
                   href: primarySection,
                   label:
-                    resolveLabel(d.book.id, primarySection) ??
+                    resolveLabel(d.book!.id, primarySection) ??
                     hrefBasename(primarySection),
                 }
               : null

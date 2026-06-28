@@ -5,14 +5,15 @@
 // GET /api/discussions/<id> for the full message thread).
 export type DiscussionListItem = {
   id: string;
-  type: "passage" | "section" | "book";
+  type: "passage" | "section" | "book" | "shelf";
   passageText: string | null;
   passageCfi: string | null;
   sectionHref: string | null;
   language: string;
   createdAt: string;
   updatedAt: string;
-  book: {
+  // ponytail: optional — shelf discussions are book-less.
+  book?: {
     id: string;
     title: string;
     author: string | null;

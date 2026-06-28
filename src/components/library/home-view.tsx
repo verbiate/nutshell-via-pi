@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
@@ -127,6 +128,23 @@ export function HomeView({
   // route the user to Bookshelf. Uncontrolled (defaultValue) elsewhere.
   const [tabValue, setTabValue] = useState("bookshelf");
 
+  // ponytail: shelf-bar input. Inline create (not prop-lifted) — the bar
+  // owns the queryClient + invalidate so DiscussionsHomeView's list refreshes.
+  const queryClient = useQueryClient();
+  const [shelfQuery, setShelfQuery] = useState("");
+  const onCreateShelfDiscussion = async (question: string) => {
+    const res = await fetch("/api/discussions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shelf", message: question }),
+    });
+    if (!res.ok) throw new Error("Failed to create shelf discussion");
+    // ponytail: SSE first turn streams in the background; for the list we just
+    // invalidate so the new shelf row appears. Plan 3 will land the user
+    // inside the new thread watching the stream.
+    await queryClient.invalidateQueries({ queryKey: ["discussions-all"] });
+  };
+
   return (
     <Tabs
       value={tabValue}
@@ -193,8 +211,21 @@ export function HomeView({
                     <Search className="size-4 shrink-0 text-muted-foreground" />
                     <input
                       type="search"
-                      aria-label="Search books"
-                      placeholder="Search or ask your books…"
+                      aria-label="Ask your books"
+                      placeholder="Ask your books…"
+                      value={shelfQuery}
+                      onChange={(e) => setShelfQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const q = shelfQuery.trim();
+                          if (!q) return;
+                          e.preventDefault();
+                          void onCreateShelfDiscussion(q).then(() => {
+                            setShelfQuery("");
+                            setTabValue("explainers");
+                          });
+                        }
+                      }}
                       className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground/70"
                     />
                   </div>

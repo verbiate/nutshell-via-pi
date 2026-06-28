@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { HomeView } from "../home-view";
 
 vi.mock("next/navigation", () => ({
@@ -13,8 +15,15 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-function render(el: React.ReactElement) {
-  return renderToStaticMarkup(el);
+vi.mock("@/components/transitions/scene-transition", () => ({
+  useSceneTransition: () => ({ suppressShelfReveal: false }),
+}));
+
+function render(el: ReactElement) {
+  const client = new QueryClient();
+  return renderToStaticMarkup(
+    <QueryClientProvider client={client}>{el}</QueryClientProvider>,
+  );
 }
 
 const books = [
@@ -46,8 +55,8 @@ describe("HomeView", () => {
     const html = render(
       <HomeView userName="Mary" books={books} digestImage={null} />,
     );
-    expect(html).toContain('placeholder="Search or ask your books…"');
-    expect(html).toContain("Search books");
+    expect(html).toContain('placeholder="Ask your books…"');
+    expect(html).toContain("Ask your books");
   });
 
   it("anchors the search region to a 138px progressively-blurred bottom bar", () => {
