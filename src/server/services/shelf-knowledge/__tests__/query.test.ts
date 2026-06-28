@@ -26,7 +26,7 @@ const NAV_DEFAULT_CONTENT = `You are navigating the user's library knowledge bas
 
 Available concepts (only from books the user has access to):
 {{listing}}
-
+{{conversation}}
 User question: {{question}}
 
 Return ONLY valid JSON matching this schema:
@@ -37,11 +37,12 @@ Return ONLY valid JSON matching this schema:
 Constraints:
 - Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
 - Pick only concepts relevant to answering the question.
+- The latest question may refer to something in the recent conversation (e.g. "those", "deep links for that", "the startup one") — pick concepts relevant in that context.
 - Select at most 5.
 - If none are relevant, return an empty array.`;
 
 const ANSWER_DEFAULT_CONTENT = `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
-
+{{conversation}}
 User question: {{question}}
 
 Concept excerpts:
@@ -57,8 +58,13 @@ Answer using ONLY the information in these excerpts. If they do not contain the 
 Return ONLY valid JSON matching this schema:
 { "answer": "<your grounded answer with inline #ch: links>" }`;
 
-const SEEDED_VERSION = 1;
-const FALLBACK_ANSWER_VERSION = 2;
+// ponytail: mirror the seeded versions (prisma/seed.ts) so cache-key assertions
+// reflect the live contract. Nav=2, answer=3 after the {{conversation}} bump.
+const SEEDED_NAV_VERSION = 2;
+const SEEDED_ANSWER_VERSION = 3;
+// ponytail: fallback (missing DB row) mirrors the seeded default — same versions.
+const FALLBACK_NAV_VERSION = 2;
+const FALLBACK_ANSWER_VERSION = 3;
 
 // Index fixture mirrors render.ts buildIndex output. bookA + bookB are
 // accessible; bookC is NOT (its concept must be filtered out at every layer).
@@ -132,10 +138,10 @@ describe("answerShelfQuestion", () => {
       where: { type: string };
     }) => {
       if (where.type === "shelf_nav") {
-        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_VERSION };
+        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_NAV_VERSION };
       }
       if (where.type === "shelf_answer") {
-        return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+        return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_ANSWER_VERSION };
       }
       return null;
     }) as never);
@@ -182,8 +188,8 @@ describe("answerShelfQuestion", () => {
     expect(result.bookMd5).toBe("shelf:" + hashOf(["bookA", "bookB"]));
     expect(result.bookMd5.startsWith("shelf:")).toBe(true);
 
-    // promptVersion = loaded shelf_answer template version (seeded = 1)
-    expect(result.promptVersion).toBe(SEEDED_VERSION);
+    // promptVersion = loaded shelf_answer template version (seeded = 3)
+    expect(result.promptVersion).toBe(SEEDED_ANSWER_VERSION);
 
     // citations resolve via db lookup
     expect(result.citations).toEqual([
@@ -414,13 +420,15 @@ describe("answerShelfQuestion", () => {
     expect(result.prompt).toContain("fresh answer");
     expect(result.citations.map((c) => c.bookId)).toEqual(["bookB"]);
 
-    // nav cache key = question + null-byte + accessHash + nav template version
+    // nav cache key = question + null-byte + accessHash + nav template version + historyHash
     const navGetCall = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )!;
     const [, input] = navGetCall;
     const expectedHash = hashOf(["bookA", "bookB"]);
-    expect(input).toBe(`What is valor?\x00${expectedHash}\x00${SEEDED_VERSION}`);
+    expect(input).toBe(
+      `What is valor?\x00${expectedHash}\x00${SEEDED_NAV_VERSION}\x00${histHashOf()}`,
+    );
   });
 
   it("cache writes: nav result + answer result both persisted with stable keys", async () => {
@@ -436,23 +444,25 @@ describe("answerShelfQuestion", () => {
       accessibleBookIds: ["bookB", "bookA"], // unsorted on purpose
     });
 
-    // nav persisted with sorted-access hash + nav template version
+    // nav persisted with sorted-access hash + nav template version + historyHash
     const navSet = vi.mocked(setCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )!;
     expect(navSet).toBeTruthy();
     const [, navInput, navVal] = navSet;
     const expectedHash = hashOf(["bookA", "bookB"]);
-    expect(navInput).toBe(`Q1\x00${expectedHash}\x00${SEEDED_VERSION}`);
+    expect(navInput).toBe(
+      `Q1\x00${expectedHash}\x00${SEEDED_NAV_VERSION}\x00${histHashOf()}`,
+    );
     expect(navVal).toEqual({ conceptRelPaths: ["concepts/bookA/courage.md"] });
 
-    // answer persisted with question + accessHash + sorted selected paths + answer version
+    // answer persisted with question + accessHash + sorted selected paths + answer version + historyHash
     const ansSet = vi.mocked(setCached).mock.calls.find(
       ([ns]) => ns === "query-answer",
     )!;
     const [, ansInput, ansVal] = ansSet;
     expect(ansInput).toBe(
-      `Q1\x00${expectedHash}\x00concepts/bookA/courage.md\x00${SEEDED_VERSION}`,
+      `Q1\x00${expectedHash}\x00concepts/bookA/courage.md\x00${SEEDED_ANSWER_VERSION}\x00${histHashOf()}`,
     );
     expect(ansVal).toEqual({ answer: "ans" });
   });
@@ -587,7 +597,7 @@ Q: {{question}}`;
       if (where.type === "shelf_nav") {
         return { content: CUSTOM_NAV, version: NAV_VERSION };
       }
-      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_ANSWER_VERSION };
     }) as never);
     vi.mocked(completeJson).mockImplementation(async (a) => {
       if (a.prompt.includes("CUSTOM NAV HEADER")) {
@@ -612,13 +622,15 @@ Q: {{question}}`;
     expect(navCall[0].prompt).toContain("Q: Q");
     expect(navCall[0].prompt).toContain("concepts/bookA/courage.md");
 
-    // nav cache key carries the DB nav version (not the seeded 1).
+    // nav cache key carries the DB nav version (3rd \x00-separated segment),
+    // not the seeded default. Key shape: question \x00 hash \x00 version \x00 histHash.
     const navGetCall = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )!;
     const navInput = navGetCall[1] as string;
-    expect(navInput.endsWith(`\x00${NAV_VERSION}`)).toBe(true);
-    expect(navInput).not.toContain(`\x00${SEEDED_VERSION}\x00`);
+    const navParts = navInput.split("\x00");
+    expect(navParts[2]).toBe(String(NAV_VERSION));
+    expect(navParts[2]).not.toBe(String(SEEDED_NAV_VERSION));
   });
 
   it("answer: uses DB template content + version in prompt and cache key", async () => {
@@ -633,7 +645,7 @@ Excerpts:
       where: { type: string };
     }) => {
       if (where.type === "shelf_nav") {
-        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_VERSION };
+        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_NAV_VERSION };
       }
       return { content: CUSTOM_ANSWER, version: ANSWER_VERSION };
     }) as never);
@@ -659,18 +671,20 @@ Excerpts:
     expect(answerCall[0].prompt).toContain("Q: What is courage?");
     expect(answerCall[0].prompt).toContain("Courage");
 
-    // answer cache key carries the DB answer version.
+    // answer cache key carries the DB answer version (4th segment).
+    // Key shape: question \x00 hash \x00 selected \x00 version \x00 histHash.
     const ansGetCall = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-answer",
     )!;
     const ansInput = ansGetCall[1] as string;
-    expect(ansInput.endsWith(`\x00${ANSWER_VERSION}`)).toBe(true);
+    const ansParts = ansInput.split("\x00");
+    expect(ansParts[3]).toBe(String(ANSWER_VERSION));
 
     // promptVersion reflects the answer template version.
     expect(result.promptVersion).toBe(ANSWER_VERSION);
   });
 
-  it("fallback: findUnique null for both templates → uses inline defaults + version 1, no crash", async () => {
+  it("fallback: findUnique null for both templates → uses inline defaults, no crash", async () => {
     vi.mocked(db.promptTemplate.findUnique).mockResolvedValue(null);
     vi.mocked(completeJson).mockImplementation(async (a) => {
       if (a.prompt.includes("Available concepts")) {
@@ -690,23 +704,23 @@ Excerpts:
     )!;
     expect(navCall[0].prompt).toContain("Return ONLY valid JSON");
 
-    // ponytail: nav fallback version = 1, answer fallback version = 2 (the
-    // answer template was bumped to inject chapter-map citation instructions).
+    // ponytail: fallback versions now mirror the seeded defaults after the
+    // {{conversation}} bump — nav=2, answer=3.
     const navInput = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )![1] as string;
     const ansInput = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-answer",
     )![1] as string;
-    expect(navInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
-    expect(ansInput.endsWith(`\x00${FALLBACK_ANSWER_VERSION}`)).toBe(true);
+    expect(navInput.split("\x00")[2]).toBe(String(FALLBACK_NAV_VERSION));
+    expect(ansInput.split("\x00")[3]).toBe(String(FALLBACK_ANSWER_VERSION));
 
     expect(result.promptVersion).toBe(FALLBACK_ANSWER_VERSION);
   });
 
   it("each cache key uses its OWN template version (nav ≠ answer is possible)", async () => {
-    // Bump nav to v3, leave answer at v1 — each key must carry its own.
-    const NAV_VERSION = 3;
+    // Bump nav to v11, leave answer at seeded — each key must carry its own.
+    const NAV_VERSION = 11;
     vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
       where,
     }: {
@@ -715,7 +729,7 @@ Excerpts:
       if (where.type === "shelf_nav") {
         return { content: NAV_DEFAULT_CONTENT, version: NAV_VERSION };
       }
-      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_ANSWER_VERSION };
     }) as never);
     vi.mocked(completeJson).mockImplementation(async (a) => {
       if (a.prompt.includes("Available concepts")) {
@@ -736,8 +750,8 @@ Excerpts:
       ([ns]) => ns === "query-answer",
     )![1] as string;
 
-    expect(navInput.endsWith(`\x00${NAV_VERSION}`)).toBe(true);
-    expect(ansInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
+    expect(navInput.split("\x00")[2]).toBe(String(NAV_VERSION));
+    expect(ansInput.split("\x00")[3]).toBe(String(SEEDED_ANSWER_VERSION));
     // Explicitly different versions, each in its own key.
     expect(navInput).not.toBe(ansInput);
   });
@@ -800,6 +814,126 @@ Excerpts:
     );
     expect(answerCall[0].prompt).not.toContain("#ch:bookA:");
   });
+
+  it("history: a follow-up with history produces a DIFFERENT cache key than the same question without", async () => {
+    // ponytail: the bug — first-turn cache entries must not be served to a
+    // follow-up that asks the same literal question with different context,
+    // and different conversations must not collide on the same question.
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+    const history = [
+      { role: "user" as const, content: "tell me about startups" },
+      { role: "assistant" as const, content: "startups are..." },
+    ];
+
+    await answerShelfQuestion({
+      question: "what else?",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+    await answerShelfQuestion({
+      question: "what else?",
+      accessibleBookIds: ["bookA", "bookB"],
+      history,
+    });
+
+    const navCalls = vi.mocked(getCached).mock.calls.filter(
+      ([ns]) => ns === "query-nav",
+    );
+    const ansCalls = vi.mocked(getCached).mock.calls.filter(
+      ([ns]) => ns === "query-answer",
+    );
+    expect(navCalls).toHaveLength(2);
+    expect(ansCalls).toHaveLength(2);
+    const [navNoHist, navWithHist] = navCalls.map((c) => c[1] as string);
+    const [ansNoHist, ansWithHist] = ansCalls.map((c) => c[1] as string);
+
+    // Different histories → different keys (history hash is the last segment).
+    expect(navNoHist).not.toBe(navWithHist);
+    expect(ansNoHist).not.toBe(ansWithHist);
+    // The history hash segment is exactly histHashOf(history) for the follow-up,
+    // and histHashOf() (empty history) for the first turn.
+    expect(navWithHist.endsWith(`\x00${histHashOf(history)}`)).toBe(true);
+    expect(navNoHist.endsWith(`\x00${histHashOf()}`)).toBe(true);
+    expect(ansWithHist.endsWith(`\x00${histHashOf(history)}`)).toBe(true);
+    expect(ansNoHist.endsWith(`\x00${histHashOf()}`)).toBe(true);
+  });
+
+  it("history: substitutes {{conversation}} into nav AND answer prompts; empty history → no conversation block", async () => {
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+    const history = [
+      { role: "user" as const, content: "tell me about startups" },
+      { role: "assistant" as const, content: "startups are..." },
+    ];
+
+    // With history: both prompts carry the framed conversation block.
+    await answerShelfQuestion({
+      question: "deep links for that?",
+      accessibleBookIds: ["bookA"],
+      history,
+    });
+    let navCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Available concepts"),
+    )!;
+    let ansCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Concept excerpts"),
+    )!;
+    expect(navCall[0].prompt).toContain("Recent conversation for context");
+    expect(navCall[0].prompt).toContain("User: tell me about startups");
+    expect(navCall[0].prompt).toContain("Assistant: startups are...");
+    expect(ansCall[0].prompt).toContain("Recent conversation for context");
+    expect(ansCall[0].prompt).toContain("User: tell me about startups");
+
+    // No history: the conversation block is absent (substituted to "").
+    vi.clearAllMocks();
+    vi.mocked(getCached).mockResolvedValue(null);
+    vi.mocked(setCached).mockResolvedValue(undefined);
+    setupReadWiki();
+    setupDbTitles({ bookA: "Book A" });
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      if (where.type === "shelf_nav") {
+        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_NAV_VERSION };
+      }
+      if (where.type === "shelf_answer") {
+        return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_ANSWER_VERSION };
+      }
+      return null;
+    }) as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+
+    await answerShelfQuestion({
+      question: "what is courage?",
+      accessibleBookIds: ["bookA"],
+    });
+    navCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Available concepts"),
+    )!;
+    ansCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Concept excerpts"),
+    )!;
+    expect(navCall[0].prompt).not.toContain("Recent conversation for context");
+    expect(ansCall[0].prompt).not.toContain("Recent conversation for context");
+    // No literal placeholder leakage.
+    expect(navCall[0].prompt).not.toContain("{{conversation}}");
+    expect(ansCall[0].prompt).not.toContain("{{conversation}}");
+  });
 });
 
 // ponytail: mirror the production access-hash so tests assert the exact key
@@ -807,4 +941,13 @@ Excerpts:
 import crypto from "node:crypto";
 function hashOf(ids: string[]): string {
   return crypto.createHash("sha256").update([...ids].sort().join(",")).digest("hex");
+}
+// ponytail: mirror the production history-hash (sha256(JSON.stringify(history)).slice(0,16))
+// so cache-key assertions reflect the live contract.
+function histHashOf(history?: { role: "user" | "assistant"; content: string }[]): string {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(history ?? []))
+    .digest("hex")
+    .slice(0, 16);
 }

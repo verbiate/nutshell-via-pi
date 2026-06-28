@@ -27,7 +27,7 @@ const FALLBACK_NAV_CONTENT = `You are navigating the user's library knowledge ba
 
 Available concepts (only from books the user has access to):
 {{listing}}
-
+{{conversation}}
 User question: {{question}}
 
 Return ONLY valid JSON matching this schema:
@@ -38,11 +38,12 @@ Return ONLY valid JSON matching this schema:
 Constraints:
 - Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
 - Pick only concepts relevant to answering the question.
+- The latest question may refer to something in the recent conversation (e.g. "those", "deep links for that", "the startup one") — pick concepts relevant in that context.
 - Select at most ${MAX_CONCEPTS}.
 - If none are relevant, return an empty array.`;
 
 const FALLBACK_ANSWER_CONTENT = `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
-
+{{conversation}}
 User question: {{question}}
 
 Concept excerpts:
@@ -60,8 +61,38 @@ Return ONLY valid JSON matching this schema:
 
 // ponytail: fallback version mirroring the seeded default so a missing row
 // preserves cache stability. Loaded template.version overrides.
-const FALLBACK_NAV_VERSION = 1;
-const FALLBACK_ANSWER_VERSION = 2;
+const FALLBACK_NAV_VERSION = 2;
+const FALLBACK_ANSWER_VERSION = 3;
+
+// ponytail: shape of prior turns threaded from streamFollowup → answerShelfQuestion.
+// First turn passes none — shelf discussions start with no history.
+export interface ShelfHistoryEntry {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// ponytail: render the last ~6 turns as a labeled block, or "" when no history.
+// Frame text lives here (not in the template) so an empty history substitutes
+// to a truly empty string — no dangling "Recent conversation:" header on turn 1.
+function formatHistory(history?: ShelfHistoryEntry[]): string {
+  if (!history || history.length === 0) return "";
+  const last = history.slice(-6);
+  const lines = last.map(
+    (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
+  );
+  return `\nRecent conversation for context (the user's latest question may refer to something here — e.g. "those", "deep links for that", "the startup one"):\n${lines.join("\n")}\n`;
+}
+
+// ponytail: history folded into BOTH cache keys so different conversations never
+// collide on a stale first-turn entry. Follow-ups rarely cache-hit anyway, but
+// correctness matters. \x00 separator matches the existing key convention.
+function historyHash(history?: ShelfHistoryEntry[]): string {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(history ?? []))
+    .digest("hex")
+    .slice(0, 16);
+}
 
 interface LoadedTemplate {
   content: string;
@@ -167,13 +198,14 @@ function parseTitle(body: string, fallback: string): string {
 async function buildNavPrompt(
   question: string,
   entries: IndexEntry[],
+  conversation: string,
 ): Promise<{ prompt: string; version: number }> {
   const listing = entries
     .map((e) => `- [${e.relPath}] ${e.title}${e.desc ? ` — ${e.desc}` : ""}`)
     .join("\n");
   const tpl = await loadShelfPrompt("shelf_nav");
   return {
-    prompt: fillTemplate(tpl.content, { listing, question }),
+    prompt: fillTemplate(tpl.content, { listing, question, conversation }),
     version: tpl.version,
   };
 }
@@ -197,6 +229,7 @@ async function buildAnswerPrompt(
   question: string,
   concepts: LoadedConcept[],
   chapterMaps: string,
+  conversation: string,
 ): Promise<{ prompt: string; version: number }> {
   const concept_excerpts = concepts
     .map((c) => `## ${c.title} (from ${c.bookId})\n${c.body}`)
@@ -207,6 +240,7 @@ async function buildAnswerPrompt(
       question,
       concept_excerpts,
       chapter_maps: chapterMaps,
+      conversation,
     }),
     version: tpl.version,
   };
@@ -221,10 +255,13 @@ function isAnswerResult(x: unknown): x is AnswerResult {
 export async function answerShelfQuestion(args: {
   question: string;
   accessibleBookIds: string[];
+  history?: ShelfHistoryEntry[];
 }): Promise<ShelfAnswer> {
   const access = new Set(args.accessibleBookIds);
   const hash = accessHash(args.accessibleBookIds);
   const bookMd5 = `shelf:${hash}`;
+  const conversation = formatHistory(args.history);
+  const histHash = historyHash(args.history);
 
   // Step 0: read index, filter to accessible concepts (LAYER 1).
   let indexMd = "";
@@ -252,8 +289,9 @@ export async function answerShelfQuestion(args: {
   const { prompt: navPrompt, version: navVersion } = await buildNavPrompt(
     args.question,
     filteredEntries,
+    conversation,
   );
-  const navInput = `${args.question}\x00${hash}\x00${navVersion}`;
+  const navInput = `${args.question}\x00${hash}\x00${navVersion}\x00${histHash}`;
   const cachedNav = await getCached<NavResult>(NAV_NS, navInput);
   let selected: string[];
   if (cachedNav) {
@@ -336,8 +374,9 @@ export async function answerShelfQuestion(args: {
     args.question,
     loaded,
     chapterMaps,
+    conversation,
   );
-  const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}`;
+  const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}\x00${histHash}`;
   const cachedAnswer = await getCached<AnswerResult>(ANSWER_NS, answerInput);
   let answer: string;
   if (cachedAnswer) {

@@ -1030,6 +1030,9 @@ async function rebuildSystemPrompt(
     passageText: string | null;
     sectionHref: string | null;
     userId: string;
+    // ponytail: only present on the streamFollowup path (where history matters).
+    // Other callers (none today, but kept permissive) may omit it.
+    messages?: { role: string; content: string }[];
   },
   currentUserMessage?: string
 ): Promise<string> {
@@ -1037,10 +1040,22 @@ async function rebuildSystemPrompt(
     const { getContextSource } = await import("./shelf-knowledge/context-source");
     const { getAccessibleBookIds } = await import("./shelf-knowledge/access");
     const accessibleBookIds = await getAccessibleBookIds(discussion.userId);
+    // ponytail: streamFollowup loads `discussion` BEFORE persisting the
+    // current userMessage (~:905 load → ~:937 persist → :962 this call), so
+    // discussion.messages is exactly the PRIOR turns — no exclusion needed.
+    // Take the last ~6 user/assistant turns for nav + answer context.
+    const history = (discussion.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-6)
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
     const ctx = await getContextSource().buildContext({
       question: currentUserMessage ?? "",
       userId: discussion.userId,
       accessibleBookIds,
+      history,
     });
     return ctx.prompt;
   }

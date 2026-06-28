@@ -106,13 +106,15 @@ BOOK TEXT:
 
 // ponytail: nav/answer templates mirror buildNavPrompt/buildAnswerPrompt in
 // query.ts. Dynamic parts become {{listing}}/{{question}}/{{concept_excerpts}}
-// placeholders (substitution wired up in task C). "at most 5" inlines
-// MAX_CONCEPTS since that's what the LLM literally receives today.
+// /{{conversation}} placeholders (substitution wired up in query.ts). "at most
+// 5" inlines MAX_CONCEPTS since that's what the LLM literally receives today.
+// {{conversation}} is "" on turn 1; on follow-ups it carries the last ~6 turns
+// so a question like "deep links for that?" routes to the right concepts.
 const SHELF_NAV_PROMPT_CONTENT = `You are navigating the user's library knowledge base to find concepts relevant to their question.
 
 Available concepts (only from books the user has access to):
 {{listing}}
-
+{{conversation}}
 User question: {{question}}
 
 Return ONLY valid JSON matching this schema:
@@ -123,11 +125,12 @@ Return ONLY valid JSON matching this schema:
 Constraints:
 - Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
 - Pick only concepts relevant to answering the question.
+- The latest question may refer to something in the recent conversation (e.g. "those", "deep links for that", "the startup one") — pick concepts relevant in that context.
 - Select at most 5.
 - If none are relevant, return an empty array.`;
 
 const SHELF_ANSWER_PROMPT_CONTENT = `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
-
+{{conversation}}
 User question: {{question}}
 
 Concept excerpts:
@@ -312,12 +315,12 @@ async function main() {
     where: { type: "shelf_nav" },
     update: {
       content: SHELF_NAV_PROMPT_CONTENT,
-      version: 1,
+      version: 2,
     },
     create: {
       type: "shelf_nav",
       content: SHELF_NAV_PROMPT_CONTENT,
-      version: 1,
+      version: 2,
     },
   });
 
@@ -325,12 +328,12 @@ async function main() {
     where: { type: "shelf_answer" },
     update: {
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 2,
+      version: 3,
     },
     create: {
       type: "shelf_answer",
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 2,
+      version: 3,
     },
   });
 

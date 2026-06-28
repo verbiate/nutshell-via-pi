@@ -1,4 +1,5 @@
 import type { BuiltPrompt } from "@/server/services/prompt-builder";
+import type { ShelfHistoryEntry } from "./query";
 
 /**
  * A context source backs a "shelf" discussion. Given the user's question and
@@ -15,11 +16,15 @@ export interface ContextSourceStrategy {
   /**
    * Build the system context for one turn. `accessibleBookIds` is the user's
    * UserBookAccess-derived set; the source MUST only draw from those books.
+   * `history` is prior turns of the SAME discussion (none on first turn) —
+   * threaded into nav + answer prompts so a follow-up like "deep links for
+   * that?" routes to the right concepts.
    */
   buildContext(args: {
     question: string;
     userId: string;
     accessibleBookIds: string[];
+    history?: ShelfHistoryEntry[];
   }): Promise<BuiltPrompt>;
 }
 

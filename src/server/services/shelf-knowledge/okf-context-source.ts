@@ -29,10 +29,12 @@ export class OkfContextSource implements ContextSourceStrategy {
     question: string;
     userId: string;
     accessibleBookIds: string[];
+    history?: { role: "user" | "assistant"; content: string }[];
   }): Promise<BuiltPrompt> {
     const answer = await answerShelfQuestion({
       question: args.question,
       accessibleBookIds: args.accessibleBookIds,
+      history: args.history,
     });
     return {
       prompt: answer.prompt,

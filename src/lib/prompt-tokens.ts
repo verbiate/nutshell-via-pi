@@ -77,6 +77,12 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
     appliesTo: ["shelf_answer"],
   },
   {
+    token: "conversation",
+    description:
+      "Recent prior turns of the same shelf discussion (last ~6, User:/Assistant: lines) so a follow-up like 'deep links for that?' routes to and is answered in the context of the prior turn. Empty string on the first turn (no history).",
+    appliesTo: ["shelf_nav", "shelf_answer"],
+  },
+  {
     token: "section_title",
     description: "Title of the section being explained (from the TOC).",
     appliesTo: ["section"],
