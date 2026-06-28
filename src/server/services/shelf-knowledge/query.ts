@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import { db } from "@/server/db";
-import { fillTemplate } from "@/server/services/prompt-builder";
+import {
+  buildChapterIndex,
+  fillTemplate,
+} from "@/server/services/prompt-builder";
 import { getCached, setCached } from "./cache";
 import { completeJson } from "./llm-json";
 import { readWikiFile } from "./wiki-storage";
@@ -45,15 +48,20 @@ User question: {{question}}
 Concept excerpts:
 {{concept_excerpts}}
 
+Chapter maps for cited books — each entry is a ready-to-use link; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
+{{chapter_maps}}
+
+Weave citations INTO THE VISIBLE REPLY as [Chapter Label](#ch:<bookId>:<basename>) using hrefs copied verbatim from the chapter maps above — one link per claim grounded in a specific passage. Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the chapter maps; if a claim is not tied to a specific chapter, leave it as plain text.
+
 Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
 
 Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer>" }`;
+{ "answer": "<your grounded answer with inline #ch: links>" }`;
 
 // ponytail: fallback version mirroring the seeded default so a missing row
 // preserves cache stability. Loaded template.version overrides.
 const FALLBACK_NAV_VERSION = 1;
-const FALLBACK_ANSWER_VERSION = 1;
+const FALLBACK_ANSWER_VERSION = 2;
 
 interface LoadedTemplate {
   content: string;
@@ -188,13 +196,18 @@ function makeNavValidator(
 async function buildAnswerPrompt(
   question: string,
   concepts: LoadedConcept[],
+  chapterMaps: string,
 ): Promise<{ prompt: string; version: number }> {
   const concept_excerpts = concepts
     .map((c) => `## ${c.title} (from ${c.bookId})\n${c.body}`)
     .join("\n\n");
   const tpl = await loadShelfPrompt("shelf_answer");
   return {
-    prompt: fillTemplate(tpl.content, { question, concept_excerpts }),
+    prompt: fillTemplate(tpl.content, {
+      question,
+      concept_excerpts,
+      chapter_maps: chapterMaps,
+    }),
     version: tpl.version,
   };
 }
@@ -292,12 +305,37 @@ export async function answerShelfQuestion(args: {
     return emptyAnswer(bookMd5, FALLBACK_NOTHING_FOUND);
   }
 
+  // Step 3b: build per-cited-book chapter maps so the answer model can emit
+  // inline #ch:<bookId>:<basename> deep links (mirrors discussions.ts
+  // buildAttachmentSuffix). ponytail: cited-book-set is a function of
+  // accessibleSelected (already in the answer cache key), so chapter-map
+  // contents add no new cache axis; ceiling: a re-ingested ToC for an
+  // already-cited book won't invalidate the answer cache until the answer
+  // template version bumps. Acceptable — rare and self-heals on next bump.
+  const citedBookIds = [...new Set(loaded.map((c) => c.bookId))];
+  const tocRows = citedBookIds.length
+    ? await db.epubFile.findMany({
+        where: { id: { in: citedBookIds } },
+        select: { id: true, tocJson: true },
+      })
+    : [];
+  const tocById = new Map(tocRows.map((r) => [r.id, r.tocJson]));
+  const chapterMaps = citedBookIds
+    .map((bid) => {
+      const map = buildChapterIndex(tocById.get(bid) ?? null, 50, bid);
+      return map
+        ? `### ${bid}\n${map}`
+        : `### ${bid}\n(no chapter map available for this book)`;
+    })
+    .join("\n\n");
+
   // Step 4: answer (cached by question+access+selected paths).
   // ponytail: answer template .version folds into the key — independent from
   // nav's version since each template bumps on its own edits.
   const { prompt: answerPrompt, version: answerVersion } = await buildAnswerPrompt(
     args.question,
     loaded,
+    chapterMaps,
   );
   const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}`;
   const cachedAnswer = await getCached<AnswerResult>(ANSWER_NS, answerInput);

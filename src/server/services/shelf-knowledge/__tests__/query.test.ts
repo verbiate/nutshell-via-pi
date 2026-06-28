@@ -47,12 +47,18 @@ User question: {{question}}
 Concept excerpts:
 {{concept_excerpts}}
 
+Chapter maps for cited books — each entry is a ready-to-use link; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
+{{chapter_maps}}
+
+Weave citations INTO THE VISIBLE REPLY as [Chapter Label](#ch:<bookId>:<basename>) using hrefs copied verbatim from the chapter maps above — one link per claim grounded in a specific passage. Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the chapter maps; if a claim is not tied to a specific chapter, leave it as plain text.
+
 Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
 
 Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer>" }`;
+{ "answer": "<your grounded answer with inline #ch: links>" }`;
 
 const SEEDED_VERSION = 1;
+const FALLBACK_ANSWER_VERSION = 2;
 
 // Index fixture mirrors render.ts buildIndex output. bookA + bookB are
 // accessible; bookC is NOT (its concept must be filtered out at every layer).
@@ -684,7 +690,8 @@ Excerpts:
     )!;
     expect(navCall[0].prompt).toContain("Return ONLY valid JSON");
 
-    // Both cache keys use fallback version 1.
+    // ponytail: nav fallback version = 1, answer fallback version = 2 (the
+    // answer template was bumped to inject chapter-map citation instructions).
     const navInput = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )![1] as string;
@@ -692,9 +699,9 @@ Excerpts:
       ([ns]) => ns === "query-answer",
     )![1] as string;
     expect(navInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
-    expect(ansInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
+    expect(ansInput.endsWith(`\x00${FALLBACK_ANSWER_VERSION}`)).toBe(true);
 
-    expect(result.promptVersion).toBe(SEEDED_VERSION);
+    expect(result.promptVersion).toBe(FALLBACK_ANSWER_VERSION);
   });
 
   it("each cache key uses its OWN template version (nav ≠ answer is possible)", async () => {
@@ -733,6 +740,65 @@ Excerpts:
     expect(ansInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
     // Explicitly different versions, each in its own key.
     expect(navInput).not.toBe(ansInput);
+  });
+  it("chapter maps: cited book's ToC injected into answer prompt as #ch:<bookId>:<basename> links", async () => {
+    // ponytail: findMany serves BOTH the toc fetch (Step 3b) and the title
+    // fetch (Step 5) — one mock returns rows with all fields.
+    const TOC = JSON.stringify([
+      { label: "Chapter One", href: "ch1.xhtml" },
+      { label: "Chapter Two", href: "ch2.xhtml" },
+    ]);
+    vi.mocked(db.epubFile.findMany).mockResolvedValue([
+      { id: "bookA", title: "Book A", tocJson: TOC },
+    ] as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+
+    await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    const answerCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Concept excerpts"),
+    )!;
+    expect(answerCall[0].prompt).toContain("[Chapter One](#ch:bookA:ch1.xhtml)");
+    expect(answerCall[0].prompt).toContain("[Chapter Two](#ch:bookA:ch2.xhtml)");
+    // citations array still produced (C2 consumes bookIds)
+    const result = await answerShelfQuestion({
+      question: "q2",
+      accessibleBookIds: ["bookA"],
+    });
+    expect(result.citations.map((c) => c.bookId)).toEqual(["bookA"]);
+  });
+
+  it("chapter maps: cited book with no tocJson → '(no chapter map available)' block, no crash", async () => {
+    vi.mocked(db.epubFile.findMany).mockResolvedValue([
+      { id: "bookA", title: "Book A", tocJson: null },
+    ] as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+
+    await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA"],
+    });
+
+    const answerCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Concept excerpts"),
+    )!;
+    expect(answerCall[0].prompt).toContain(
+      "(no chapter map available for this book)",
+    );
+    expect(answerCall[0].prompt).not.toContain("#ch:bookA:");
   });
 });
 

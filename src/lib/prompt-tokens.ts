@@ -57,7 +57,7 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
       token: "chapter_index",
       description:
         "Ready-to-use markdown citation links for every ToC entry ([Label](#ch:href)). The model copies these verbatim to emit deep links to chapters. Required for explainer citations to render as clickable chapter links.",
-      appliesTo: ["book", "section", "passage", "shelf_answer"],
+      appliesTo: ["book", "section", "passage"],
     },
   {
     token: "text",
@@ -69,6 +69,12 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
     description:
       "The selected snippet: passage text or extracted section text.",
     appliesTo: ["section", "passage"],
+  },
+  {
+    token: "chapter_maps",
+    description:
+      "Per-cited-book chapter maps with prefixed deep-link hrefs ([Label](#ch:<bookId>:<basename>)) the model copies verbatim into the visible reply to cite specific chapters. Empty block per book when no ToC. Only shelf_answer injects this.",
+    appliesTo: ["shelf_answer"],
   },
   {
     token: "section_title",
