@@ -51,7 +51,7 @@ describe("POST /api/discussions", () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     const text = await res.text();
-    expect(text).toContain("bookId and type are required");
+    expect(text).toContain("type is required");
   });
 
   it("returns SSE 400 when type is passage but passageText missing", async () => {

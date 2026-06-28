@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       attachments: rawAttachments,
     } = body as {
       bookId?: string;
-      type?: "passage" | "section" | "book";
+      type?: "passage" | "section" | "book" | "shelf";
       passageText?: string;
       passageCfi?: string;
       sectionHref?: string;
@@ -48,23 +48,36 @@ export async function POST(request: Request) {
       attachments?: unknown;
     };
 
-    if (!bookId || !type) {
-      return sseError("bookId and type are required", 400);
+    if (!type) {
+      return sseError("type is required", 400);
     }
-    if (!["passage", "section", "book"].includes(type)) {
-      return sseError("type must be passage, section, or book", 400);
+    if (!["passage", "section", "book", "shelf"].includes(type)) {
+      return sseError("type must be passage, section, book, or shelf", 400);
     }
-    // Seeded-mode field validation (runs before the access check so a bad
-    // request is 400, not 403 — matches existing endpoint contract).
-    if (type === "passage" && !passageText) {
-      return sseError("passageText is required for passage type", 400);
+    // Shelf discussions require a message (the opening question) — blank-mode
+    // is the only shelf mode. Guard before any streaming branch.
+    if (
+      type === "shelf" &&
+      (typeof message !== "string" || !message.trim())
+    ) {
+      return sseError("message is required for shelf type", 400);
     }
-    if (type === "section" && !sectionHref) {
-      return sseError("sectionHref is required for section type", 400);
+    // ponytail: shelf discussions are book-less — no single bookId, no
+    // verifyBookAccess. Per-book access is enforced inside the context source
+    // via the user's UserBookAccess-derived set (see getAccessibleBookIds).
+    if (type !== "shelf") {
+      if (!bookId) {
+        return sseError("bookId is required for passage/section/book types", 400);
+      }
+      if (type === "passage" && !passageText) {
+        return sseError("passageText is required for passage type", 400);
+      }
+      if (type === "section" && !sectionHref) {
+        return sseError("sectionHref is required for section type", 400);
+      }
+      const hasAccess = await verifyBookAccess(user.id, bookId);
+      if (!hasAccess) return sseError("Access denied", 403);
     }
-
-    const hasAccess = await verifyBookAccess(user.id, bookId);
-    if (!hasAccess) return sseError("Access denied", 403);
 
     const preferredLanguage = language || user.preferredLanguage || "en";
     // ponytail: respect the user's actual tier (regular/pro/admin). Previously
@@ -106,16 +119,58 @@ export async function POST(request: Request) {
       if (typeof message !== "string" || !message.trim()) {
         return sseError("message must be a non-empty string", 400);
       }
-      if (type !== "book") {
-        return sseError("blank discussions are book-level only", 400);
+      if (type !== "book" && type !== "shelf") {
+        return sseError("blank discussions are book- or shelf-level only", 400);
       }
+
+      // Shelf discussions have their own book-less first-turn stream.
+      if (type === "shelf") {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            try {
+              const { streamShelfFirstTurn } = await import(
+                "@/server/services/discussions"
+              );
+              for await (const event of streamShelfFirstTurn({
+                userId: user.id,
+                language: preferredLanguage,
+                tier,
+                userMessage: message,
+              })) {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+                );
+                if (event.type === "error") break;
+              }
+              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+              controller.close();
+            } catch (err: any) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: "error", error: err.message || "Generation failed" })}\n\n`
+                )
+              );
+              controller.close();
+            }
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
           try {
             for await (const event of streamBlankFirstTurn({
               userId: user.id,
-              bookId,
+              bookId: bookId!,
               language: preferredLanguage,
               tier,
               userMessage: message,
@@ -153,7 +208,7 @@ export async function POST(request: Request) {
         try {
           for await (const event of streamInitialDiscussionResponse({
             userId: user.id,
-            bookId,
+            bookId: bookId!,
             type,
             passageText,
             passageCfi,
