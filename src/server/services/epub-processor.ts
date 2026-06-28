@@ -438,14 +438,38 @@ export async function processAndUploadBook(
 }
 
 // ponytail: detached promise wrapper. Keeps processAndUploadBook readable and
-// guarantees a single .catch() path that records to SystemError.
+// guarantees a single .catch() path that records to SystemError. The shelf
+// wiki rebuild chains onto metadata resolution via .then(): it needs
+// bookMetadata.isNarrative to route the prompt branch, so it must wait.
+// Rebuild is fire-and-forget too — upload response never blocks. Wiki cache
+// makes this ~1 new extraction call per upload (existing books/themes are
+// cache hits); if a wiki rebuild ever becomes expensive, add an incremental
+// path in build-wiki rather than here.
 function triggerMetadataExtraction(bookId: string, userId: string): void {
-  void extractBookMetadata(bookId, userId).catch(async (err: unknown) => {
-    await recordError({
-      category: "metadata_extraction_failed",
-      message: err instanceof Error ? err.message : String(err),
-      userId,
-      bookId,
+  void extractBookMetadata(bookId, userId)
+    .then(() => {
+      void rebuildShelfWiki().catch(async (err: unknown) => {
+        await recordError({
+          category: "shelf_wiki_rebuild_failed",
+          message: err instanceof Error ? err.message : String(err),
+          userId,
+          bookId,
+        });
+      });
+    })
+    .catch(async (err: unknown) => {
+      await recordError({
+        category: "metadata_extraction_failed",
+        message: err instanceof Error ? err.message : String(err),
+        userId,
+        bookId,
+      });
     });
-  });
+}
+
+// ponytail: thin local wrapper — lazy import so the wiki module isn't loaded
+// at upload time, matching the codebase's dynamic-import convention.
+async function rebuildShelfWiki(): Promise<void> {
+  const { build } = await import("./shelf-knowledge/build-wiki");
+  await build();
 }
