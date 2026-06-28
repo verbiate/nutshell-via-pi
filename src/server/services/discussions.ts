@@ -444,8 +444,23 @@ export async function* rerollExplainer(params: {
     };
     return;
   }
+  // ponytail: reroll only recovers source context for book/section/passage
+  // discussions (those always have a bookId). A null bookId here is a shelf
+  // discussion, which has no source text to reroll — bail with the same shape
+  // the existing "no source context" guard above uses.
+  if (!discussion.bookId) {
+    yield {
+      type: "error",
+      error: "Cannot reroll: discussion has no source book",
+    };
+    return;
+  }
 
   const type = discussion.type as "passage" | "section" | "book";
+  // ponytail: capture the narrowed bookId once so the closures below
+  // (buildPass2Prompt callback) keep the non-null narrowing across the
+  // function boundary — TS won't propagate it through the callback.
+  const bookId = discussion.bookId;
   const promptData = await buildPromptData({
     type,
     bookId: discussion.bookId,
@@ -490,7 +505,7 @@ export async function* rerollExplainer(params: {
       for await (const evt of streamBookTwoPass({
         pass1Prompt: promptData.prompt,
         buildPass2Prompt: (pass1) =>
-          buildBookPass2Prompt(discussion.bookId, discussion.language, pass1, promptData.bookText).then(
+          buildBookPass2Prompt(bookId, discussion.language, pass1, promptData.bookText).then(
             (r) => r.prompt
           ),
         apiKey,
@@ -647,8 +662,8 @@ export async function listAllDiscussionsForUser(userId: string) {
   // service rather than the client so every render site (~6 in
   // discussions-home.tsx) picks up the fix without per-site changes.
   for (const r of rows) {
-    if (r.book.bookMetadata?.title) r.book.title = r.book.bookMetadata.title;
-    delete (r.book as { bookMetadata?: unknown }).bookMetadata;
+    if (r.book?.bookMetadata?.title) r.book.title = r.book.bookMetadata.title;
+    if (r.book) delete (r.book as { bookMetadata?: unknown }).bookMetadata;
     for (const a of r.attachments) {
       if (a.book?.bookMetadata?.title) a.book.title = a.book.bookMetadata.title;
       if (a.book) delete (a.book as { bookMetadata?: unknown }).bookMetadata;
@@ -749,7 +764,7 @@ type DiscussionAttachmentRow = {
 // only book attachments are checked.
 async function validateNewAttachments(args: {
   userId: string;
-  bookId: string;
+  bookId: string | null;
   tier: string;
   existing: readonly DiscussionAttachmentRow[];
   incoming: readonly NewDiscussionAttachment[];
@@ -780,10 +795,16 @@ async function validateNewAttachments(args: {
   // otherwise we let the request through and rely on the client "X% full"
   // indicator. Upgrade path: a server-side tokenizer count if txtTokens drifts.
   const limit = await getTierBookTokenLimit(args.tier);
-  const b1 = await db.epubFile.findUnique({
-    where: { id: args.bookId },
-    select: { txtTokens: true },
-  });
+  // ponytail: origin-book size guard only applies when the discussion HAS an
+  // origin book (book/section/passage). Shelf discussions (bookId === null)
+  // have no origin book to pair against, so skip the b1 lookup — the per
+  // attached-book b2 lookup below still runs for its own checks.
+  const b1 = args.bookId
+    ? await db.epubFile.findUnique({
+        where: { id: args.bookId },
+        select: { txtTokens: true },
+      })
+    : null;
   for (const a of uniqueNew) {
     const b2 = await db.epubFile.findUnique({
       where: { id: a.bookId },
@@ -984,7 +1005,7 @@ export async function* streamFollowup(params: {
  */
 async function rebuildSystemPrompt(discussion: {
   type: string;
-  bookId: string;
+  bookId: string | null;
   language: string;
   passageText: string | null;
   sectionHref: string | null;
@@ -992,6 +1013,9 @@ async function rebuildSystemPrompt(discussion: {
   if (discussion.type === "passage") {
     if (!discussion.passageText) {
       throw new Error("Discussion has no passageText to rebuild prompt");
+    }
+    if (!discussion.bookId) {
+      throw new Error("passage discussion has no bookId");
     }
     const { buildPassagePrompt } = await import("./prompt-builder");
     const data = await buildPassagePrompt(
@@ -1005,6 +1029,9 @@ async function rebuildSystemPrompt(discussion: {
     if (!discussion.sectionHref) {
       throw new Error("Discussion has no sectionHref to rebuild prompt");
     }
+    if (!discussion.bookId) {
+      throw new Error("section discussion has no bookId");
+    }
     const { buildSectionPrompt } = await import("./prompt-builder");
     const data = await buildSectionPrompt(
       discussion.bookId,
@@ -1014,6 +1041,12 @@ async function rebuildSystemPrompt(discussion: {
     return data.prompt;
   }
   // book
+  // ponytail: book discussions always have a bookId by construction; null here
+  // is an invariant violation (corrupt row), not a normal shelf-discussion
+  // path — throw so it surfaces loudly rather than silently mis-routing.
+  if (!discussion.bookId) {
+    throw new Error("book discussion has no bookId");
+  }
   const { buildBookPrompt } = await import("./prompt-builder");
   const data = await buildBookPrompt(discussion.bookId, discussion.language);
   return data.prompt;
@@ -1033,7 +1066,7 @@ async function rebuildSystemPrompt(discussion: {
  * path: lift into a resolveSectionTitle(book, href) util if a third caller appears.
  */
 async function buildAttachmentSuffix(discussion: {
-  bookId: string;
+  bookId: string | null;
   attachments?:
     | { type: string; sectionHref: string | null; bookId: string | null }[]
     | readonly { type: string; sectionHref: string | null; bookId: string | null }[];
@@ -1048,8 +1081,11 @@ async function buildAttachmentSuffix(discussion: {
   if (sectionAttachments.length === 0 && bookAttachments.length === 0) return "";
 
   // --- sections (from the discussion's own book) ---
+  // ponytail: sections are origin-book-scoped; a shelf discussion has no
+  // origin book to extract sections from, so skip the block entirely when
+  // bookId is null. Attached-book block below still runs.
   let sectionBlock = "";
-  if (sectionAttachments.length > 0) {
+  if (sectionAttachments.length > 0 && discussion.bookId) {
     const book = await db.epubFile.findUnique({
       where: { id: discussion.bookId },
       select: { epubPath: true, tocJson: true },
