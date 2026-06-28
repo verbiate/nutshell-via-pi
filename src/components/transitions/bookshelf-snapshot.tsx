@@ -92,7 +92,7 @@ export function BookshelfSnapshot({
         pointerEvents: "none",
       }}
     >
-      <header className="mx-auto flex h-16 w-full shrink-0 max-w-[1536px] items-center justify-between px-8">
+      <header className="mx-auto flex h-16 w-full shrink-0 max-w-[1536px] items-center justify-between px-8 lg:px-14">
         <img
           src="/images/nutshell_logo_chocolate.svg"
           alt=""

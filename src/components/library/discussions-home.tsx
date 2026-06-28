@@ -439,18 +439,20 @@ function ShelfDraftDetail({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-1 pb-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </button>
+      <div className="px-6">
+        <div className="flex items-center gap-2 border-b border-line pb-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="-ml-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-1 py-4">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {/* Header — mirrors DiscussionDetail's shelf branch (Library icon +
             "Your bookshelf"), consistent with Hotfix A's shelf treatment. */}
         <div className="mb-4 flex gap-3">
@@ -531,7 +533,7 @@ function DiscussionList({
   resolveLabel: (bookId: string, href: string) => string | undefined;
 }) {
   return (
-    <div className="px-1 pb-6">
+    <div className="px-6 pt-2 pb-6">
       <ul className="space-y-2">
         {discussions.map((d) => (
           <li key={d.id}>
@@ -1144,18 +1146,20 @@ export function DiscussionDetail({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-1 pb-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </button>
+      <div className="px-6">
+        <div className="flex items-center gap-2 border-b border-line pb-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="-ml-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-1 py-4">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {/* Header.
             ponytail: shelf branch — book-less thread. Icon tile + fixed title,
             no cover/author/open-book click (shelf answers cite across the
@@ -1263,7 +1267,7 @@ export function DiscussionDetail({
       </div>
 
       {/* Composer — sticky at the bottom of the detail pane. */}
-      <div className="shrink-0 border-t border-line p-2 flex flex-col gap-1.5">
+      <div className="shrink-0 border-t border-line px-6 py-2 flex flex-col gap-1.5">
         <ComposerContextRow
           originBook={
             d.book

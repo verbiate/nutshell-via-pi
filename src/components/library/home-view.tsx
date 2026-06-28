@@ -148,7 +148,7 @@ export function HomeView({
       className="flex w-full flex-col lg:min-h-0 lg:flex-1"
     >
       <div className="grid shrink-0 gap-4 lg:grid-cols-[480px_1fr] lg:items-end lg:gap-6">
-        <div>
+        <div className="px-6">
           <h1 className="type-header">
             {greeting}, {first}
           </h1>
@@ -156,7 +156,7 @@ export function HomeView({
             What will we learn today?
           </p>
         </div>
-        <div className="px-12">
+        <div className="px-6">
           <TabsList className="w-full grid grid-cols-3">
             <TabsTrigger value="bookshelf">Bookshelf</TabsTrigger>
             <TabsTrigger value="explainers">Discussions</TabsTrigger>
@@ -166,7 +166,9 @@ export function HomeView({
       </div>
 
       <div className="mt-8 grid items-start gap-6 lg:grid-cols-[480px_1fr] lg:grid-rows-1 lg:min-h-0 lg:flex-1">
-        <DailyDigest imageSrc={digestSrc} />
+        <div className="px-6 pt-2">
+          <DailyDigest imageSrc={digestSrc} />
+        </div>
         <div className="lg:relative lg:min-h-0 lg:self-stretch lg:overflow-hidden">
           <TabsContent value="bookshelf" className="lg:absolute lg:inset-0">
             <SmoothScrollArea className="lg:absolute lg:inset-0">

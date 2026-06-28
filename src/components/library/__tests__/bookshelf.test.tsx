@@ -38,10 +38,10 @@ describe("Bookshelf", () => {
     expect(html).toContain("items-end");
   });
 
-  it("uses the wider bookshelf padding and cell minimum (150px, px-12)", () => {
+  it("uses the wider bookshelf padding and cell minimum (150px, px-6)", () => {
     const html = render(<Bookshelf books={[coverBook]} />);
     const expected =
-      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-12";
+      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-6";
     const old =
       "grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] items-end gap-x-5 gap-y-6 px-5";
     expect(html).toContain(expected);
@@ -63,10 +63,10 @@ describe("Bookshelf scroll-reveal hook", () => {
 });
 
 describe("BookshelfSkeleton", () => {
-  it("uses the wider bookshelf padding and cell minimum (150px, px-12)", () => {
+  it("uses the wider bookshelf padding and cell minimum (150px, px-6)", () => {
     const html = render(<BookshelfSkeleton />);
     const expected =
-      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-12";
+      "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] items-end gap-x-5 gap-y-6 px-6";
     const old =
       "grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] items-end gap-x-5 gap-y-6 px-5";
     expect(html).toContain(expected);

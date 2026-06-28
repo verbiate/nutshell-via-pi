@@ -492,15 +492,10 @@ export function SceneTransitionProvider({
         // book "leaves" the shelf (visibility:hidden retains the grid cell). The
         // real shelf unmounts; this clone is what's seen receding during the
         // slide-in, and it should show an empty slot where the book was.
-        // Only do this when a cover fly is inbound (opts.hero present) —
-        // otherwise (e.g. player-thumbnail nav) the book has no visual leaving
-        // motion and vacating it just makes it pop out of the shelf.
-        if (opts?.hero && opts?.bookId) {
-          const departing = clone.querySelector(
-            `[data-book-card][data-book-id="${CSS.escape(opts.bookId)}"]`,
-          ) as HTMLElement | null;
-          if (departing) departing.style.visibility = "hidden";
-        }
+        // ponytail: the departing book is NOT vacated here — it stays visible in
+        // the receding clone until the fly clone starts (arrival effect). Vacating
+        // at click time creates a gap (book gone from shelf, fly clone not yet
+        // started) that reads as a blink. See the forward arrival effect.
         layer.replaceChildren(clone);
         // Make the layer visible BEFORE applying scroll offsets: scrollTop set
         // on a display:none subtree is ignored/reset by browsers, so the recede
@@ -523,7 +518,7 @@ export function SceneTransitionProvider({
           willChange: "opacity",
         });
         pendingRef.current = { url, direction };
-        pendingFlyRef.current = opts?.hero ? { hero: opts.hero } : null;
+        pendingFlyRef.current = opts?.hero ? { hero: opts.hero, bookId: opts?.bookId } : null;
         // A forward cover fly is now inbound — the reader holds its real
         // sidebar cover hidden (forwardFlyActive) until the fly lands.
         if (opts?.hero) setForwardFlyActive(true);
@@ -808,6 +803,17 @@ export function SceneTransitionProvider({
           // forwardFlyActive): snap to its actual rect, crossfade the clone out
           // as the reader reveals the real cover.
           if (hero && flyLayerRef.current) {
+            // ponytail: vacate the departing book in the clone NOW — deferred
+            // from navigate() so the book stays visible during the recede and
+            // disappears in the same frame the fly clone starts. No gap, no blink.
+            const pf = pendingFlyRef.current;
+            if (pf?.bookId) {
+              const cloneEl = cloneLayerRef.current?.firstElementChild as HTMLElement | null;
+              const departing = cloneEl?.querySelector(
+                `[data-book-card][data-book-id="${CSS.escape(pf.bookId)}"]`,
+              ) as HTMLElement | null;
+              if (departing) departing.style.visibility = "hidden";
+            }
             const node = hero.node;
             flyLayerRef.current.appendChild(node);
             const target = computeReaderCoverRect();
