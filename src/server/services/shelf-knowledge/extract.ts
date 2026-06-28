@@ -1,8 +1,7 @@
-import { chunkText } from "@/lib/tts/chunk";
+import crypto from "node:crypto";
 import { loadBookText } from "@/server/services/prompt-builder";
 import { getCached, setCached } from "./cache";
 import { completeJson } from "./llm-json";
-import { slug } from "./render";
 import type { OkfConcept } from "./types";
 
 export type BookForm = "narrative" | "nonfiction" | "unknown";
@@ -20,10 +19,11 @@ export interface ExtractionResult {
   form: BookForm;
 }
 
-// ponytail: the raw shape the LLM emits per chunk. sourceBookId/topic/form are
-// OPTIONAL here because the model sometimes hallucinates them — the code stamps
-// all three authoritatively (see extractBookConcepts), so any model-supplied
-// value is ignored. bodyFields is Record<string,string> to match OkfConcept.
+// ponytail: the raw shape the LLM emits for the whole book. sourceBookId/topic
+// are OPTIONAL here because the model sometimes hallucinates them — the code
+// stamps both authoritatively (see extractBookConcepts), so any model-supplied
+// value is ignored. form is OPTIONAL except in the generic template where it
+// is REQUIRED (used to backfill null-metadata books).
 interface RawConcept {
   conceptType: string;
   title: string;
@@ -34,20 +34,24 @@ interface RawConcept {
   form?: unknown;
 }
 
-interface ChunkResult {
-  concepts: RawConcept[];
+interface BookResult {
   topic: string;
   form?: BookForm;
+  concepts: RawConcept[];
 }
 
-// ─── Prompt templates (Task 11 tunes these) ─────────────────────────────────
-// Each ends with "PASSAGE:" so the caller can append the chunk text verbatim.
-// The JSON schema is identical across all three; only the concept vocabulary
-// and the form-handling instruction differ.
+// ─── Prompt templates (whole-book framing) ──────────────────────────────────
+// Each ends with "BOOK TEXT:\n" so the caller appends the FULL book text in one
+// pass. The JSON schema is identical across all three; only the concept
+// vocabulary and the form-handling instruction differ. Long-context models
+// (gemini-3.5-flash, 1M context) read the entire book and emit one coherent,
+// book-level concept set — no chunking, no per-passage fragments.
 
 export const NARRATIVE_PROMPT = `You are extracting concepts from a work of narrative fiction (a novel, story cycle, memoir, or narrative book).
 
-From the PASSAGE below, extract the key narrative concepts that a reader would want to revisit and that other books on this shelf might echo. Return ONLY valid JSON matching this exact schema:
+Read the ENTIRE BOOK below in full and extract its ~10-12 MOST IMPORTANT, book-level concepts — the characters, themes, settings, plot arcs, and symbols a reader would revisit and that other books on this shelf might echo. These must be coherent whole-book concepts, not passage-local mentions.
+
+Return ONLY valid JSON matching this exact schema:
 
 {
   "topic": "<2-4 word shelf topic this book belongs to, e.g. 'coming of age' or 'space exploration'>",
@@ -68,14 +72,16 @@ Use these conceptType vocabularies and their bodyFields:
 - plotArc    → { "summary": "...", "beats": "key turning points" }
 - symbol     → { "meaning": "...", "occurrences": "..." }
 
-Extract ONLY the 4-6 most important, well-supported concepts from this passage — this is a HARD CAP: never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Only include a concept the passage clearly establishes. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
+Aim for ~10-12 concepts — this is a HARD CAP: never exceed 12. Each concept must be significant enough that a reader would revisit it; skip minor mentions. Quality over quantity. Keep every bodyField value to ONE sentence (max ~25 words). Cross-reference related concepts via relatedConceptNames using the EXACT title of another concept in this book. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
 
-PASSAGE:
+BOOK TEXT:
 `;
 
 export const NONFICTION_PROMPT = `You are extracting concepts from a nonfiction work (essay collection, textbook, treatise, investigative book, or exposition).
 
-From the PASSAGE below, extract the key concepts a reader would want to revisit and that other books on this shelf might engage. Return ONLY valid JSON matching this exact schema:
+Read the ENTIRE BOOK below in full and extract its ~10-12 MOST IMPORTANT, book-level concepts — the arguments, frameworks, evidence, key concepts, and definitions a reader would want to revisit and that other books on this shelf might engage. These must be coherent whole-book concepts, not passage-local mentions.
+
+Return ONLY valid JSON matching this exact schema:
 
 {
   "topic": "<2-4 word shelf topic this book belongs to, e.g. 'cognitive science' or 'economic history'>",
@@ -96,14 +102,14 @@ Use these conceptType vocabularies and their bodyFields:
 - keyConcept  → { "definition": "...", "significance": "..." }
 - definition  → { "term": "...", "definition": "..." }
 
-Extract ONLY the 4-6 most important, well-supported concepts from this passage — this is a HARD CAP: never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Only include a concept the passage clearly establishes. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
+Aim for ~10-12 concepts — this is a HARD CAP: never exceed 12. Each concept must be significant enough that a reader would revisit it; skip minor mentions. Quality over quantity. Keep every bodyField value to ONE sentence (max ~25 words). Cross-reference related concepts via relatedConceptNames using the EXACT title of another concept in this book. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
 
-PASSAGE:
+BOOK TEXT:
 `;
 
 export const GENERIC_PROMPT = `You are extracting concepts from a book whose form is unknown — it may be narrative fiction or nonfiction.
 
-FIRST, infer whether the PASSAGE below is primarily NARRATIVE (fiction/memoir/story) or NONFICTION (exposition/argument/reference). Then extract the concepts appropriate to that form and tag it.
+FIRST, read the ENTIRE BOOK below in full and infer whether it is primarily NARRATIVE (fiction/memoir/story) or NONFICTION (exposition/argument/reference). Then extract its ~10-12 MOST IMPORTANT, book-level concepts appropriate to that form — the kind a reader would revisit and that other books on this shelf might engage. These must be coherent whole-book concepts, not passage-local mentions.
 
 Return ONLY valid JSON matching this exact schema:
 
@@ -134,26 +140,17 @@ If you inferred NONFICTION, use these instead:
 - keyConcept → { "definition", "significance" }
 - definition → { "term", "definition" }
 
-The "form" field is REQUIRED — your inference backfills this book's classification. Extract ONLY the 4-6 most important concepts from this passage — HARD CAP, never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Do not invent sourceBookId or topic — those are stamped by the caller.
+The "form" field is REQUIRED — your inference backfills this book's classification. Aim for ~10-12 concepts — HARD CAP, never exceed 12. Each concept must be significant enough that a reader would revisit it; skip minor mentions. Quality over quantity. Keep every bodyField value to ONE sentence (max ~25 words). Cross-reference related concepts via relatedConceptNames using the EXACT title of another concept in this book. Do not invent sourceBookId or topic — those are stamped by the caller.
 
-PASSAGE:
+BOOK TEXT:
 `;
 
-const CHUNK_OPTS = { softLimit: 6000, hardLimit: 8000 };
 const CACHE_NS = "extract";
 // ponytail: cache-invalidation knob. Bump whenever the prompt text or the
 // extracted schema changes — without it, prompt edits silently serve output
-// extracted under the old prompt. isNarrative branch is also folded into the
-// key so re-classifying a book (null→true) re-runs against the new branch.
-const EXTRACT_PROMPT_VERSION = 3;
-// ponytail: prompt asks nicely (the "HARD CAP: never exceed 6" line); code
-// enforces. The model frequently ignores it (one book yielded 146 concepts,
-// truncating JSON mid-stream), so this slice is what actually bounds output.
-const MAX_CONCEPTS_PER_CHUNK = 6;
-// ponytail: bounded concurrency for the per-chunk LLM loop. OpenRouter
-// tolerates concurrent requests; lower if rate-limited, raise if the model
-// tier allows. Sequential was ~4hrs for 2,380 chunks; 6× cuts that to ~40min.
-export const EXTRACT_CONCURRENCY = 6;
+// extracted under the old prompt. v5: chunked → whole-book extraction; the
+// approach fundamentally changed so a clean version reflects that.
+const EXTRACT_PROMPT_VERSION = 5;
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -171,7 +168,7 @@ export function isRawConcept(x: unknown): x is RawConcept {
   );
 }
 
-export function isChunkResult(x: unknown): x is ChunkResult {
+export function isBookResult(x: unknown): x is BookResult {
   if (!isRecord(x)) return false;
   if (typeof x.topic !== "string") return false;
   if (!Array.isArray(x.concepts)) return false;
@@ -188,128 +185,61 @@ function choosePrompt(isNarrative: boolean | null): string {
   return GENERIC_PROMPT;
 }
 
-function mostCommon(values: string[]): string | undefined {
-  if (values.length === 0) return undefined;
-  const counts = new Map<string, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
-  let best = values[0];
-  let bestCount = 0;
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i];
-    const c = counts.get(v)!;
-    if (c > bestCount) {
-      best = v;
-      bestCount = c;
-    }
-  }
-  return best;
-}
-
-// ponytail: bounded-concurrency map preserving index order. next++ is safe —
-// JS is single-threaded, workers interleave only at awaits, so the counter
-// never races. Results land in original positions for deterministic merge.
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function worker() {
-    while (true) {
-      const i = next++;
-      if (i >= items.length) return;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
-  );
-  return results;
+function sha256Hex(input: string): string {
+  return crypto.createHash("sha256").update(input).digest("hex");
 }
 
 export async function extractBookConcepts(
   book: BookForExtraction,
 ): Promise<ExtractionResult> {
   const text = await loadBookText(book.txtPath);
-  const chunks = chunkText(text, CHUNK_OPTS);
   const isNarrative = book.bookMetadata?.isNarrative ?? null;
+
+  // ponytail: per-book cache key = bookId + version + text-hash. Text hash
+  // handles re-upload (same bookId, different content → re-extract); bookId +
+  // version for hygiene. isNarrative is folded into the prompt choice, but
+  // not the key — a re-classified null→known book would re-extract via the
+  // version bump that ships with such a change.
+  const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${sha256Hex(text).slice(0, 16)}`;
+  const cached = await getCached<BookResult>(CACHE_NS, cacheInput);
+  if (cached) return materialize(book, cached, isNarrative);
+
   const prompt = choosePrompt(isNarrative);
+  const result = await completeJson({
+    prompt: prompt + text,
+    validate: isBookResult,
+  });
+  await setCached(CACHE_NS, cacheInput, result);
+  return materialize(book, result, isNarrative);
+}
 
-  // ponytail: each chunk is cache-check → LLM-on-miss → cache-write, with no
-  // shared mutable state between chunks → safe to run concurrently. Cache keys
-  // are per-chunk (content-hashed) so concurrent writes never collide.
-  const results = await mapWithConcurrency(
-    chunks,
-    EXTRACT_CONCURRENCY,
-    async (chunk): Promise<ChunkResult> => {
-      // ponytail: cache key = bookId + version + isNarrative branch + chunk.
-      // Version + isNarrative are folded in so prompt/branch edits bust the
-      // cache; without that, a tuned prompt would reuse the old branch's output.
-      const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${isNarrative ?? "?"}\x00${chunk}`;
-      const cached = await getCached<ChunkResult>(CACHE_NS, cacheInput);
-      if (cached) return cached;
-      const result = await completeJson({
-        prompt: prompt + chunk,
-        validate: isChunkResult,
-      });
-      // ponytail: code-level cap — slice before caching so both the cached and
-      // returned values are bounded. Bounds per-chunk JSON size (fixes
-      // truncation) and lifts signal density; merge/dedupe is unchanged.
-      const capped: ChunkResult = {
-        ...result,
-        concepts: result.concepts.slice(0, MAX_CONCEPTS_PER_CHUNK),
-      };
-      await setCached(CACHE_NS, cacheInput, capped);
-      return capped;
-    },
-  );
-
-  // ponytail: book-level topic = plurality vote across per-chunk topics. The
-  // LLM may phrase the topic slightly differently per chunk; the most common
-  // phrasing wins. Falls back to "unknown" only if every chunk was empty.
-  const bookTopic = mostCommon(results.map((r) => r.topic)) ?? "unknown";
-
-  // ponytail: form comes from metadata when known; otherwise it's the model's
-  // inference (plurality across chunks). This backfills the unclassified books.
+// ponytail: stamps sourceBookId + topic authoritatively and resolves form from
+// metadata when known; otherwise trusts the model's inference (backfill). One
+// coherent concept set per book → no merge/dedupe (unlike the old chunk loop).
+function materialize(
+  book: BookForExtraction,
+  result: BookResult,
+  isNarrative: boolean | null,
+): ExtractionResult {
+  const topic = result.topic;
   let form: BookForm;
   if (isNarrative === true) form = "narrative";
   else if (isNarrative === false) form = "nonfiction";
   else {
-    const inferred = mostCommon(results.map((r) => r.form ?? "unknown")) ?? "unknown";
+    const inferred = result.form ?? "unknown";
     form = inferred === "narrative" || inferred === "nonfiction" ? inferred : "unknown";
   }
-
-  // Merge concepts across chunks; dedupe by slug(title). On collision, keep the
-  // first and union bodyFields (later wins on key conflict) + relatedConceptNames.
-  const bySlug = new Map<string, OkfConcept>();
-  for (const raw of results.flatMap((r) => r.concepts)) {
-    const s = slug(raw.title);
-    // ponytail: stamp sourceBookId/topic/form OURSELVES — never trust the LLM
-    // for book identity or shelf grouping. A hallucinated sourceBookId would
-    // orphan the concept from its book in the rendered wiki; a hallucinated
-    // topic would mis-file it on the shelf.
-    const concept: OkfConcept = {
-      conceptType: raw.conceptType,
-      title: raw.title,
-      bodyFields: { ...raw.bodyFields },
-      relatedConceptNames: [...raw.relatedConceptNames],
-      sourceBookId: book.id,
-      topic: bookTopic,
-      form,
-    };
-    const existing = bySlug.get(s);
-    if (!existing) {
-      bySlug.set(s, concept);
-      continue;
-    }
-    existing.bodyFields = { ...existing.bodyFields, ...concept.bodyFields };
-    for (const n of concept.relatedConceptNames) {
-      if (!existing.relatedConceptNames.includes(n)) {
-        existing.relatedConceptNames.push(n);
-      }
-    }
-  }
-
-  return { concepts: [...bySlug.values()], topic: bookTopic, form };
+  const concepts: OkfConcept[] = result.concepts.map((raw) => ({
+    conceptType: raw.conceptType,
+    title: raw.title,
+    bodyFields: { ...raw.bodyFields },
+    relatedConceptNames: [...raw.relatedConceptNames],
+    // ponytail: never trust the LLM for book identity or shelf grouping. A
+    // hallucinated sourceBookId would orphan the concept from its book in the
+    // rendered wiki; a hallucinated topic would mis-file it on the shelf.
+    sourceBookId: book.id,
+    topic,
+    form,
+  }));
+  return { concepts, topic, form };
 }
