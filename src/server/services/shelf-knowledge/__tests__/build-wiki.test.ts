@@ -76,13 +76,10 @@ describe("preview() — pure estimate, NO LLM/spend", () => {
 
     const result = await preview();
 
-    const total = 9000;
-    const chunkCount = Math.ceil((total * 4) / 6000); // ceil(36000/6000) = 6
     expect(result).toEqual({
       bookCount: 3,
-      totalTxtTokens: total,
-      chunkCount,
-      extractionCalls: chunkCount,
+      totalTxtTokens: 9000,
+      extractionCalls: 3, // one whole-book call per book
       synthesisCalls: Math.min(3, Math.ceil(3 / 3)), // = 1
       model: "qwen/qwen3-235b-a22b",
     });
@@ -107,8 +104,7 @@ describe("preview() — pure estimate, NO LLM/spend", () => {
 
     const result = await preview();
     expect(result.totalTxtTokens).toBe(0);
-    expect(result.chunkCount).toBe(0);
-    expect(result.extractionCalls).toBe(0);
+    expect(result.extractionCalls).toBe(1); // one call per book
     expect(result.synthesisCalls).toBe(Math.min(1, Math.ceil(1 / 3))); // min(1,1)=1
   });
 });

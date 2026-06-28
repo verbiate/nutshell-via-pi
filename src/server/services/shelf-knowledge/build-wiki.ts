@@ -13,15 +13,11 @@ import { getShelfLlmConfig } from "./config";
 import type { OkfClusterTheme, OkfConcept } from "./types";
 
 const STATUS_KEY = "shelfWikiStatus";
-const CHUNK_SOFT_LIMIT = 6000;
-// ponytail: ~4 chars/token → chars = tokens*4; one completeJson call per chunk.
-const CHARS_PER_TOKEN = 4;
 
 export interface PreviewResult {
   bookCount: number;
   totalTxtTokens: number;
-  chunkCount: number;
-  extractionCalls: number;
+  extractionCalls: number;  // one whole-book LLM call per book
   synthesisCalls: number;
   model: string;
 }
@@ -34,30 +30,23 @@ export interface PreviewResult {
 export async function preview(): Promise<PreviewResult> {
   const books = await db.epubFile.findMany({
     select: {
-      id: true,
       txtTokens: true,
-      title: true,
-      bookMetadata: { select: { isNarrative: true } },
     },
   });
   const totalTxtTokens = books.reduce(
     (sum, b) => sum + (b.txtTokens ?? 0),
     0,
   );
-  const chunkCount = Math.ceil(
-    (totalTxtTokens * CHARS_PER_TOKEN) / CHUNK_SOFT_LIMIT,
-  );
   const cfg = await getShelfLlmConfig();
   const bookCount = books.length;
-  // ponytail: real cluster count can't be known without extracting (topics are
-  // LLM-emitted). Estimate = min(books, ceil(books/3)). Revisit once extraction
-  // runs; the true count is the post-extract clusterByTopic length.
+  // ponytail: extraction is one whole-book call per book (long-context model).
+  // Real cluster count can't be known without extracting (topics are LLM-emitted);
+  // estimate = min(books, ceil(books/3)). Revisit once extraction runs.
   const synthesisCalls = Math.min(bookCount, Math.ceil(bookCount / 3));
   return {
     bookCount,
     totalTxtTokens,
-    chunkCount,
-    extractionCalls: chunkCount,
+    extractionCalls: bookCount,
     synthesisCalls,
     model: cfg.model,
   };
