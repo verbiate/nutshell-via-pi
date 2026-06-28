@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Compass, Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
@@ -128,23 +127,18 @@ export function HomeView({
   // route the user to Bookshelf. Uncontrolled (defaultValue) elsewhere.
   const [tabValue, setTabValue] = useState("bookshelf");
 
-  // ponytail: shelf-bar input. Inline create (not prop-lifted) — the bar
-  // owns the queryClient + invalidate so DiscussionsHomeView's list refreshes.
-  const queryClient = useQueryClient();
+  // ponytail: shelf-bar input. The bar no longer fetches — it hands the
+  // question off to DiscussionsHomeView, whose ShelfDraftDetail owns the
+  // message list and streams the first answer live (mirrors the reader
+  // panel's blank-discussion flow, discussions-panel.tsx sendDraftMessage).
+  // submitting is belt-and-suspenders for a double-Enter in the brief hand-off
+  // window; the real guard is the cleared query (Enter clears it synchronously).
   const [shelfQuery, setShelfQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const onCreateShelfDiscussion = async (question: string) => {
-    const res = await fetch("/api/discussions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "shelf", message: question }),
-    });
-    if (!res.ok) throw new Error("Failed to create shelf discussion");
-    // ponytail: SSE first turn streams in the background; for the list we just
-    // invalidate so the new shelf row appears. Plan 3 will land the user
-    // inside the new thread watching the stream.
-    await queryClient.invalidateQueries({ queryKey: ["discussions-all"] });
-  };
+  // ponytail: draft hand-off — non-null while a shelf question waits for
+  // DiscussionsHomeView to consume it. Cleared via onPendingShelfConsumed
+  // (called from the child's consume effect) so it doesn't re-trigger.
+  const [pendingShelfQuestion, setPendingShelfQuestion] = useState<string | null>(null);
 
   return (
     <Tabs
@@ -222,17 +216,13 @@ export function HomeView({
                         const q = shelfQuery.trim();
                         if (!q || submitting) return;
                         e.preventDefault();
+                        // ponytail: hand off — DiscussionsHomeView's
+                        // ShelfDraftDetail POSTs + streams the first answer
+                        // live. No fetch here; the bar doesn't own messages.
                         setSubmitting(true);
-                        void onCreateShelfDiscussion(q)
-                          .then(() => {
-                            setShelfQuery("");
-                            setTabValue("explainers");
-                          })
-                          .catch((err) => {
-                            // ponytail: minimal — keep the user's text so they can retry; Plan 3 adds polished error UX.
-                            console.error("shelf discussion create failed", err);
-                          })
-                          .finally(() => setSubmitting(false));
+                        setPendingShelfQuestion(q);
+                        setShelfQuery("");
+                        setTabValue("explainers");
                       }}
                       className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground/70"
                     />
@@ -255,6 +245,13 @@ export function HomeView({
               discussions={discussions ?? []}
               onGoToBookshelf={() => setTabValue("bookshelf")}
               books={books}
+              pendingShelfQuestion={pendingShelfQuestion}
+              onPendingShelfConsumed={() => {
+                // ponytail: child has seeded its draft state; release the
+                // hand-off value + re-enable the bar.
+                setPendingShelfQuestion(null);
+                setSubmitting(false);
+              }}
             />
           </TabsContent>
           <TabsContent value="find" className="lg:absolute lg:inset-0">

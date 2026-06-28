@@ -54,6 +54,11 @@ interface Props {
   // ponytail: user's library — feeds the composer's "Other book" attach
   // picker. Optional so the component can render standalone (tests).
   books?: LibraryBook[];
+  // ponytail: draft hand-off from the shelf bar. When non-null, the view
+  // mounts a ShelfDraftDetail that POSTs + streams the first answer live.
+  // Cleared via onPendingShelfConsumed once the child seeds its draft state.
+  pendingShelfQuestion?: string | null;
+  onPendingShelfConsumed?: () => void;
 }
 
 type NavigateFn = (
@@ -75,10 +80,33 @@ function booksLabel(titles: string[]): string {
   return titles[0] ?? "";
 }
 
-export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, books = [] }: Props) {
+export function DiscussionsHomeView({
+  discussions: initial,
+  onGoToBookshelf,
+  books = [],
+  pendingShelfQuestion,
+  onPendingShelfConsumed,
+}: Props) {
   const router = useRouter();
   const { markPendingReaderNav } = useReaderNav();
+  const queryClient = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // ponytail: shelf-bar draft hand-off target. The consume effect copies the
+  // prop into local draftQuestion + flips activeId to the draft sentinel so
+  // ShelfDraftDetail persists after the parent clears the prop. The render
+  // branch below also reads the prop directly (draftQ) so the draft mounts on
+  // the FIRST hand-off render — without that, a useEffect (passive, post-
+  // paint) would flash the empty-state/list for one frame before the draft.
+  const [draftQuestion, setDraftQuestion] = useState<string | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!pendingShelfQuestion) return;
+    setDraftQuestion(pendingShelfQuestion);
+    setActiveId("draft:shelf");
+    onPendingShelfConsumed?.();
+  }, [pendingShelfQuestion, onPendingShelfConsumed]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ponytail: refetch on mount so a reader→library return shows fresh
   // updatedAt ordering. SSR data seeds initialData so there's no flash.
@@ -154,6 +182,80 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, boo
     router.push(`/book/${bookId}/reader`);
   };
 
+  // ponytail: draft question — prop-driven on the first hand-off render
+  // (avoids a one-frame empty-state flash before the consume effect runs),
+  // state-driven thereafter. Stable key so ShelfDraftDetail doesn't remount
+  // across the prop → state transition (its stream is guarded either way).
+  const draftQ = pendingShelfQuestion ?? draftQuestion;
+
+  // ponytail: shelf-bar draft hand-off — render BEFORE the empty-state so a
+  // brand-new user asking their first shelf question sees the streaming draft,
+  // not "No discussions yet". Chat-shaped detail views (draft / stub / found)
+  // share the NO-SmoothScrollArea rule: DiscussionDetail's flex-col + overflow
+  // middle needs height from TabsContent (lg:absolute lg:inset-0) so the
+  // composer anchors to the bottom (mirrors reader-sidebar.tsx:116-126).
+  if ((activeId === "draft:shelf" || pendingShelfQuestion) && draftQ) {
+    return (
+      <div className="h-full min-h-[60vh] lg:min-h-0">
+        <ShelfDraftDetail
+          key={draftQ}
+          question={draftQ}
+          onPinned={(id) => {
+            // ponytail: pin fires from the child's finally (post-stream) so
+            // the per-thread GET can't race in and clobber the streaming
+            // bubble. Invalidating here lands the new row so find() hits and
+            // the real DiscussionDetail takes over from the missing-row stub.
+            setActiveId(id);
+            setDraftQuestion(null);
+            queryClient.invalidateQueries({ queryKey: ["discussions-all"] });
+          }}
+          onBack={() => {
+            setActiveId(null);
+            setDraftQuestion(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  const active = activeId && activeId !== "draft:shelf"
+    ? discussions.find((d) => d.id === activeId)
+    : undefined;
+
+  // ponytail: missing-row stub — after onPinned(id) the new shelf row isn't in
+  // `discussions` until ["discussions-all"] refetches, so find() misses and
+  // DiscussionDetail wouldn't mount. Synthesize a minimal shelf stub so it
+  // mounts and its ["discussion", id] GET loads the persisted thread. Only
+  // shelf reaches here: book/section/passage ids always come from the list
+  // (already fetched), so a missing find is exclusively the shelf-draft pin race.
+  if (activeId && activeId !== "draft:shelf" && !active) {
+    return (
+      <div className="h-full min-h-[60vh] lg:min-h-0">
+        <DiscussionDetail
+          discussion={shelfDiscussionStub(activeId)}
+          onBack={() => setActiveId(null)}
+          navigate={navigate}
+          resolveLabel={resolveLabel}
+          books={books}
+        />
+      </div>
+    );
+  }
+
+  if (active) {
+    return (
+      <div className="h-full min-h-[60vh] lg:min-h-0">
+        <DiscussionDetail
+          discussion={active}
+          onBack={() => setActiveId(null)}
+          navigate={navigate}
+          resolveLabel={resolveLabel}
+          books={books}
+        />
+      </div>
+    );
+  }
+
   if (discussions.length === 0) {
     return (
       <div className="flex h-full min-h-[50vh] flex-col items-center justify-center lg:min-h-0">
@@ -178,28 +280,6 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, boo
     );
   }
 
-  const active = activeId ? discussions.find((d) => d.id === activeId) : null;
-
-  if (active) {
-    // ponytail: chat-shaped — NO SmoothScrollArea wrapper. DiscussionDetail's
-    // internal `flex h-full flex-col` + `flex-1 overflow-y-auto` middle needs
-    // height to propagate from TabsContent (lg:absolute lg:inset-0) so the
-    // composer anchors to the bottom. Wrapping in SmoothScrollArea breaks
-    // that chain — the composer scrolls away with content. Mirrors the
-    // reader-sidebar bulb pattern (reader-sidebar.tsx:116-126).
-    return (
-      <div className="h-full min-h-[60vh] lg:min-h-0">
-        <DiscussionDetail
-          discussion={active}
-          onBack={() => setActiveId(null)}
-          navigate={navigate}
-          resolveLabel={resolveLabel}
-          books={books}
-        />
-      </div>
-    );
-  }
-
   // ponytail: list view — wrap in SmoothScrollArea so the list scrolls with
   // the custom scrollbar + Lenis smoothing, matching the Bookshelf tab.
   return (
@@ -212,6 +292,207 @@ export function DiscussionsHomeView({ discussions: initial, onGoToBookshelf, boo
       />
     </SmoothScrollArea>
   );
+}
+
+// ─── Shelf-bar draft detail ─────────────────────────────────────────────────
+
+// ponytail: the landing view for a shelf-bar Enter. Owns the POST + first-
+// answer SSE stream (mirrors discussions-panel.tsx sendDraftMessage:749-860).
+// Seeded optimistically with the user's question + an empty assistant bubble;
+// pins the real id back to the parent only in finally (post-stream) so the
+// per-thread GET can't race in and clobber the streaming bubble. No composer —
+// once pinned, the real DiscussionDetail mounts with the full thread +
+// follow-up composer. Reuses MessageBubble for identical bubble treatment.
+function ShelfDraftDetail({
+  question,
+  onPinned,
+  onBack,
+}: {
+  question: string;
+  onPinned: (id: string) => void;
+  onBack: () => void;
+}) {
+  const [localMessages, setLocalMessages] = useState<Message[]>(() => {
+    const nowIso = new Date().toISOString();
+    return [
+      { role: "user", content: question, createdAt: nowIso },
+      { role: "assistant", content: "", createdAt: nowIso },
+    ];
+  });
+  // ponytail: assistantIndex is always 1 (user msg at 0). Index-patch is
+  // mandatory — object-reference equality breaks after the first chunk
+  // (lesson from playground/page.tsx + sendFollowup).
+  const assistantIndex = 1;
+  const [streaming, setStreaming] = useState(true);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // ponytail: guard against StrictMode double-invoke (the POST + stream must
+  // fire once). pinnedRef guards a double onPinned if finally ever ran twice.
+  const startedRef = useRef(false);
+  const pinnedRef = useRef(false);
+
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let newDiscussionId: string | null = null;
+    let errored = false;
+    let acc = "";
+
+    (async () => {
+      try {
+        const res = await fetch("/api/discussions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "shelf", message: question }),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          errored = true;
+          setStreamError(res.ok ? "No response stream." : `Failed (${res.status})`);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const payload = line.slice(6).trim();
+            if (payload === "[DONE]" || !payload) continue;
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.type === "discussion" && parsed.discussionId) {
+                newDiscussionId = parsed.discussionId;
+              } else if (parsed.type === "chunk" && parsed.chunk) {
+                acc += parsed.chunk;
+                const snapshot = acc;
+                setLocalMessages((prev) =>
+                  prev.map((m, i) =>
+                    i === assistantIndex ? { ...m, content: snapshot } : m
+                  )
+                );
+              } else if (parsed.type === "error") {
+                errored = true;
+                setStreamError(parsed.error || "The stream failed.");
+                return;
+              }
+            } catch {
+              // skip malformed SSE line
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          errored = true;
+          setStreamError(err?.message || "Network error.");
+        }
+      } finally {
+        setStreaming(false);
+        abortRef.current = null;
+        // ponytail: pin in finally, AFTER the stream ends — pinning on the
+        // `discussion` event lets the per-thread GET race in and clobber the
+        // streaming bubble (discussions-panel.tsx:855-858 discipline). Skip
+        // pin on error/abort so the user stays on the draft with the partial
+        // bubble + the in-UI error message. signal.aborted guards the Back
+        // button: an abort mid-stream means the user dismissed the draft, so
+        // we must not yank them into the just-pinned thread (the row still
+        // appears in the list after the refetch — consistent with dismiss).
+        if (
+          newDiscussionId &&
+          !errored &&
+          !pinnedRef.current &&
+          !controller.signal.aborted
+        ) {
+          pinnedRef.current = true;
+          onPinned(newDiscussionId);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [question]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-line px-1 pb-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-1 py-4">
+        {/* Header — mirrors DiscussionDetail's shelf branch (Library icon +
+            "Your bookshelf"), consistent with Hotfix A's shelf treatment. */}
+        <div className="mb-4 flex gap-3">
+          <div className="flex h-16 w-12 items-center justify-center rounded bg-muted text-muted-foreground">
+            <Library className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 self-center">
+            <h2 className="font-serif text-lg font-medium text-espresso">Your bookshelf</h2>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {localMessages.map((m, i) => (
+            <MessageBubble
+              key={i}
+              role={m.role}
+              content={m.content}
+              streaming={
+                streaming &&
+                i === localMessages.length - 1 &&
+                m.role === "assistant"
+              }
+            />
+          ))}
+        </div>
+
+        {/* ponytail: surface stream errors in-UI (do NOT call onPinned on
+            error — the user stays on the draft so the partial bubble + the
+            error message persist for retry via Back). */}
+        {streamError && (
+          <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {streamError}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ponytail: minimal DiscussionListItem for the missing-row race after a shelf
+// pin. Book-less (type:"shelf") so DiscussionDetail's shelf branch renders and
+// its ["discussion", id] GET fires to load the full persisted thread. Satisfies
+// the type without lying — every field the detail reads is correct for a shelf.
+function shelfDiscussionStub(id: string): DiscussionListItem {
+  const nowIso = new Date().toISOString();
+  return {
+    id,
+    type: "shelf",
+    passageText: null,
+    passageCfi: null,
+    sectionHref: null,
+    language: "en",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    attachments: [],
+    explainer: null,
+    _count: { messages: 0 },
+  };
 }
 
 // ─── Sub-components (same file, ponytail) ──────────────────────────────────
