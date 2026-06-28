@@ -326,15 +326,19 @@ function ShelfDraftDetail({
   const [streaming, setStreaming] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // ponytail: guard against StrictMode double-invoke (the POST + stream must
-  // fire once). pinnedRef guards a double onPinned if finally ever ran twice.
-  const startedRef = useRef(false);
+  // ponytail: pinnedRef guards a double onPinned if finally ever ran twice.
   const pinnedRef = useRef(false);
 
   /* eslint-disable react-hooks/exhaustive-deps */
+  // ponytail: no fire-once guard — effect intentionally re-fires after the
+  // StrictMode cleanup-then-restart cycle (mount₁ POST₁ → cleanup abort₁ →
+  // remount POST₂ streams + pins). A startedRef guard would early-return on
+  // remount and leave a dead stream in dev. Tradeoff: POST₁'s abort creates
+  // one orphan shelf discussion server-side (the row is created before the
+  // stream starts; the client never pins it because !controller.signal.aborted
+  // suppresses the pin in finally). Dev-only noise — production is single-
+  // mount, no orphan, clean stream. The dead-stream bug is the worse outcome.
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
     let newDiscussionId: string | null = null;
