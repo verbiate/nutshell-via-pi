@@ -4,6 +4,14 @@ vi.mock("@/server/services/prompt-builder", () => ({
   loadBookText: vi.fn(),
 }));
 
+vi.mock("@/server/db", () => ({
+  db: {
+    promptTemplate: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
+
 vi.mock("../cache", () => ({
   getCached: vi.fn(),
   setCached: vi.fn(),
@@ -14,6 +22,7 @@ vi.mock("../llm-json", () => ({
 }));
 
 import { loadBookText } from "@/server/services/prompt-builder";
+import { db } from "@/server/db";
 import { getCached, setCached } from "../cache";
 import { completeJson } from "../llm-json";
 import {
@@ -41,6 +50,23 @@ describe("extractBookConcepts (whole-book, single LLM call)", () => {
     vi.mocked(loadBookText).mockResolvedValue(FULL_BOOK_TEXT);
     vi.mocked(getCached).mockResolvedValue(null);
     vi.mocked(setCached).mockResolvedValue(undefined);
+    // ponytail: by default the DB returns the verbatim seeded content (= the
+    // in-code constants) with version 5, so existing assertions on prompt
+    // content still hold. Per-type overrides happen in individual tests.
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      const type = where.type;
+      if (type === "shelf_extract_narrative") {
+        return { content: NARRATIVE_PROMPT, version: 5 };
+      }
+      if (type === "shelf_extract_nonfiction") {
+        return { content: NONFICTION_PROMPT, version: 5 };
+      }
+      return { content: GENERIC_PROMPT, version: 5 };
+    }) as never);
     vi.mocked(completeJson).mockResolvedValue({
       topic: "heroism",
       form: "narrative",
@@ -234,6 +260,69 @@ describe("extractBookConcepts (whole-book, single LLM call)", () => {
     expect(ns).toBe("extract");
     expect(input).toContain("book-1");
     expect(value).toBeDefined();
+  });
+
+  it("uses DB template content + version in the prompt and cache key", async () => {
+    const CUSTOM_CONTENT = "CUSTOM DB PROMPT BODY\nBOOK TEXT:\n";
+    const CUSTOM_VERSION = 42;
+    vi.mocked(db.promptTemplate.findUnique).mockResolvedValue({
+      content: CUSTOM_CONTENT,
+      version: CUSTOM_VERSION,
+    } as never);
+
+    await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    // Prompt = template.content + book text.
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(completeJson).mock.calls[0][0].prompt;
+    expect(prompt).toBe(CUSTOM_CONTENT + FULL_BOOK_TEXT);
+
+    // Cache key carries the DB version (not the old constant 5).
+    const cacheInput = vi.mocked(getCached).mock.calls[0][1] as string;
+    expect(cacheInput).toContain(`\x00${CUSTOM_VERSION}\x00`);
+    expect(cacheInput).not.toContain(`\x005\x00`);
+  });
+
+  it("falls back to the in-code constant + version 5 when the DB row is missing", async () => {
+    vi.mocked(db.promptTemplate.findUnique).mockResolvedValue(null);
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(completeJson).mock.calls[0][0].prompt;
+    expect(prompt.startsWith(NARRATIVE_PROMPT)).toBe(true);
+    // No crash; cache key uses fallback version 5.
+    const cacheInput = vi.mocked(getCached).mock.calls[0][1] as string;
+    expect(cacheInput).toContain(`\x005\x00`);
+    expect(result.form).toBe("narrative");
+  });
+
+  it("queries the correct shelf_extract_* type per isNarrative branch", async () => {
+    const seen: string[] = [];
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      seen.push(where.type);
+      return { content: GENERIC_PROMPT, version: 5 };
+    }) as never);
+
+    await extractBookConcepts({ ...baseBook, bookMetadata: { isNarrative: true } });
+    await extractBookConcepts({ ...baseBook, bookMetadata: { isNarrative: false } });
+    await extractBookConcepts({ ...baseBook, bookMetadata: null });
+
+    expect(seen).toEqual([
+      "shelf_extract_narrative",
+      "shelf_extract_nonfiction",
+      "shelf_extract_generic",
+    ]);
   });
 });
 

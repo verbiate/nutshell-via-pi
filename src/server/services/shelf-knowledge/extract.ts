@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { db } from "@/server/db";
 import { loadBookText } from "@/server/services/prompt-builder";
 import { getCached, setCached } from "./cache";
 import { completeJson } from "./llm-json";
@@ -146,11 +147,40 @@ BOOK TEXT:
 `;
 
 const CACHE_NS = "extract";
-// ponytail: cache-invalidation knob. Bump whenever the prompt text or the
-// extracted schema changes — without it, prompt edits silently serve output
-// extracted under the old prompt. v5: chunked → whole-book extraction; the
-// approach fundamentally changed so a clean version reflects that.
-const EXTRACT_PROMPT_VERSION = 5;
+// ponytail: fallback version when a DB template row is missing (fresh DB not
+// yet seeded, or the row was deleted). Mirrors the seeded version so behavior
+// is unchanged in the happy path. Loaded template.version overrides this.
+const FALLBACK_EXTRACT_VERSION = 5;
+
+interface LoadedTemplate {
+  content: string;
+  version: number;
+}
+
+// ponytail: maps isNarrative → the seeded shelf_extract_* template type. Falls
+// back to the matching in-code constant + version 5 if the DB row is missing —
+// defensive, never crashes the pipeline. Mirrors prompt-builder.ts:128.
+async function loadExtractTemplate(
+  isNarrative: boolean | null,
+): Promise<LoadedTemplate> {
+  const type =
+    isNarrative === true
+      ? "shelf_extract_narrative"
+      : isNarrative === false
+        ? "shelf_extract_nonfiction"
+        : "shelf_extract_generic";
+  const fallbackContent =
+    isNarrative === true
+      ? NARRATIVE_PROMPT
+      : isNarrative === false
+        ? NONFICTION_PROMPT
+        : GENERIC_PROMPT;
+  const row = await db.promptTemplate.findUnique({ where: { type } });
+  if (!row) {
+    return { content: fallbackContent, version: FALLBACK_EXTRACT_VERSION };
+  }
+  return { content: row.content, version: row.version };
+}
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -182,12 +212,6 @@ export function isBookResult(x: unknown): x is BookResult {
   return true;
 }
 
-function choosePrompt(isNarrative: boolean | null): string {
-  if (isNarrative === true) return NARRATIVE_PROMPT;
-  if (isNarrative === false) return NONFICTION_PROMPT;
-  return GENERIC_PROMPT;
-}
-
 function sha256Hex(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
@@ -198,18 +222,20 @@ export async function extractBookConcepts(
   const text = await loadBookText(book.txtPath);
   const isNarrative = book.bookMetadata?.isNarrative ?? null;
 
-  // ponytail: per-book cache key = bookId + version + text-hash. Text hash
-  // handles re-upload (same bookId, different content → re-extract); bookId +
-  // version for hygiene. isNarrative is folded into the prompt choice, but
-  // not the key — a re-classified null→known book would re-extract via the
-  // version bump that ships with such a change.
-  const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${sha256Hex(text).slice(0, 16)}`;
+  const template = await loadExtractTemplate(isNarrative);
+
+  // ponytail: per-book cache key = bookId + template-version + text-hash. The
+  // template version comes from the DB row → an admin save bumps the version →
+  // cache miss → next build re-extracts with the new prompt. Text hash handles
+  // re-upload (same bookId, different content → re-extract). isNarrative is
+  // folded into the template choice, not the key — a re-classified null→known
+  // book re-extracts via the version bump shipped with such a change.
+  const cacheInput = `${book.id}\x00${template.version}\x00${sha256Hex(text).slice(0, 16)}`;
   const cached = await getCached<BookResult>(CACHE_NS, cacheInput);
   if (cached) return materialize(book, cached, isNarrative);
 
-  const prompt = choosePrompt(isNarrative);
   const result = await completeJson<BookResult>({
-    prompt: prompt + text,
+    prompt: template.content + text,
     validate: isBookResult,
     // ponytail: extraction is mechanical — minimal reasoning avoids burning the
     // output budget on hidden thinking. 16k headroom for ~12 verbose concepts.
