@@ -40,3 +40,13 @@ export interface OkfConcept {
   topic: string;
   form: "narrative" | "nonfiction" | "unknown";
 }
+
+// ponytail: cross-book theme Task 7 emits; render.ts links its
+// relatedConceptIds ONLY when the caller has validated them as real relPaths.
+// relatedConceptIds are concept relPaths (the concept's canonical ID).
+export interface OkfClusterTheme {
+  topic: string;
+  title: string;
+  summary: string;
+  relatedConceptIds: string[];
+}
