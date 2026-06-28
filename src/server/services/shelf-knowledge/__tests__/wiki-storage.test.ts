@@ -26,12 +26,10 @@ import {
 const file = (name: string) => ({
   name,
   isFile: () => true,
-  isDirectory: () => false,
 });
 const dir = (name: string) => ({
   name,
   isFile: () => false,
-  isDirectory: () => true,
 });
 
 describe("wiki-storage", () => {
@@ -41,7 +39,7 @@ describe("wiki-storage", () => {
   });
 
   describe("writeWikiFile", () => {
-    it("delegates to storage.write with the shelf-wiki/ prefix and returns its result", async () => {
+    it("delegates to storage.write with the shelf-wiki/ prefix and returns the input rel", async () => {
       vi.mocked(storage.write).mockResolvedValue("shelf-wiki/foo.md");
 
       const out = await writeWikiFile("foo.md", "# body");
@@ -121,6 +119,24 @@ describe("wiki-storage", () => {
       const out = await listWikiFiles();
 
       expect(out).toEqual([]);
+    });
+  });
+
+  describe("path traversal guard", () => {
+    it("rejects rel/prefix strings that escape the wiki root", async () => {
+      await expect(readWikiFile("../etc/passwd")).rejects.toThrow(/escapes root/);
+      await expect(readWikiFile("foo/../../etc")).rejects.toThrow(/escapes root/);
+      await expect(writeWikiFile("../x", "y")).rejects.toThrow(/escapes root/);
+      await expect(removeWikiFile("../x")).rejects.toThrow(/escapes root/);
+      await expect(wikiExists("../x")).rejects.toThrow(/escapes root/);
+      await expect(listWikiFiles("../x")).rejects.toThrow(/escapes root/);
+    });
+
+    it("allows clean rel paths through to the storage adapter", async () => {
+      vi.mocked(storage.read).mockResolvedValue(Buffer.from("ok", "utf-8"));
+
+      await expect(readWikiFile("notes/a.md")).resolves.toBe("ok");
+      expect(storage.read).toHaveBeenCalledWith("shelf-wiki/notes/a.md");
     });
   });
 });
