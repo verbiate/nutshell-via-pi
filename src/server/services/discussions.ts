@@ -68,7 +68,7 @@ export interface InitialResponseEvent {
 export interface CreateDiscussionParams {
   userId: string;
   bookId: string;
-  type: "passage" | "section" | "book";
+  type: "passage" | "section" | "book" | "shelf";
   passageText?: string;
   passageCfi?: string;
   sectionHref?: string;
@@ -84,7 +84,11 @@ export interface CreateDiscussionParams {
 export async function* streamInitialDiscussionResponse(
   params: CreateDiscussionParams
 ): AsyncGenerator<InitialResponseEvent> {
-  const { userId, bookId, type, language, tier } = params;
+  // ponytail: shelf discussions have their own entry point
+  // (streamShelfFirstTurn) and never reach here — narrow so the explainer
+  // cache / contentHash lookups (which are book-scoped) see the narrow union.
+  const { userId, bookId, language, tier } = params;
+  const type = params.type as "passage" | "section" | "book";
 
   // Build the prompt + source text via existing prompt-builder
   const promptData = await buildPromptData(params);
@@ -357,7 +361,7 @@ export async function* streamInitialDiscussionResponse(
  * reroll can reuse it without synthesizing a full CreateDiscussionParams.
  */
 export async function buildPromptData(params: {
-  type: "passage" | "section" | "book";
+  type: "passage" | "section" | "book" | "shelf";
   bookId: string;
   language: string;
   passageText?: string;
@@ -388,6 +392,14 @@ export async function buildPromptData(params: {
       params.sectionHref,
       params.language
     );
+  }
+  if (type === "shelf") {
+    // ponytail: shelf discussions don't build context from a single book — the
+    // ContextSourceStrategy owns it. buildPromptData is shared with reroll,
+    // which is book-scoped, so we throw here if ever hit (reroll has no shelf
+    // path). The live shelf flows call the strategy directly via
+    // streamShelfFirstTurn / rebuildSystemPrompt, not through here.
+    throw new Error("shelf discussions build context via ContextSourceStrategy, not buildPromptData");
   }
   // book
   const { buildBookPrompt } = await import("./prompt-builder");
@@ -940,7 +952,7 @@ export async function* streamFollowup(params: {
   // Build the system message by re-filling the template with the source text.
   // ponytail: we stored passageText/sectionHref in the discussion row at
   // creation so we can rebuild the prompt without re-reading the book.
-  const systemPrompt = await rebuildSystemPrompt(discussion);
+  const systemPrompt = await rebuildSystemPrompt(discussion, params.userMessage);
   const attachmentSuffix = await buildAttachmentSuffix(discussion);
 
   // Compose messages array. The explainer seed is optional — blank
@@ -1003,13 +1015,28 @@ export async function* streamFollowup(params: {
  * prompt-builder. We need the original source text in the prompt so the
  * model has context for follow-up questions.
  */
-async function rebuildSystemPrompt(discussion: {
-  type: string;
-  bookId: string | null;
-  language: string;
-  passageText: string | null;
-  sectionHref: string | null;
-}): Promise<string> {
+async function rebuildSystemPrompt(
+  discussion: {
+    type: string;
+    bookId: string | null;
+    language: string;
+    passageText: string | null;
+    sectionHref: string | null;
+    userId: string;
+  },
+  currentUserMessage?: string
+): Promise<string> {
+  if (discussion.type === "shelf") {
+    const { getContextSource } = await import("./shelf-knowledge/context-source");
+    const { getAccessibleBookIds } = await import("./shelf-knowledge/access");
+    const accessibleBookIds = await getAccessibleBookIds(discussion.userId);
+    const ctx = await getContextSource().buildContext({
+      question: currentUserMessage ?? "",
+      userId: discussion.userId,
+      accessibleBookIds,
+    });
+    return ctx.prompt;
+  }
   if (discussion.type === "passage") {
     if (!discussion.passageText) {
       throw new Error("Discussion has no passageText to rebuild prompt");
@@ -1285,6 +1312,90 @@ export async function* streamBlankFirstTurn(params: {
     where: { id: discussion.id },
     data: { updatedAt: new Date() },
   });
+
+  yield { type: "done" };
+}
+
+export interface ShelfFirstTurnEvent {
+  type: "discussion" | "chunk" | "error" | "done";
+  discussionId?: string;
+  chunk?: string;
+  error?: string;
+}
+
+/**
+ * Start a shelf-scoped discussion: create a discussion with NO book and NO
+ * explainer, then answer the user's opening question using context from the
+ * ContextSourceStrategy (OKF in Plan 2; stub in Plan 1). The book-less analog
+ * of streamBlankFirstTurn. Emits the new discussionId up front so the client
+ * can pin it, then streams the assistant reply.
+ */
+export async function* streamShelfFirstTurn(params: {
+  userId: string;
+  language: string;
+  tier: "regular" | "pro" | "admin";
+  userMessage: string;
+}): AsyncGenerator<ShelfFirstTurnEvent> {
+  const { userId, language, tier, userMessage } = params;
+
+  const { getContextSource } = await import("./shelf-knowledge/context-source");
+  const { getAccessibleBookIds } = await import("./shelf-knowledge/access");
+  const { getShelfLlmConfig } = await import("./shelf-knowledge/config");
+
+  const source = getContextSource();
+  // ponytail: surface "not ready" as a clean error event rather than a 500 —
+  // e.g. wiki not yet built (Plan 2). Stub is always ready.
+  if (!(await source.isReady())) {
+    yield { type: "error", error: "The bookshelf knowledge base isn't built yet. An admin can build it from the admin panel." };
+    return;
+  }
+
+  const accessibleBookIds = await getAccessibleBookIds(userId);
+  if (accessibleBookIds.length === 0) {
+    yield { type: "error", error: "Add a book to your shelf first, then ask again." };
+    return;
+  }
+
+  // Shelf discussion: no book, no explainer, no cache key, no passage/section.
+  const discussion = await db.discussion.create({
+    data: { userId, bookId: null, type: "shelf", language, tier },
+  });
+  yield { type: "discussion", discussionId: discussion.id };
+
+  await db.discussionMessage.create({
+    data: { discussionId: discussion.id, role: "user", content: userMessage },
+  });
+
+  const ctx = await source.buildContext({ question: userMessage, userId, accessibleBookIds });
+
+  const { apiKey, model } = await getShelfLlmConfig();
+  if (!apiKey) {
+    yield { type: "error", error: "OpenRouter API key not configured" };
+    return;
+  }
+
+  const messages: { role: "system" | "user"; content: string }[] = [
+    { role: "system", content: ctx.prompt },
+    { role: "user", content: userMessage },
+  ];
+
+  const { streamChat } = await import("./openrouter");
+  let fullContent = "";
+  try {
+    for await (const chunk of streamChat({ apiKey, model, messages })) {
+      fullContent += chunk;
+      yield { type: "chunk", chunk };
+    }
+  } catch (err: any) {
+    const message = err instanceof OpenRouterError ? err.message : "Generation failed";
+    yield { type: "error", error: message };
+    return;
+  }
+
+  await db.discussionMessage.create({
+    data: { discussionId: discussion.id, role: "assistant", content: fullContent, modelId: model },
+  });
+  await db.discussion.update({ where: { id: discussion.id }, data: { updatedAt: new Date() } });
 
   yield { type: "done" };
 }
