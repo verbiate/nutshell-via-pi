@@ -84,11 +84,18 @@ export interface CreateDiscussionParams {
 export async function* streamInitialDiscussionResponse(
   params: CreateDiscussionParams
 ): AsyncGenerator<InitialResponseEvent> {
-  // ponytail: shelf discussions have their own entry point
-  // (streamShelfFirstTurn) and never reach here — narrow so the explainer
-  // cache / contentHash lookups (which are book-scoped) see the narrow union.
   const { userId, bookId, language, tier } = params;
-  const type = params.type as "passage" | "section" | "book";
+  // ponytail: shelf discussions have their own entry point
+  // (streamShelfFirstTurn) and never reach here — a runtime guard narrows
+  // `type` so the explainer cache / contentHash lookups (which are book-scoped)
+  // see the narrow union, and an accidental call throws loudly instead of
+  // silently mis-routing through an unchecked cast.
+  if (params.type === "shelf") {
+    throw new Error(
+      "shelf discussions must use streamShelfFirstTurn, not streamInitialDiscussionResponse"
+    );
+  }
+  const type = params.type;
 
   // Build the prompt + source text via existing prompt-builder
   const promptData = await buildPromptData(params);
@@ -1338,6 +1345,9 @@ export async function* streamShelfFirstTurn(params: {
 }): AsyncGenerator<ShelfFirstTurnEvent> {
   const { userId, language, tier, userMessage } = params;
 
+  // ponytail: ALL pre-flight runs BEFORE the discussion row is created so a
+  // missing API key or a buildContext throw can't leave a dangling discussion
+  // row + orphaned user message. Order: ready → books → key → context.
   const { getContextSource } = await import("./shelf-knowledge/context-source");
   const { getAccessibleBookIds } = await import("./shelf-knowledge/access");
   const { getShelfLlmConfig } = await import("./shelf-knowledge/config");
@@ -1356,7 +1366,27 @@ export async function* streamShelfFirstTurn(params: {
     return;
   }
 
-  // Shelf discussion: no book, no explainer, no cache key, no passage/section.
+  // ponytail: resolve key before buildContext — an unconfigured shelf key bails
+  // with no row written. buildContext is the heaviest step (OKF retrieval), so
+  // we run it last and wrap it so a throw becomes an error event (mirroring
+  // the streamChat catch below) rather than a 500.
+  const { apiKey, model } = await getShelfLlmConfig();
+  if (!apiKey) {
+    yield { type: "error", error: "OpenRouter API key not configured" };
+    return;
+  }
+
+  let ctx;
+  try {
+    ctx = await source.buildContext({ question: userMessage, userId, accessibleBookIds });
+  } catch (err: any) {
+    const message = err instanceof OpenRouterError ? err.message : "Failed to build shelf context";
+    yield { type: "error", error: message };
+    return;
+  }
+
+  // Pre-flight passed — now safe to persist. Shelf discussion: no book, no
+  // explainer, no cache key, no passage/section.
   const discussion = await db.discussion.create({
     data: { userId, bookId: null, type: "shelf", language, tier },
   });
@@ -1365,14 +1395,6 @@ export async function* streamShelfFirstTurn(params: {
   await db.discussionMessage.create({
     data: { discussionId: discussion.id, role: "user", content: userMessage },
   });
-
-  const ctx = await source.buildContext({ question: userMessage, userId, accessibleBookIds });
-
-  const { apiKey, model } = await getShelfLlmConfig();
-  if (!apiKey) {
-    yield { type: "error", error: "OpenRouter API key not configured" };
-    return;
-  }
 
   const messages: { role: "system" | "user"; content: string }[] = [
     { role: "system", content: ctx.prompt },
