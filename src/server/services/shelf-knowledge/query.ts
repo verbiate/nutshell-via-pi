@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "@/server/db";
+import { fillTemplate } from "@/server/services/prompt-builder";
 import { getCached, setCached } from "./cache";
 import { completeJson } from "./llm-json";
 import { readWikiFile } from "./wiki-storage";
@@ -14,9 +15,66 @@ const ANSWER_NS = "query-answer";
 // ponytail: cap selected concepts to bound read IO + answer context. Raise if
 // answers regularly need >5 concepts to ground.
 const MAX_CONCEPTS = 5;
-// ponytail: cache-invalidation knob — bump when either prompt text changes.
-// Without it, prompt edits silently serve stale answers.
-export const QUERY_PROMPT_VERSION = 1;
+
+// ponytail: fallback content used when the DB template row is missing (fresh
+// DB not yet seeded, or the row was deleted). Mirrors the seeded defaults
+// (seed.ts SHELF_NAV_PROMPT_CONTENT / SHELF_ANSWER_PROMPT_CONTENT) verbatim so
+// behavior is unchanged in the happy path. Loaded template.content overrides.
+const FALLBACK_NAV_CONTENT = `You are navigating the user's library knowledge base to find concepts relevant to their question.
+
+Available concepts (only from books the user has access to):
+{{listing}}
+
+User question: {{question}}
+
+Return ONLY valid JSON matching this schema:
+{
+  "conceptRelPaths": ["<a path from the list above>"]
+}
+
+Constraints:
+- Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
+- Pick only concepts relevant to answering the question.
+- Select at most ${MAX_CONCEPTS}.
+- If none are relevant, return an empty array.`;
+
+const FALLBACK_ANSWER_CONTENT = `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
+
+User question: {{question}}
+
+Concept excerpts:
+{{concept_excerpts}}
+
+Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
+
+Return ONLY valid JSON matching this schema:
+{ "answer": "<your grounded answer>" }`;
+
+// ponytail: fallback version mirroring the seeded default so a missing row
+// preserves cache stability. Loaded template.version overrides.
+const FALLBACK_NAV_VERSION = 1;
+const FALLBACK_ANSWER_VERSION = 1;
+
+interface LoadedTemplate {
+  content: string;
+  version: number;
+}
+
+// ponytail: loads a shelf prompt template from DB with a hardcoded fallback.
+// Mirrors extract.ts:loadExtractTemplate. Never throws — a missing row is
+// treated as "use the seeded default" rather than crashing the query.
+async function loadShelfPrompt(
+  type: "shelf_nav" | "shelf_answer",
+): Promise<LoadedTemplate> {
+  const fallback =
+    type === "shelf_nav"
+      ? { content: FALLBACK_NAV_CONTENT, version: FALLBACK_NAV_VERSION }
+      : { content: FALLBACK_ANSWER_CONTENT, version: FALLBACK_ANSWER_VERSION };
+  const row = await db.promptTemplate.findUnique({ where: { type } });
+  return row
+    ? { content: row.content, version: row.version }
+    : fallback;
+}
 
 const FALLBACK_NO_ACCESS =
   "I couldn't find any relevant concepts in books you have access to for that.";
@@ -98,27 +156,18 @@ function parseTitle(body: string, fallback: string): string {
   return m ? unescapeYaml(m[1]) : fallback;
 }
 
-function buildNavPrompt(question: string, entries: IndexEntry[]): string {
+async function buildNavPrompt(
+  question: string,
+  entries: IndexEntry[],
+): Promise<{ prompt: string; version: number }> {
   const listing = entries
     .map((e) => `- [${e.relPath}] ${e.title}${e.desc ? ` — ${e.desc}` : ""}`)
     .join("\n");
-  return `You are navigating the user's library knowledge base to find concepts relevant to their question.
-
-Available concepts (only from books the user has access to):
-${listing}
-
-User question: ${question}
-
-Return ONLY valid JSON matching this schema:
-{
-  "conceptRelPaths": ["<a path from the list above>"]
-}
-
-Constraints:
-- Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
-- Pick only concepts relevant to answering the question.
-- Select at most ${MAX_CONCEPTS}.
-- If none are relevant, return an empty array.`;
+  const tpl = await loadShelfPrompt("shelf_nav");
+  return {
+    prompt: fillTemplate(tpl.content, { listing, question }),
+    version: tpl.version,
+  };
 }
 
 // ponytail: type guard closes over the accessible known set so any invented or
@@ -136,24 +185,18 @@ function makeNavValidator(
   };
 }
 
-function buildAnswerPrompt(
+async function buildAnswerPrompt(
   question: string,
   concepts: LoadedConcept[],
-): string {
-  const blocks = concepts
+): Promise<{ prompt: string; version: number }> {
+  const concept_excerpts = concepts
     .map((c) => `## ${c.title} (from ${c.bookId})\n${c.body}`)
     .join("\n\n");
-  return `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
-
-User question: ${question}
-
-Concept excerpts:
-${blocks}
-
-Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
-
-Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer>" }`;
+  const tpl = await loadShelfPrompt("shelf_answer");
+  return {
+    prompt: fillTemplate(tpl.content, { question, concept_excerpts }),
+    version: tpl.version,
+  };
 }
 
 function isAnswerResult(x: unknown): x is AnswerResult {
@@ -190,7 +233,14 @@ export async function answerShelfQuestion(args: {
   const knownPaths = new Set(filteredEntries.map((e) => e.relPath));
 
   // Step 1: navigate — which concept files to read (cached by question+access).
-  const navInput = `${args.question}\x00${hash}`;
+  // ponytail: load the nav template up-front so its .version can fold into the
+  // cache key (admin save → version bump → cache miss → re-navigate with new
+  // prompt). The prompt body is only used on cache miss.
+  const { prompt: navPrompt, version: navVersion } = await buildNavPrompt(
+    args.question,
+    filteredEntries,
+  );
+  const navInput = `${args.question}\x00${hash}\x00${navVersion}`;
   const cachedNav = await getCached<NavResult>(NAV_NS, navInput);
   let selected: string[];
   if (cachedNav) {
@@ -199,7 +249,7 @@ export async function answerShelfQuestion(args: {
     selected = cachedNav.conceptRelPaths.filter((p) => knownPaths.has(p));
   } else {
     const nav = await completeJson({
-      prompt: buildNavPrompt(args.question, filteredEntries),
+      prompt: navPrompt,
       validate: makeNavValidator(knownPaths),
     });
     selected = nav.conceptRelPaths;
@@ -243,14 +293,20 @@ export async function answerShelfQuestion(args: {
   }
 
   // Step 4: answer (cached by question+access+selected paths).
-  const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}`;
+  // ponytail: answer template .version folds into the key — independent from
+  // nav's version since each template bumps on its own edits.
+  const { prompt: answerPrompt, version: answerVersion } = await buildAnswerPrompt(
+    args.question,
+    loaded,
+  );
+  const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}`;
   const cachedAnswer = await getCached<AnswerResult>(ANSWER_NS, answerInput);
   let answer: string;
   if (cachedAnswer) {
     answer = cachedAnswer.answer;
   } else {
     const res = await completeJson({
-      prompt: buildAnswerPrompt(args.question, loaded),
+      prompt: answerPrompt,
       validate: isAnswerResult,
     });
     answer = res.answer;
@@ -289,18 +345,21 @@ ${sourcesLines}`;
     sourceText,
     bookText: sourceText,
     bookMd5,
-    promptVersion: QUERY_PROMPT_VERSION,
+    promptVersion: answerVersion,
     citations,
   };
 }
 
 function emptyAnswer(bookMd5: string, message: string): ShelfAnswer {
+  // ponytail: empty/fallback answers are hardcoded (never produced by the
+  // answer LLM), so the answer template's version doesn't apply. Use the
+  // fallback version (= seeded default) to keep the field stable.
   return {
     prompt: message,
     sourceText: "",
     bookText: "",
     bookMd5,
-    promptVersion: QUERY_PROMPT_VERSION,
+    promptVersion: FALLBACK_ANSWER_VERSION,
     citations: [],
   };
 }

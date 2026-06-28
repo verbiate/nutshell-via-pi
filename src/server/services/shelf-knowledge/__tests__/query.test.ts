@@ -7,14 +7,52 @@ vi.mock("../cache", () => ({
   setCached: vi.fn(),
 }));
 vi.mock("@/server/db", () => ({
-  db: { epubFile: { findMany: vi.fn() } },
+  db: {
+    epubFile: { findMany: vi.fn() },
+    promptTemplate: { findUnique: vi.fn() },
+  },
 }));
 
 import { readWikiFile } from "../wiki-storage";
 import { completeJson } from "../llm-json";
 import { getCached, setCached } from "../cache";
 import { db } from "@/server/db";
-import { answerShelfQuestion, QUERY_PROMPT_VERSION } from "../query";
+import { answerShelfQuestion } from "../query";
+
+// ponytail: by default the DB returns verbatim seeded content (= the in-code
+// fallbacks) with version 1, so existing assertions on prompt content still
+// hold. Per-type overrides happen in individual tests.
+const NAV_DEFAULT_CONTENT = `You are navigating the user's library knowledge base to find concepts relevant to their question.
+
+Available concepts (only from books the user has access to):
+{{listing}}
+
+User question: {{question}}
+
+Return ONLY valid JSON matching this schema:
+{
+  "conceptRelPaths": ["<a path from the list above>"]
+}
+
+Constraints:
+- Every conceptRelPath MUST be one of the exact paths listed above — do not invent or alter them.
+- Pick only concepts relevant to answering the question.
+- Select at most 5.
+- If none are relevant, return an empty array.`;
+
+const ANSWER_DEFAULT_CONTENT = `Answer the user's question using ONLY the provided concept excerpts from their library knowledge base.
+
+User question: {{question}}
+
+Concept excerpts:
+{{concept_excerpts}}
+
+Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
+
+Return ONLY valid JSON matching this schema:
+{ "answer": "<your grounded answer>" }`;
+
+const SEEDED_VERSION = 1;
 
 // Index fixture mirrors render.ts buildIndex output. bookA + bookB are
 // accessible; bookC is NOT (its concept must be filtered out at every layer).
@@ -79,6 +117,22 @@ describe("answerShelfQuestion", () => {
     vi.mocked(completeJson).mockResolvedValue({ answer: "default answer" });
     setupReadWiki();
     setupDbTitles({ bookA: "Book A", bookB: "Book B", bookC: "Book C" });
+    // ponytail: default DB templates = seeded content + version 1 so existing
+    // assertions on prompt text/cache keys still hold. Per-test overrides
+    // replace this mock where needed.
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      if (where.type === "shelf_nav") {
+        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_VERSION };
+      }
+      if (where.type === "shelf_answer") {
+        return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+      }
+      return null;
+    }) as never);
   });
 
   it("happy path: navigate selects concepts, reads them, answers using accessible concepts only", async () => {
@@ -122,8 +176,8 @@ describe("answerShelfQuestion", () => {
     expect(result.bookMd5).toBe("shelf:" + hashOf(["bookA", "bookB"]));
     expect(result.bookMd5.startsWith("shelf:")).toBe(true);
 
-    // promptVersion is the constant
-    expect(result.promptVersion).toBe(QUERY_PROMPT_VERSION);
+    // promptVersion = loaded shelf_answer template version (seeded = 1)
+    expect(result.promptVersion).toBe(SEEDED_VERSION);
 
     // citations resolve via db lookup
     expect(result.citations).toEqual([
@@ -354,13 +408,13 @@ describe("answerShelfQuestion", () => {
     expect(result.prompt).toContain("fresh answer");
     expect(result.citations.map((c) => c.bookId)).toEqual(["bookB"]);
 
-    // nav cache key = question + null-byte + accessHash
+    // nav cache key = question + null-byte + accessHash + nav template version
     const navGetCall = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )!;
     const [, input] = navGetCall;
     const expectedHash = hashOf(["bookA", "bookB"]);
-    expect(input).toBe(`What is valor?\x00${expectedHash}`);
+    expect(input).toBe(`What is valor?\x00${expectedHash}\x00${SEEDED_VERSION}`);
   });
 
   it("cache writes: nav result + answer result both persisted with stable keys", async () => {
@@ -376,23 +430,23 @@ describe("answerShelfQuestion", () => {
       accessibleBookIds: ["bookB", "bookA"], // unsorted on purpose
     });
 
-    // nav persisted with sorted-access hash (access-set order must not fragment key)
+    // nav persisted with sorted-access hash + nav template version
     const navSet = vi.mocked(setCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )!;
     expect(navSet).toBeTruthy();
     const [, navInput, navVal] = navSet;
     const expectedHash = hashOf(["bookA", "bookB"]);
-    expect(navInput).toBe(`Q1\x00${expectedHash}`);
+    expect(navInput).toBe(`Q1\x00${expectedHash}\x00${SEEDED_VERSION}`);
     expect(navVal).toEqual({ conceptRelPaths: ["concepts/bookA/courage.md"] });
 
-    // answer persisted with question + accessHash + sorted selected paths
+    // answer persisted with question + accessHash + sorted selected paths + answer version
     const ansSet = vi.mocked(setCached).mock.calls.find(
       ([ns]) => ns === "query-answer",
     )!;
     const [, ansInput, ansVal] = ansSet;
     expect(ansInput).toBe(
-      `Q1\x00${expectedHash}\x00concepts/bookA/courage.md`,
+      `Q1\x00${expectedHash}\x00concepts/bookA/courage.md\x00${SEEDED_VERSION}`,
     );
     expect(ansVal).toEqual({ answer: "ans" });
   });
@@ -512,6 +566,173 @@ describe("answerShelfQuestion", () => {
     const calls = vi.mocked(completeJson).mock.calls;
     expect(calls.some((c) => c[0].prompt.includes("Available concepts"))).toBe(true);
     expect(calls.some((c) => c[0].prompt.includes("Concept excerpts"))).toBe(false);
+  });
+
+  it("nav: uses DB template content + version in prompt and cache key", async () => {
+    const CUSTOM_NAV = `CUSTOM NAV HEADER
+{{listing}}
+Q: {{question}}`;
+    const NAV_VERSION = 7;
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      if (where.type === "shelf_nav") {
+        return { content: CUSTOM_NAV, version: NAV_VERSION };
+      }
+      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+    }) as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("CUSTOM NAV HEADER")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "a" } as never;
+    });
+
+    await answerShelfQuestion({
+      question: "Q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    // The nav prompt handed to completeJson is the substituted DB content.
+    const navCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("CUSTOM NAV HEADER"),
+    )!;
+    expect(navCall).toBeTruthy();
+    // {{listing}} + {{question}} substituted (no literal placeholders remain).
+    expect(navCall[0].prompt).not.toContain("{{listing}}");
+    expect(navCall[0].prompt).not.toContain("{{question}}");
+    expect(navCall[0].prompt).toContain("Q: Q");
+    expect(navCall[0].prompt).toContain("concepts/bookA/courage.md");
+
+    // nav cache key carries the DB nav version (not the seeded 1).
+    const navGetCall = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-nav",
+    )!;
+    const navInput = navGetCall[1] as string;
+    expect(navInput.endsWith(`\x00${NAV_VERSION}`)).toBe(true);
+    expect(navInput).not.toContain(`\x00${SEEDED_VERSION}\x00`);
+  });
+
+  it("answer: uses DB template content + version in prompt and cache key", async () => {
+    const CUSTOM_ANSWER = `CUSTOM ANSWER
+Q: {{question}}
+Excerpts:
+{{concept_excerpts}}`;
+    const ANSWER_VERSION = 9;
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      if (where.type === "shelf_nav") {
+        return { content: NAV_DEFAULT_CONTENT, version: SEEDED_VERSION };
+      }
+      return { content: CUSTOM_ANSWER, version: ANSWER_VERSION };
+    }) as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "grounded" } as never;
+    });
+
+    const result = await answerShelfQuestion({
+      question: "What is courage?",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    // The answer prompt is the substituted DB content.
+    const answerCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("CUSTOM ANSWER"),
+    )!;
+    expect(answerCall).toBeTruthy();
+    expect(answerCall[0].prompt).not.toContain("{{concept_excerpts}}");
+    expect(answerCall[0].prompt).not.toContain("{{question}}");
+    expect(answerCall[0].prompt).toContain("Q: What is courage?");
+    expect(answerCall[0].prompt).toContain("Courage");
+
+    // answer cache key carries the DB answer version.
+    const ansGetCall = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-answer",
+    )!;
+    const ansInput = ansGetCall[1] as string;
+    expect(ansInput.endsWith(`\x00${ANSWER_VERSION}`)).toBe(true);
+
+    // promptVersion reflects the answer template version.
+    expect(result.promptVersion).toBe(ANSWER_VERSION);
+  });
+
+  it("fallback: findUnique null for both templates → uses inline defaults + version 1, no crash", async () => {
+    vi.mocked(db.promptTemplate.findUnique).mockResolvedValue(null);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "fb" } as never;
+    });
+
+    const result = await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    // Nav prompt = inline-derived default (contains the seeded nav header).
+    const navCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Available concepts"),
+    )!;
+    expect(navCall[0].prompt).toContain("Return ONLY valid JSON");
+
+    // Both cache keys use fallback version 1.
+    const navInput = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-nav",
+    )![1] as string;
+    const ansInput = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-answer",
+    )![1] as string;
+    expect(navInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
+    expect(ansInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
+
+    expect(result.promptVersion).toBe(SEEDED_VERSION);
+  });
+
+  it("each cache key uses its OWN template version (nav ≠ answer is possible)", async () => {
+    // Bump nav to v3, leave answer at v1 — each key must carry its own.
+    const NAV_VERSION = 3;
+    vi.mocked(db.promptTemplate.findUnique).mockImplementation((async ({
+      where,
+    }: {
+      where: { type: string };
+    }) => {
+      if (where.type === "shelf_nav") {
+        return { content: NAV_DEFAULT_CONTENT, version: NAV_VERSION };
+      }
+      return { content: ANSWER_DEFAULT_CONTENT, version: SEEDED_VERSION };
+    }) as never);
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      return { answer: "x" } as never;
+    });
+
+    await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    const navInput = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-nav",
+    )![1] as string;
+    const ansInput = vi.mocked(getCached).mock.calls.find(
+      ([ns]) => ns === "query-answer",
+    )![1] as string;
+
+    expect(navInput.endsWith(`\x00${NAV_VERSION}`)).toBe(true);
+    expect(ansInput.endsWith(`\x00${SEEDED_VERSION}`)).toBe(true);
+    // Explicitly different versions, each in its own key.
+    expect(navInput).not.toBe(ansInput);
   });
 });
 
