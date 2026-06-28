@@ -18,6 +18,8 @@ import { getCached, setCached } from "../cache";
 import { completeJson } from "../llm-json";
 import {
   extractBookConcepts,
+  isRawConcept,
+  isChunkResult,
   NARRATIVE_PROMPT,
   NONFICTION_PROMPT,
   GENERIC_PROMPT,
@@ -219,5 +221,42 @@ describe("extractBookConcepts", () => {
     expect(result.concepts[0].sourceBookId).toBe("book-1");
     expect(result.concepts[0].topic).toBe("real-topic"); // voted from chunk topic
     expect(result.concepts[0].form).toBe("narrative"); // from metadata, not hallucinated
+  });
+});
+
+// ponytail: the validators are what completeJson's retry loop actually calls
+// against real-LLM output (Task 11). Cheap unit coverage so the shape contract
+// isn't untested — and so the M3 bodyFields-values check has a failing case.
+describe("isChunkResult / isRawConcept", () => {
+  const validConcept = {
+    conceptType: "character",
+    title: "Hero",
+    bodyFields: { role: "protagonist" },
+    relatedConceptNames: ["Villain"],
+  };
+
+  it("accepts a valid shape including empty concepts: []", () => {
+    expect(isChunkResult({ topic: "t", concepts: [] })).toBe(true);
+    expect(isRawConcept(validConcept)).toBe(true);
+  });
+
+  it("rejects {concepts: 'x'} (concepts must be an array)", () => {
+    expect(isChunkResult({ topic: "t", concepts: "x" })).toBe(false);
+  });
+
+  it("rejects a concept with a non-string bodyFields value (nested object)", () => {
+    const bad = { ...validConcept, bodyFields: { role: { deep: "no" } } };
+    expect(isRawConcept(bad)).toBe(false);
+    expect(isChunkResult({ topic: "t", concepts: [bad] })).toBe(false);
+  });
+
+  it("rejects a concept missing conceptType", () => {
+    const noType: Record<string, unknown> = { ...validConcept };
+    delete noType.conceptType;
+    expect(isRawConcept(noType)).toBe(false);
+  });
+
+  it("rejects when topic is missing", () => {
+    expect(isChunkResult({ concepts: [] })).toBe(false);
   });
 });

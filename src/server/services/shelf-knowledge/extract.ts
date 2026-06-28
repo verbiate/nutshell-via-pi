@@ -141,23 +141,29 @@ PASSAGE:
 
 const CHUNK_OPTS = { softLimit: 6000, hardLimit: 8000 };
 const CACHE_NS = "extract";
+// ponytail: cache-invalidation knob. Bump whenever the prompt text or the
+// extracted schema changes — without it, prompt edits silently serve output
+// extracted under the old prompt. isNarrative branch is also folded into the
+// key so re-classifying a book (null→true) re-runs against the new branch.
+const EXTRACT_PROMPT_VERSION = 1;
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
-function isRawConcept(x: unknown): x is RawConcept {
+export function isRawConcept(x: unknown): x is RawConcept {
   if (!isRecord(x)) return false;
   return (
     typeof x.conceptType === "string" &&
     typeof x.title === "string" &&
     isRecord(x.bodyFields) &&
+    Object.values(x.bodyFields).every((v) => typeof v === "string") &&
     Array.isArray(x.relatedConceptNames) &&
     x.relatedConceptNames.every((n) => typeof n === "string")
   );
 }
 
-function isChunkResult(x: unknown): x is ChunkResult {
+export function isChunkResult(x: unknown): x is ChunkResult {
   if (!isRecord(x)) return false;
   if (typeof x.topic !== "string") return false;
   if (!Array.isArray(x.concepts)) return false;
@@ -201,9 +207,10 @@ export async function extractBookConcepts(
 
   const results: ChunkResult[] = [];
   for (const chunk of chunks) {
-    // ponytail: namespace "extract"; input = bookId + \x00 + chunkText so each
-    // chunk is cached once per book and re-runs skip already-extracted chunks.
-    const cacheInput = `${book.id}\x00${chunk}`;
+    // ponytail: cache key = bookId + version + isNarrative branch + chunk.
+    // Version + isNarrative are folded in so prompt/branch edits bust the
+    // cache; without that, a tuned prompt would reuse the old branch's output.
+    const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${isNarrative ?? "?"}\x00${chunk}`;
     const cached = await getCached<ChunkResult>(CACHE_NS, cacheInput);
     if (cached) {
       results.push(cached);
