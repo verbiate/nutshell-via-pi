@@ -112,6 +112,30 @@ describe("DiscussionsHomeView", () => {
 });
 
 describe("DiscussionDetail", () => {
+  it("renders a book-less shelf discussion without throwing (header + composer)", () => {
+    // ponytail: shelf discussions have book: undefined. Regression guard for
+    // the ~16 d.book! sites that used to crash on first render. The header
+    // shows the Library icon tile + "Your bookshelf" (no cover/author), and
+    // the composer still mounts (follow-ups POST server-side unchanged).
+    const d = makeDiscussion({
+      id: "shelf1",
+      type: "shelf",
+      book: undefined,
+    });
+    const html = render(
+      <DiscussionDetail
+        discussion={d}
+        onBack={() => {}}
+        navigate={() => {}}
+        resolveLabel={() => undefined}
+      />
+    );
+    expect(html).toContain("Your bookshelf");
+    expect(html).toContain("Ask a follow-up");
+    // no origin-book chip / cover for a book-less thread
+    expect(html).not.toContain("Origin Book");
+  });
+
   it("renders the composer (textarea + send button)", () => {
     const d = makeDiscussion();
     const html = render(
