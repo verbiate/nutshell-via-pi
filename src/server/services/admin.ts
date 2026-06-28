@@ -159,6 +159,11 @@ const VALID_PRESET_TYPES = new Set([
   "passage",
   "book_pass2",
   "book_metadata",
+  "shelf_extract_narrative",
+  "shelf_extract_nonfiction",
+  "shelf_extract_generic",
+  "shelf_nav",
+  "shelf_answer",
   "system",
 ]);
 

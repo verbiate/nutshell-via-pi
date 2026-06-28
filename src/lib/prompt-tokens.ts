@@ -8,7 +8,12 @@ export type PromptTemplateType =
   | "section"
   | "passage"
   | "book_pass2"
-  | "book_metadata";
+  | "book_metadata"
+  | "shelf_extract_narrative"
+  | "shelf_extract_nonfiction"
+  | "shelf_extract_generic"
+  | "shelf_nav"
+  | "shelf_answer";
 
 export interface PromptToken {
   token: string;
@@ -52,7 +57,7 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
       token: "chapter_index",
       description:
         "Ready-to-use markdown citation links for every ToC entry ([Label](#ch:href)). The model copies these verbatim to emit deep links to chapters. Required for explainer citations to render as clickable chapter links.",
-      appliesTo: ["book", "section", "passage"],
+      appliesTo: ["book", "section", "passage", "shelf_answer"],
     },
   {
     token: "text",
