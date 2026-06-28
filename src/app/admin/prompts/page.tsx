@@ -36,6 +36,17 @@ export default function PromptTemplatesPage() {
   const bookMetadataTemplate = templates.find(
     (t: any) => t.type === "book_metadata"
   );
+  const shelfExtractNarrative = templates.find(
+    (t: any) => t.type === "shelf_extract_narrative"
+  );
+  const shelfExtractNonfiction = templates.find(
+    (t: any) => t.type === "shelf_extract_nonfiction"
+  );
+  const shelfExtractGeneric = templates.find(
+    (t: any) => t.type === "shelf_extract_generic"
+  );
+  const shelfNav = templates.find((t: any) => t.type === "shelf_nav");
+  const shelfAnswer = templates.find((t: any) => t.type === "shelf_answer");
   const twoPassEnabled: boolean = data?.twoPassEnabled === true;
 
   return (
@@ -54,12 +65,23 @@ export default function PromptTemplatesPage() {
 
       <div className="mt-6">
         <Tabs defaultValue="book">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="system">System Prompt</TabsTrigger>
             <TabsTrigger value="book">Book-Level</TabsTrigger>
             <TabsTrigger value="section">Section-Level</TabsTrigger>
             <TabsTrigger value="passage">Passage-Level</TabsTrigger>
             <TabsTrigger value="metadata">Metadata</TabsTrigger>
+            <TabsTrigger value="shelf_extract_narrative">
+              Shelf: Extract (narrative)
+            </TabsTrigger>
+            <TabsTrigger value="shelf_extract_nonfiction">
+              Shelf: Extract (nonfiction)
+            </TabsTrigger>
+            <TabsTrigger value="shelf_extract_generic">
+              Shelf: Extract (generic)
+            </TabsTrigger>
+            <TabsTrigger value="shelf_nav">Shelf: Nav</TabsTrigger>
+            <TabsTrigger value="shelf_answer">Shelf: Answer</TabsTrigger>
           </TabsList>
           <TabsContent value="system">
             {/* Canonical global system prompt. Persisted via the
@@ -123,6 +145,45 @@ export default function PromptTemplatesPage() {
               type="book_metadata"
               initialContent={bookMetadataTemplate?.content || ""}
               version={bookMetadataTemplate?.version || 1}
+            />
+          </TabsContent>
+          {/* ponytail: shelf-knowledge prompts power "Ask your bookshelf". The
+              three extract variants run once per book at ingest, nav picks the
+              book(s) for a question, answer synthesizes the final reply.
+              {{chapter_index}} is valid in shelf_answer (see AVAILABLE_TOKENS). */}
+          <TabsContent value="shelf_extract_narrative">
+            <PromptEditor
+              type="shelf_extract_narrative"
+              initialContent={shelfExtractNarrative?.content || ""}
+              version={shelfExtractNarrative?.version || 1}
+            />
+          </TabsContent>
+          <TabsContent value="shelf_extract_nonfiction">
+            <PromptEditor
+              type="shelf_extract_nonfiction"
+              initialContent={shelfExtractNonfiction?.content || ""}
+              version={shelfExtractNonfiction?.version || 1}
+            />
+          </TabsContent>
+          <TabsContent value="shelf_extract_generic">
+            <PromptEditor
+              type="shelf_extract_generic"
+              initialContent={shelfExtractGeneric?.content || ""}
+              version={shelfExtractGeneric?.version || 1}
+            />
+          </TabsContent>
+          <TabsContent value="shelf_nav">
+            <PromptEditor
+              type="shelf_nav"
+              initialContent={shelfNav?.content || ""}
+              version={shelfNav?.version || 1}
+            />
+          </TabsContent>
+          <TabsContent value="shelf_answer">
+            <PromptEditor
+              type="shelf_answer"
+              initialContent={shelfAnswer?.content || ""}
+              version={shelfAnswer?.version || 1}
             />
           </TabsContent>
         </Tabs>
