@@ -222,12 +222,24 @@ export async function answerShelfQuestion(args: {
   }
 
   // Step 3: read the selected concept files.
+  // ponytail: skip-and-continue on read failure — one missing/corrupt concept
+  // file must not 500 the whole query. If ALL selected concepts fail to read,
+  // fall back to the nothing-found answer (empty citations) so the user still
+  // gets a clean response instead of a crash.
   const loaded: LoadedConcept[] = [];
   for (const rel of accessibleSelected) {
-    const body = await readWikiFile(rel);
+    let body: string;
+    try {
+      body = await readWikiFile(rel);
+    } catch {
+      continue;
+    }
     const bookId = bookIdOfRelPath(rel)!; // safe: accessibleSelected only contains matching relPaths
     const title = parseTitle(body, rel);
     loaded.push({ relPath: rel, title, bookId, body });
+  }
+  if (loaded.length === 0) {
+    return emptyAnswer(bookMd5, FALLBACK_NOTHING_FOUND);
   }
 
   // Step 4: answer (cached by question+access+selected paths).

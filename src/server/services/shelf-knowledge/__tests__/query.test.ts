@@ -432,6 +432,87 @@ describe("answerShelfQuestion", () => {
     expect(result.citations).toEqual([]);
     expect(completeJson).not.toHaveBeenCalled();
   });
+
+  it("resilience: a corrupt/missing concept among the selected set is skipped, the rest are still used", async () => {
+    // ponytail: nav selects bookA courage + bookB valor; bookA's file is
+    // unreadable (corrupt/missing on disk). bookA must be dropped from
+    // sourceText/citations/answer-prompt; bookB proceeds normally.
+    vi.mocked(readWikiFile).mockImplementation(async (rel) => {
+      if (rel === "index.md") return INDEX_MD;
+      if (rel === "concepts/bookA/courage.md") {
+        throw new Error("ENOENT: corrupt concept file");
+      }
+      if (rel === "concepts/bookB/valor.md") return VALOR_BODY;
+      throw new Error(`unexpected readWikiFile: ${rel}`);
+    });
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return {
+          conceptRelPaths: [
+            "concepts/bookA/courage.md",
+            "concepts/bookB/valor.md",
+          ],
+        } as never;
+      }
+      return { answer: "Valor is boldness." } as never;
+    });
+
+    const result = await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    // bookA was attempted but failed; bookB was read and is the only citation.
+    expect(readWikiFile).toHaveBeenCalledWith("concepts/bookA/courage.md");
+    expect(readWikiFile).toHaveBeenCalledWith("concepts/bookB/valor.md");
+    expect(result.citations.map((c) => c.bookId)).toEqual(["bookB"]);
+
+    // answer prompt only contains the successfully-read concept.
+    const answerCall = vi.mocked(completeJson).mock.calls.find((c) =>
+      c[0].prompt.includes("Concept excerpts"),
+    )!;
+    expect(answerCall[0].prompt).toContain("Valor");
+    expect(answerCall[0].prompt).not.toContain("Courage");
+
+    // sourceText reflects only the read concept.
+    expect(result.sourceText).toBe(VALOR_BODY);
+    expect(result.prompt).toContain("Valor is boldness.");
+  });
+
+  it("resilience: ALL selected concepts fail to read → nothing-found fallback, empty citations, no answer LLM", async () => {
+    // ponytail: nav selects an accessible concept, but its file is unreadable.
+    // With no concepts loadable, the query must degrade to the fallback answer
+    // instead of throwing/500ing.
+    vi.mocked(readWikiFile).mockImplementation(async (rel) => {
+      if (rel === "index.md") return INDEX_MD;
+      if (rel === "concepts/bookA/courage.md") {
+        throw new Error("ENOENT: corrupt concept file");
+      }
+      throw new Error(`unexpected readWikiFile: ${rel}`);
+    });
+    vi.mocked(completeJson).mockImplementation(async (a) => {
+      if (a.prompt.includes("Available concepts")) {
+        return { conceptRelPaths: ["concepts/bookA/courage.md"] } as never;
+      }
+      // answer LLM must NOT run — no concepts to ground on.
+      throw new Error("answer LLM should not run when no concepts loaded");
+    });
+
+    const result = await answerShelfQuestion({
+      question: "q",
+      accessibleBookIds: ["bookA", "bookB"],
+    });
+
+    expect(result.prompt).toBe(
+      "I couldn't find relevant concepts in your library for that question.",
+    );
+    expect(result.citations).toEqual([]);
+    expect(result.sourceText).toBe("");
+    // nav LLM ran; answer LLM did NOT.
+    const calls = vi.mocked(completeJson).mock.calls;
+    expect(calls.some((c) => c[0].prompt.includes("Available concepts"))).toBe(true);
+    expect(calls.some((c) => c[0].prompt.includes("Concept excerpts"))).toBe(false);
+  });
 });
 
 // ponytail: mirror the production access-hash so tests assert the exact key
