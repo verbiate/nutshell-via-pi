@@ -43,6 +43,8 @@ export async function getPersonalLibrary(userId: string) {
         language: access.book.language,
         coverPath: access.book.coverPath,
         txtTokens: access.book.txtTokens,
+        // ponytail: needed to precompute the "added" badge on FreeBook cards.
+        md5: access.book.md5,
         progress,
         hasProgress,
       };

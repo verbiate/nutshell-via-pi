@@ -39,12 +39,20 @@ export default async function MyLibraryPage() {
     return <EmptyLibrary />;
   }
 
+  // ponytail: precompute "added" state for each free book by matching md5
+  // against the user's library. Cheap set lookup; avoids a round-trip per card.
+  const addedMd5s = new Set(books.map((b) => b.md5));
+  const freeBooksWithState = freeBooks.map((b) => ({
+    ...b,
+    added: addedMd5s.has(b.md5),
+  }));
+
   return (
     <HomeView
       userName={user.name}
       books={books}
       digestImage={digestImage}
-      freeBooks={freeBooks}
+      freeBooks={freeBooksWithState}
       discussions={discussions as any}
     />
   );

@@ -6,4 +6,7 @@ export interface FreeBook {
   epubUrl: string;
   source: string;
   sourceUrl: string | null;
+  md5: string;
+  // ponytail: set by /my-library page from getPersonalLibrary() md5 set.
+  added?: boolean;
 }

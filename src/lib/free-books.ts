@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { readFile, readdir, stat } from "fs/promises";
 import path from "path";
 import type { FreeBook } from "@/types/free-book";
@@ -12,8 +13,17 @@ interface CacheEntry {
   mtime: number;
   title: string;
   author: string | null;
+  md5: string;
 }
 const metaCache = new Map<string, CacheEntry>();
+
+// ponytail: md5 of the epub bytes, mtime-keyed (same cheap-validity pattern as
+// the rest of this cache). Used to precompute the "added" badge on the card by
+// matching against the user's UserBookAccess md5 set.
+async function hashFile(filePath: string): Promise<string> {
+  const buffer = await readFile(filePath);
+  return createHash("md5").update(buffer).digest("hex");
+}
 
 /**
  * Read title + author from an EPUB's OPF metadata. Lightweight: only opens
@@ -73,6 +83,7 @@ export async function loadFreeBooksCatalog(): Promise<FreeBook[]> {
 
       let title = fallback;
       let author: string | null = null;
+      let md5 = "";
 
       try {
         const st = await stat(fullPath);
@@ -82,11 +93,13 @@ export async function loadFreeBooksCatalog(): Promise<FreeBook[]> {
         if (cached && cached.mtime === mtime) {
           title = cached.title;
           author = cached.author;
+          md5 = cached.md5;
         } else {
           const meta = await extractEpubMeta(fullPath, fallback);
           title = meta.title;
           author = meta.author;
-          metaCache.set(filename, { mtime, title, author });
+          md5 = await hashFile(fullPath);
+          metaCache.set(filename, { mtime, title, author, md5 });
         }
       } catch {
         // stat or parse failed — use fallback, no cache entry
@@ -100,6 +113,7 @@ export async function loadFreeBooksCatalog(): Promise<FreeBook[]> {
         epubUrl: `${FREE_BOOKS_URL}/${filename}`,
         source: "Free / Public Domain",
         sourceUrl: null,
+        md5,
       };
     }),
   );
