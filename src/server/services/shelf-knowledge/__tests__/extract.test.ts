@@ -345,10 +345,15 @@ describe("isBookResult / isRawConcept", () => {
     expect(isBookResult({ topic: "t", concepts: "x" })).toBe(false);
   });
 
-  it("rejects a concept with a non-string bodyFields value (nested object)", () => {
+  it("isRawConcept rejects a non-string bodyFields value; isBookResult (outer-shape only) does NOT inspect concepts", () => {
+    // ponytail: contract since the resilience change — isBookResult validates
+    // only the OUTER shape ({topic, concepts: array}); per-concept validation is
+    // isRawConcept's job, and extractBookConcepts FILTERS via isRawConcept rather
+    // than rejecting the whole book. So a book containing one bad concept still
+    // passes isBookResult (outer shape ok); extractBookConcepts drops the bad one.
     const bad = { ...validConcept, bodyFields: { role: { deep: "no" } } };
     expect(isRawConcept(bad)).toBe(false);
-    expect(isBookResult({ topic: "t", concepts: [bad] })).toBe(false);
+    expect(isBookResult({ topic: "t", concepts: [bad] })).toBe(true);
   });
 
   it("rejects a concept missing conceptType", () => {
