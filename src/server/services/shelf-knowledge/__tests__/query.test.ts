@@ -48,23 +48,32 @@ User question: {{question}}
 Concept excerpts:
 {{concept_excerpts}}
 
-Chapter maps for cited books — each entry is a ready-to-use link; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
+Library manifest — every book the user has access to. Each entry is a ready-to-use link to open the book; copy the (#book:…) href verbatim and reword the label if you like:
+{{library_manifest}}
+
+Book index — books cited in the excerpts above (a subset of the library). Each entry is a ready-to-use link to open the book itself; copy the (#book:…) href verbatim and reword the label if you like:
+{{book_index}}
+
+Chapter maps for cited books — each entry is a ready-to-use link to a specific chapter; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
 {{chapter_maps}}
 
-Weave citations INTO THE VISIBLE REPLY as [Chapter Label](#ch:<bookId>:<basename>) using hrefs copied verbatim from the chapter maps above — one link per claim grounded in a specific passage. Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the chapter maps; if a claim is not tied to a specific chapter, leave it as plain text.
+Weave citations INTO THE VISIBLE REPLY as inline links:
+- For a claim about the book as a whole (mentioning the book, its thesis, its author, recommending it), use the book form: [Book Title](#book:<bookId>) with hrefs copied verbatim from the library manifest or book index above. You may mention books from the library manifest when their title or subject is relevant to the question, even if no concept excerpt was read from them — link them with the #book: form. One book-level link per book referenced.
+- For a claim grounded in a specific passage, use the chapter form: [Chapter Label](#ch:<bookId>:<basename>) with hrefs copied verbatim from the chapter maps above. One chapter link per grounded claim. Chapter links require a concept excerpt to have been read from that book — do not invent chapter hrefs for books that only appear in the library manifest.
+Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the library manifest, book index, or chapter maps.
 
-Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
+Answer using ONLY the information in these excerpts plus the book titles in the library manifest. If the excerpts do not contain the answer but a library book's title suggests it may be relevant, say so plainly and link the book. Do not use outside knowledge beyond what the excerpts and titles provide.
 
 Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer with inline #ch: links>" }`;
+{ "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
 // ponytail: mirror the seeded versions (prisma/seed.ts) so cache-key assertions
-// reflect the live contract. Nav=2, answer=3 after the {{conversation}} bump.
+// reflect the live contract. Nav=2, answer=5 after the {{library_manifest}} bump.
 const SEEDED_NAV_VERSION = 2;
-const SEEDED_ANSWER_VERSION = 3;
+const SEEDED_ANSWER_VERSION = 5;
 // ponytail: fallback (missing DB row) mirrors the seeded default — same versions.
 const FALLBACK_NAV_VERSION = 2;
-const FALLBACK_ANSWER_VERSION = 3;
+const FALLBACK_ANSWER_VERSION = 5;
 
 // Index fixture mirrors render.ts buildIndex output. bookA + bookB are
 // accessible; bookC is NOT (its concept must be filtered out at every layer).
@@ -188,7 +197,7 @@ describe("answerShelfQuestion", () => {
     expect(result.bookMd5).toBe("shelf:" + hashOf(["bookA", "bookB"]));
     expect(result.bookMd5.startsWith("shelf:")).toBe(true);
 
-    // promptVersion = loaded shelf_answer template version (seeded = 3)
+    // promptVersion = loaded shelf_answer template version (seeded = 5)
     expect(result.promptVersion).toBe(SEEDED_ANSWER_VERSION);
 
     // citations resolve via db lookup
@@ -197,7 +206,7 @@ describe("answerShelfQuestion", () => {
     ]);
     expect(db.epubFile.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["bookA"] } },
-      select: { id: true, title: true },
+      select: { id: true, title: true, tocJson: true },
     });
   });
 
@@ -705,7 +714,7 @@ Excerpts:
     expect(navCall[0].prompt).toContain("Return ONLY valid JSON");
 
     // ponytail: fallback versions now mirror the seeded defaults after the
-    // {{conversation}} bump — nav=2, answer=3.
+    // {{library_manifest}} bump — nav=2, answer=5.
     const navInput = vi.mocked(getCached).mock.calls.find(
       ([ns]) => ns === "query-nav",
     )![1] as string;
@@ -756,8 +765,8 @@ Excerpts:
     expect(navInput).not.toBe(ansInput);
   });
   it("chapter maps: cited book's ToC injected into answer prompt as #ch:<bookId>:<basename> links", async () => {
-    // ponytail: findMany serves BOTH the toc fetch (Step 3b) and the title
-    // fetch (Step 5) — one mock returns rows with all fields.
+    // ponytail: single findMany fetches id+title+tocJson together (Step 3b),
+    // feeding both chapter maps and the book index + citations.
     const TOC = JSON.stringify([
       { label: "Chapter One", href: "ch1.xhtml" },
       { label: "Chapter Two", href: "ch2.xhtml" },

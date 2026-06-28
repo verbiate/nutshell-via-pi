@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "@/server/db";
 import {
+  buildBookIndex,
   buildChapterIndex,
   fillTemplate,
 } from "@/server/services/prompt-builder";
@@ -49,20 +50,29 @@ User question: {{question}}
 Concept excerpts:
 {{concept_excerpts}}
 
-Chapter maps for cited books — each entry is a ready-to-use link; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
+Library manifest — every book the user has access to. Each entry is a ready-to-use link to open the book; copy the (#book:…) href verbatim and reword the label if you like:
+{{library_manifest}}
+
+Book index — books cited in the excerpts above (a subset of the library). Each entry is a ready-to-use link to open the book itself; copy the (#book:…) href verbatim and reword the label if you like:
+{{book_index}}
+
+Chapter maps for cited books — each entry is a ready-to-use link to a specific chapter; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
 {{chapter_maps}}
 
-Weave citations INTO THE VISIBLE REPLY as [Chapter Label](#ch:<bookId>:<basename>) using hrefs copied verbatim from the chapter maps above — one link per claim grounded in a specific passage. Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the chapter maps; if a claim is not tied to a specific chapter, leave it as plain text.
+Weave citations INTO THE VISIBLE REPLY as inline links:
+- For a claim about the book as a whole (mentioning the book, its thesis, its author, recommending it), use the book form: [Book Title](#book:<bookId>) with hrefs copied verbatim from the library manifest or book index above. You may mention books from the library manifest when their title or subject is relevant to the question, even if no concept excerpt was read from them — link them with the #book: form. One book-level link per book referenced.
+- For a claim grounded in a specific passage, use the chapter form: [Chapter Label](#ch:<bookId>:<basename>) with hrefs copied verbatim from the chapter maps above. One chapter link per grounded claim. Chapter links require a concept excerpt to have been read from that book — do not invent chapter hrefs for books that only appear in the library manifest.
+Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the library manifest, book index, or chapter maps.
 
-Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
+Answer using ONLY the information in these excerpts plus the book titles in the library manifest. If the excerpts do not contain the answer but a library book's title suggests it may be relevant, say so plainly and link the book. Do not use outside knowledge beyond what the excerpts and titles provide.
 
 Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer with inline #ch: links>" }`;
+{ "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
 // ponytail: fallback version mirroring the seeded default so a missing row
 // preserves cache stability. Loaded template.version overrides.
 const FALLBACK_NAV_VERSION = 2;
-const FALLBACK_ANSWER_VERSION = 3;
+const FALLBACK_ANSWER_VERSION = 5;
 
 // ponytail: shape of prior turns threaded from streamFollowup → answerShelfQuestion.
 // First turn passes none — shelf discussions start with no history.
@@ -229,6 +239,8 @@ async function buildAnswerPrompt(
   question: string,
   concepts: LoadedConcept[],
   chapterMaps: string,
+  bookIndex: string,
+  libraryManifest: string,
   conversation: string,
 ): Promise<{ prompt: string; version: number }> {
   const concept_excerpts = concepts
@@ -240,6 +252,8 @@ async function buildAnswerPrompt(
       question,
       concept_excerpts,
       chapter_maps: chapterMaps,
+      book_index: bookIndex,
+      library_manifest: libraryManifest,
       conversation,
     }),
     version: tpl.version,
@@ -343,21 +357,26 @@ export async function answerShelfQuestion(args: {
     return emptyAnswer(bookMd5, FALLBACK_NOTHING_FOUND);
   }
 
-  // Step 3b: build per-cited-book chapter maps so the answer model can emit
-  // inline #ch:<bookId>:<basename> deep links (mirrors discussions.ts
-  // buildAttachmentSuffix). ponytail: cited-book-set is a function of
-  // accessibleSelected (already in the answer cache key), so chapter-map
-  // contents add no new cache axis; ceiling: a re-ingested ToC for an
-  // already-cited book won't invalidate the answer cache until the answer
-  // template version bumps. Acceptable — rare and self-heals on next bump.
+  // Step 3b: build per-cited-book chapter maps + a book-level index so the
+  // answer model can emit both #ch:<bookId>:<basename> chapter deep links AND
+  // #book:<bookId> book-level links (mirrors discussions.ts buildAttachmentSuffix
+  // + prompt-builder.ts buildChapterIndex). ponytail: fetch title + tocJson in
+  // ONE findMany — both the book index (buildBookIndex) and the Step 5
+  // citations need titles, so hoisting here avoids a second DB round-trip.
+  // cited-book-set is a function of accessibleSelected (already in the answer
+  // cache key), so manifest contents add no new cache axis; ceiling: a
+  // re-ingested ToC or renamed title for an already-cited book won't
+  // invalidate the answer cache until the answer template version bumps.
+  // Acceptable — rare and self-heals on next bump.
   const citedBookIds = [...new Set(loaded.map((c) => c.bookId))];
-  const tocRows = citedBookIds.length
+  const citedBookRows = citedBookIds.length
     ? await db.epubFile.findMany({
         where: { id: { in: citedBookIds } },
-        select: { id: true, tocJson: true },
+        select: { id: true, title: true, tocJson: true },
       })
     : [];
-  const tocById = new Map(tocRows.map((r) => [r.id, r.tocJson]));
+  const tocById = new Map(citedBookRows.map((r) => [r.id, r.tocJson]));
+  const titleById = new Map(citedBookRows.map((r) => [r.id, r.title]));
   const chapterMaps = citedBookIds
     .map((bid) => {
       const map = buildChapterIndex(tocById.get(bid) ?? null, 50, bid);
@@ -366,6 +385,24 @@ export async function answerShelfQuestion(args: {
         : `### ${bid}\n(no chapter map available for this book)`;
     })
     .join("\n\n");
+  const bookIndex = buildBookIndex(
+    citedBookIds.map((id) => ({ id, title: titleById.get(id) ?? id })),
+  );
+
+  // Step 3c: build the library manifest — ALL accessible books (not just cited
+  // ones) — so the answer model can recommend books by TITLE even when no
+  // concept excerpt was read from them. ponytail: this is the recall fix for
+  // "books about war" missing Guns, Germs, and Steel — no GGS concept mentions
+  // war, so nav never selects it, but its title is obviously relevant. The
+  // manifest lets the model surface it with a #book: link. Separate findMany
+  // from Step 3b (different SELECT, different id set) — cheap, one row per book.
+  const libraryRows = args.accessibleBookIds.length
+    ? await db.epubFile.findMany({
+        where: { id: { in: args.accessibleBookIds } },
+        select: { id: true, title: true },
+      })
+    : [];
+  const libraryManifest = buildBookIndex(libraryRows);
 
   // Step 4: answer (cached by question+access+selected paths).
   // ponytail: answer template .version folds into the key — independent from
@@ -374,6 +411,8 @@ export async function answerShelfQuestion(args: {
     args.question,
     loaded,
     chapterMaps,
+    bookIndex,
+    libraryManifest,
     conversation,
   );
   const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}\x00${histHash}`;
@@ -390,15 +429,7 @@ export async function answerShelfQuestion(args: {
     await setCached(ANSWER_NS, answerInput, { answer });
   }
 
-  // Step 5: citations — resolve book titles in one batched findMany.
-  const bookIds = [...new Set(loaded.map((c) => c.bookId))];
-  const titleRows = bookIds.length
-    ? await db.epubFile.findMany({
-        where: { id: { in: bookIds } },
-        select: { id: true, title: true },
-      })
-    : [];
-  const titleById = new Map(titleRows.map((r) => [r.id, r.title]));
+  // Step 5: citations — titles already fetched in Step 3b, just map them out.
   const citations: ShelfCitation[] = loaded.map((c) => ({
     bookId: c.bookId,
     bookTitle: titleById.get(c.bookId) ?? c.bookId,

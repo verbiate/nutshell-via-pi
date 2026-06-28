@@ -11,7 +11,13 @@ import { isValidHref, parseBookRef } from "@/lib/explainer/citations";
  * ones degrade to plain label text (never a dead jump), and real http(s) links
  * open in a new tab.
  *
- * Two citation forms:
+ * Three citation forms:
+ * - Book-level: `[Label](#book:<bookId>)` — opens the book at its saved
+ *   position (the "open book" path, NOT a deep link). Active only when
+ *   onNavigateToBook is set; otherwise degrades to plain text. The bookId is
+ *   not re-validated client-side because the server built the #book: manifest
+ *   from the user's accessible book set — a hallucinated id still dead-ends at
+ *   the reader route's access check. Used by shelf answers to link whole books.
  * - Origin book: `[Label](#ch:<basename>)` — validated against the open book's
  *   live spine (spineHrefs). Today's behavior, byte-for-byte.
  * - Attached (co-primary) book: `[Label](#ch:<bookId>:<basename>)` — validated
@@ -32,9 +38,40 @@ const components = (opts: {
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  onNavigateToBook?: (bookId: string) => void;
   originBookId?: string;
 }): Components => ({
   a({ href, children }) {
+    // Book-level citation → open the book at its saved position. Uses a
+    // dedicated onNavigateToBook callback when provided (intent-explicit);
+    // otherwise falls back to onNavigateToBookSection(bookId, "") which the
+    // shelf detail wires to navigate(bookId, { href: "", discussionId }) —
+    // reader-client.tsx:607 `if (href)` is falsy → handleOpenBook path.
+    if (href?.startsWith("#book:")) {
+      const bookId = href.slice(6);
+      const onNav = opts.onNavigateToBook;
+      if (bookId && onNav) {
+        return (
+          <span
+            role="button"
+            tabIndex={0}
+            data-book-id={bookId}
+            title="Open this book"
+            className="cursor-pointer underline decoration-primary/60 underline-offset-2 hover:decoration-primary"
+            onClick={() => onNav(bookId)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onNav(bookId);
+              }
+            }}
+          >
+            {children}
+          </span>
+        );
+      }
+      return <span>{children}</span>;
+    }
     if (href?.startsWith("#ch:")) {
       const target = href.slice(4);
       const { bookId, basename } = parseBookRef(target);
@@ -133,6 +170,7 @@ export const ExplainerContent = memo(function ExplainerContent({
   onNavigateToHref,
   attachedBookHrefs,
   onNavigateToBookSection,
+  onNavigateToBook,
   originBookId,
 }: {
   content: string;
@@ -140,12 +178,22 @@ export const ExplainerContent = memo(function ExplainerContent({
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
+  onNavigateToBook?: (bookId: string) => void;
   originBookId?: string;
 }) {
+  // ponytail: default onNavigateToBook → onNavigateToBookSection(bookId, "")
+  // so existing call sites get open-book behavior for #book: links without
+  // wiring a new prop. The shelf detail's onNavigateToBookSection routes to
+  // navigate(bookId, { href: "", discussionId }) — reader sees no href and
+  // opens at the saved position. Callers that want distinct handling pass
+  // onNavigateToBook explicitly.
+  const onBook = onNavigateToBook ?? (onNavigateToBookSection
+    ? (bookId: string) => onNavigateToBookSection(bookId, "")
+    : undefined);
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={components({ spineHrefs, onNavigateToHref, attachedBookHrefs, onNavigateToBookSection, originBookId })}
+      components={components({ spineHrefs, onNavigateToHref, attachedBookHrefs, onNavigateToBookSection, onNavigateToBook: onBook, originBookId })}
     >
       {content}
     </ReactMarkdown>

@@ -136,15 +136,24 @@ User question: {{question}}
 Concept excerpts:
 {{concept_excerpts}}
 
-Chapter maps for cited books — each entry is a ready-to-use link; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
+Library manifest — every book the user has access to. Each entry is a ready-to-use link to open the book; copy the (#book:…) href verbatim and reword the label if you like:
+{{library_manifest}}
+
+Book index — books cited in the excerpts above (a subset of the library). Each entry is a ready-to-use link to open the book itself; copy the (#book:…) href verbatim and reword the label if you like:
+{{book_index}}
+
+Chapter maps for cited books — each entry is a ready-to-use link to a specific chapter; copy the (#ch:…) href verbatim (including the <bookId>: prefix) and reword the label if you like:
 {{chapter_maps}}
 
-Weave citations INTO THE VISIBLE REPLY as [Chapter Label](#ch:<bookId>:<basename>) using hrefs copied verbatim from the chapter maps above — one link per claim grounded in a specific passage. Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the chapter maps; if a claim is not tied to a specific chapter, leave it as plain text.
+Weave citations INTO THE VISIBLE REPLY as inline links:
+- For a claim about the book as a whole (mentioning the book, its thesis, its author, recommending it), use the book form: [Book Title](#book:<bookId>) with hrefs copied verbatim from the library manifest or book index above. You may mention books from the library manifest when their title or subject is relevant to the question, even if no concept excerpt was read from them — link them with the #book: form. One book-level link per book referenced.
+- For a claim grounded in a specific passage, use the chapter form: [Chapter Label](#ch:<bookId>:<basename>) with hrefs copied verbatim from the chapter maps above. One chapter link per grounded claim. Chapter links require a concept excerpt to have been read from that book — do not invent chapter hrefs for books that only appear in the library manifest.
+Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do not invent hrefs that are not in the library manifest, book index, or chapter maps.
 
-Answer using ONLY the information in these excerpts. If they do not contain the answer, say so plainly. Do not use outside knowledge.
+Answer using ONLY the information in these excerpts plus the book titles in the library manifest. If the excerpts do not contain the answer but a library book's title suggests it may be relevant, say so plainly and link the book. Do not use outside knowledge beyond what the excerpts and titles provide.
 
 Return ONLY valid JSON matching this schema:
-{ "answer": "<your grounded answer with inline #ch: links>" }`;
+{ "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
 async function main() {
   // ponytail: prompt templates use {{book_text}} (full book) and {{chosen_text}}
@@ -328,12 +337,12 @@ async function main() {
     where: { type: "shelf_answer" },
     update: {
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 3,
+      version: 5,
     },
     create: {
       type: "shelf_answer",
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 3,
+      version: 5,
     },
   });
 

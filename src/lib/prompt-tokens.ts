@@ -77,6 +77,18 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
     appliesTo: ["shelf_answer"],
   },
   {
+    token: "book_index",
+    description:
+      "Book-level citation manifest ([Title](#book:<bookId>)) for every cited book, so the model can link a book as a whole (not just a chapter in it). Click opens the book at its saved position. Only shelf_answer injects this.",
+    appliesTo: ["shelf_answer"],
+  },
+  {
+    token: "library_manifest",
+    description:
+      "Book-level manifest ([Title](#book:<bookId>)) for ALL accessible books in the user's library — not just cited ones. Lets the model recommend books by title even when no concept excerpt was read from them (recall fix for books whose wiki concepts don't mention the query topic but whose title does). Only shelf_answer injects this.",
+    appliesTo: ["shelf_answer"],
+  },
+  {
     token: "conversation",
     description:
       "Recent prior turns of the same shelf discussion (last ~6, User:/Assistant: lines) so a follow-up like 'deep links for that?' routes to and is answered in the context of the prior turn. Empty string on the first turn (no history).",

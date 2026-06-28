@@ -115,6 +115,32 @@ export function buildChapterIndex(
   return lines.length === 0 ? "" : lines.join("\n");
 }
 
+/**
+ * Build the {{book_index}} manifest for shelf answers — a ready-to-copy list of
+ * book-level links so the model can cite a book AS A WHOLE (not just a chapter
+ * in it). Mirrors buildChapterIndex's copy-token shape: entries are emitted in
+ * the exact [Title](#book:<bookId>) form the model is asked to produce, so it
+ * copies hrefs verbatim instead of translating. Label brackets are sanitized
+ * the same way as buildChapterIndex. Empty string when no books.
+ *
+ * Click routing: the renderer's #book: branch calls onNavigateToBookSection
+ * (bookId, "") — empty basename lands on the "open book at saved position"
+ * path (reader-client.tsx:571 handleOpenBook), distinct from #ch:'s deep-link.
+ */
+export function buildBookIndex(
+  books: { id: string; title: string }[],
+): string {
+  if (!books.length) return "";
+  const lines: string[] = [];
+  for (const b of books) {
+    const rawLabel = (b.title ?? "").trim();
+    if (!rawLabel) continue;
+    const label = rawLabel.replace(/[[\]]/g, (x) => (x === "[" ? "(" : ")"));
+    lines.push(`- [${label}](#book:${b.id})`);
+  }
+  return lines.length === 0 ? "" : lines.join("\n");
+}
+
 export async function buildBookPrompt(
   bookId: string,
   language: string

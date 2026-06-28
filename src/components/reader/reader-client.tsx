@@ -554,13 +554,33 @@ export function ReaderClient({
   // arrival), and router.pushes to the target book. Plain router.push (not
   // scene navigate) — same decision the TTS player makes for book-to-book
   // (tts-player.tsx:233): the reader stays mounted and swaps in place.
+  //
+  // SAME-BOOK short-circuit: when the click targets the book already open,
+  // skip the router.push — a same-URL route fetch destroys the epub.js
+  // rendition's DOM binding (blank page) and unmounts the discussion panel
+  // (setActiveTool(null) fires) before the consume effect can reopen it.
+  // Instead, navigate the live rendition in place and keep the sidebar open.
   const handleNavigateToBookSection = useCallback(
-    (bookId: string, basename: string, discussionId?: string) => {
+    (targetBookId: string, basename: string, discussionId?: string) => {
+      if (targetBookId === bookId) {
+        if (basename) {
+          const resolved = resolveToSpineHref(
+            basename,
+            spineItems.map((s) => s.href)
+          );
+          handleTocNavigate(resolved);
+        }
+        if (discussionId) {
+          setActiveTool("bulb");
+          setPendingOpenDiscussionId(discussionId);
+        }
+        return;
+      }
       setActiveTool(null);
-      markPendingReaderNav({ bookId, href: basename, discussionId });
-      router.push(`/book/${bookId}/reader`);
+      markPendingReaderNav({ bookId: targetBookId, href: basename, discussionId });
+      router.push(`/book/${targetBookId}/reader`);
     },
-    [markPendingReaderNav, router]
+    [bookId, spineItems, handleTocNavigate, markPendingReaderNav, router]
   );
 
   // ponytail: open a book to its last-read position AND reopen the discussion.
@@ -568,12 +588,23 @@ export function ReaderClient({
   // the reader's saved-position restore handles the landing page, while the
   // consumption effect opens the Discussions panel to the thread. Does NOT
   // close the sidebar (the user wants to keep the discussion context visible).
+  //
+  // SAME-BOOK short-circuit: see handleNavigateToBookSection above — avoid the
+  // destructive same-URL router.push when the book is already open. Just
+  // surface the discussion in the sidebar.
   const handleOpenBook = useCallback(
-    (bookId: string, discussionId?: string) => {
-      markPendingReaderNav({ bookId, discussionId });
-      router.push(`/book/${bookId}/reader`);
+    (targetBookId: string, discussionId?: string) => {
+      if (targetBookId === bookId) {
+        if (discussionId) {
+          setActiveTool("bulb");
+          setPendingOpenDiscussionId(discussionId);
+        }
+        return;
+      }
+      markPendingReaderNav({ bookId: targetBookId, discussionId });
+      router.push(`/book/${targetBookId}/reader`);
     },
-    [markPendingReaderNav, router]
+    [bookId, markPendingReaderNav, router]
   );
 
   // ponytail: consume a cross-book deep-link navigation. The click handler

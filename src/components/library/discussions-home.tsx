@@ -214,6 +214,9 @@ export function DiscussionsHomeView({
             setActiveId(null);
             setDraftQuestion(null);
           }}
+          onNavigateToBookSection={(bookId, basename) =>
+            navigate(bookId, { href: basename, discussionId: "" })
+          }
         />
       </div>
     );
@@ -308,10 +311,12 @@ function ShelfDraftDetail({
   question,
   onPinned,
   onBack,
+  onNavigateToBookSection,
 }: {
   question: string;
   onPinned: (id: string) => void;
   onBack: () => void;
+  onNavigateToBookSection?: (bookId: string, basename: string) => void;
 }) {
   const [localMessages, setLocalMessages] = useState<Message[]>(() => {
     const nowIso = new Date().toISOString();
@@ -329,6 +334,12 @@ function ShelfDraftDetail({
   const abortRef = useRef<AbortController | null>(null);
   // ponytail: pinnedRef guards a double onPinned if finally ever ran twice.
   const pinnedRef = useRef(false);
+
+  // ponytail: resolve spine hrefs for books cited in the streaming answer so
+  // #ch: deep links are clickable in the DRAFT view (not just after pin).
+  // Mirrors DiscussionDetail's use at line 884. Returns {} until the answer
+  // streams in citations, so this is a safe no-op until then.
+  const shelfCitedHrefs = useShelfCitedHrefs(localMessages);
 
   /* eslint-disable react-hooks/exhaustive-deps */
   // ponytail: no fire-once guard — effect intentionally re-fires after the
@@ -462,6 +473,12 @@ function ShelfDraftDetail({
                 i === localMessages.length - 1 &&
                 m.role === "assistant"
               }
+              attachedBookHrefs={
+                Object.keys(shelfCitedHrefs).length > 0
+                  ? shelfCitedHrefs
+                  : undefined
+              }
+              onNavigateToBookSection={onNavigateToBookSection}
             />
           ))}
         </div>
