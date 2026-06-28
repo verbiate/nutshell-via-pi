@@ -37,6 +37,10 @@ export interface CompleteChatOptions {
   maxTokens?: number;
   // ponytail: response_format json_object — caller checks the model supports it.
   jsonMode?: boolean;
+  // ponytail: OpenRouter reasoning effort. Some models (e.g. gemini-3.1-flash-lite)
+  // reason by default, burning the max_tokens budget on hidden thinking and
+  // truncating the visible JSON. "minimal" disables it for mechanical tasks.
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
 }
 
 export class OpenRouterError extends Error {
@@ -309,6 +313,9 @@ export async function completeChat(
   };
   if (options.jsonMode) {
     body.response_format = { type: "json_object" };
+  }
+  if (options.reasoningEffort) {
+    body.reasoning = { effort: options.reasoningEffort };
   }
 
   const response = await fetch(OPENROUTER_URL, {

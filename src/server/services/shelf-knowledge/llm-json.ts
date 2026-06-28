@@ -18,6 +18,16 @@ export async function completeJson<T>(args: {
   // exceeds completeChat's 4096 default (truncation → invalid JSON → fail).
   // Raise per-call if a caller emits larger structures.
   maxTokens?: number;
+  // ponytail: pass-through to completeChat. Set "minimal" for mechanical tasks
+  // on reasoning-enabled models (else reasoning eats the output budget).
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  // ponytail: optional last-resort salvage. When JSON.parse fails (typically
+  // because the provider's output-token cap truncated the JSON mid-structure),
+  // completeJson calls this with the raw string; if it returns a non-null
+  // value, that's used as the parsed result (then `validate` runs on it).
+  // Caller-supplied because salvage is schema-specific (e.g. close a concepts
+  // array at the last complete item).
+  salvage?: (raw: string) => unknown | null;
 }): Promise<T> {
   const { apiKey, model } = await getShelfLlmConfig();
   const maxAttempts = (args.maxRetries ?? 1) + 1;
@@ -34,23 +44,32 @@ export async function completeJson<T>(args: {
       systemMessage: args.systemMessage,
       jsonMode: true,
       maxTokens,
+      reasoningEffort: args.reasoningEffort,
     });
 
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(raw);
-      if (args.validate(parsed)) return parsed;
-      lastError = new Error(
-        `LLM JSON failed schema validation: ${raw.slice(0, 200)}`
-      );
+      parsed = JSON.parse(raw);
     } catch (e) {
-      lastError = e instanceof Error
-        ? new Error(`LLM did not return parseable JSON: ${e.message}`)
-        : new Error("LLM did not return parseable JSON");
+      // ponytail: provider output-cap truncation? Try the caller's salvage
+      // (recovers the leading complete items before truncation). Falls through
+      // to retry if salvage isn't supplied or also fails.
+      const salvaged = args.salvage ? args.salvage(raw) : null;
+      if (salvaged !== null && salvaged !== undefined) {
+        parsed = salvaged;
+      } else {
+        lastError = e instanceof Error
+          ? new Error(`LLM did not return parseable JSON: ${e.message}`)
+          : new Error("LLM did not return parseable JSON");
+        if (attempt === maxAttempts) throw lastError;
+        continue;
+      }
     }
-
-    if (attempt === maxAttempts) {
-      throw lastError;
-    }
+    if (args.validate(parsed)) return parsed;
+    lastError = new Error(
+      `LLM JSON failed schema validation: ${raw.slice(0, 200)}`
+    );
+    if (attempt === maxAttempts) throw lastError;
   }
 
   // ponytail: unreachable — loop always returns or throws. Satisfies TS return.

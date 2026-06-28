@@ -169,10 +169,13 @@ export function isRawConcept(x: unknown): x is RawConcept {
 }
 
 export function isBookResult(x: unknown): x is BookResult {
+  // ponytail: only validates the OUTER shape ({topic, concepts: array}). Individual
+  // concepts are filtered separately in extractBookConcepts — a lite model occasionally
+  // emits one malformed concept, and rejecting the whole book for it would scrap
+  // 9 good concepts. The filter keeps the valid ones.
   if (!isRecord(x)) return false;
   if (typeof x.topic !== "string") return false;
   if (!Array.isArray(x.concepts)) return false;
-  if (!x.concepts.every(isRawConcept)) return false;
   if (x.form !== undefined && !["narrative", "nonfiction", "unknown"].includes(x.form as string)) {
     return false;
   }
@@ -205,12 +208,20 @@ export async function extractBookConcepts(
   if (cached) return materialize(book, cached, isNarrative);
 
   const prompt = choosePrompt(isNarrative);
-  const result = await completeJson({
+  const result = await completeJson<BookResult>({
     prompt: prompt + text,
     validate: isBookResult,
+    // ponytail: extraction is mechanical — minimal reasoning avoids burning the
+    // output budget on hidden thinking. 16k headroom for ~12 verbose concepts.
+    reasoningEffort: "minimal",
+    maxTokens: 16384,
   });
-  await setCached(CACHE_NS, cacheInput, result);
-  return materialize(book, result, isNarrative);
+  // ponytail: drop malformed concepts (lite model occasionally emits one) rather
+  // than failing the whole book; then hard-cap to 12 (prompt cap is soft).
+  const valid = result.concepts.filter(isRawConcept);
+  const capped = { ...result, concepts: valid.slice(0, 12) };
+  await setCached(CACHE_NS, cacheInput, capped);
+  return materialize(book, capped, isNarrative);
 }
 
 // ponytail: stamps sourceBookId + topic authoritatively and resolves form from
