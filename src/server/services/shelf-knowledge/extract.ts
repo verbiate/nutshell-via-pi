@@ -68,7 +68,7 @@ Use these conceptType vocabularies and their bodyFields:
 - plotArc    → { "summary": "...", "beats": "key turning points" }
 - symbol     → { "meaning": "...", "occurrences": "..." }
 
-Prefer fewer, well-supported concepts over many thin ones. Only include a concept if the passage clearly establishes it. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
+Extract ONLY the 4-6 most important, well-supported concepts from this passage — this is a HARD CAP: never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Only include a concept the passage clearly establishes. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
 
 PASSAGE:
 `;
@@ -96,7 +96,7 @@ Use these conceptType vocabularies and their bodyFields:
 - keyConcept  → { "definition": "...", "significance": "..." }
 - definition  → { "term": "...", "definition": "..." }
 
-Prefer fewer, well-supported concepts over many thin ones. Only include a concept if the passage clearly establishes it. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
+Extract ONLY the 4-6 most important, well-supported concepts from this passage — this is a HARD CAP: never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Only include a concept the passage clearly establishes. Do not invent sourceBookId, topic, or form — those are stamped by the caller.
 
 PASSAGE:
 `;
@@ -134,7 +134,7 @@ If you inferred NONFICTION, use these instead:
 - keyConcept → { "definition", "significance" }
 - definition → { "term", "definition" }
 
-The "form" field is REQUIRED — your inference backfills this book's classification. Prefer fewer, well-supported concepts over many thin ones. Do not invent sourceBookId or topic — those are stamped by the caller.
+The "form" field is REQUIRED — your inference backfills this book's classification. Extract ONLY the 4-6 most important concepts from this passage — HARD CAP, never exceed 6. Keep every bodyField value to ONE sentence (max ~25 words). Skip minor mentions; quality over quantity. Do not invent sourceBookId or topic — those are stamped by the caller.
 
 PASSAGE:
 `;
@@ -145,7 +145,11 @@ const CACHE_NS = "extract";
 // extracted schema changes — without it, prompt edits silently serve output
 // extracted under the old prompt. isNarrative branch is also folded into the
 // key so re-classifying a book (null→true) re-runs against the new branch.
-const EXTRACT_PROMPT_VERSION = 1;
+const EXTRACT_PROMPT_VERSION = 3;
+// ponytail: prompt asks nicely (the "HARD CAP: never exceed 6" line); code
+// enforces. The model frequently ignores it (one book yielded 146 concepts,
+// truncating JSON mid-stream), so this slice is what actually bounds output.
+const MAX_CONCEPTS_PER_CHUNK = 6;
 // ponytail: bounded concurrency for the per-chunk LLM loop. OpenRouter
 // tolerates concurrent requests; lower if rate-limited, raise if the model
 // tier allows. Sequential was ~4hrs for 2,380 chunks; 6× cuts that to ~40min.
@@ -249,8 +253,15 @@ export async function extractBookConcepts(
         prompt: prompt + chunk,
         validate: isChunkResult,
       });
-      await setCached(CACHE_NS, cacheInput, result);
-      return result;
+      // ponytail: code-level cap — slice before caching so both the cached and
+      // returned values are bounded. Bounds per-chunk JSON size (fixes
+      // truncation) and lifts signal density; merge/dedupe is unchanged.
+      const capped: ChunkResult = {
+        ...result,
+        concepts: result.concepts.slice(0, MAX_CONCEPTS_PER_CHUNK),
+      };
+      await setCached(CACHE_NS, cacheInput, capped);
+      return capped;
     },
   );
 

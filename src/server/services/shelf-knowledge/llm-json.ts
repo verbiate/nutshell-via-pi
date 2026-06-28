@@ -14,10 +14,15 @@ export async function completeJson<T>(args: {
   systemMessage?: string;
   validate: (x: unknown) => x is T;
   maxRetries?: number;
+  // ponytail: default 8192 — concept/theme JSON for a single chunk easily
+  // exceeds completeChat's 4096 default (truncation → invalid JSON → fail).
+  // Raise per-call if a caller emits larger structures.
+  maxTokens?: number;
 }): Promise<T> {
   const { apiKey, model } = await getShelfLlmConfig();
   const maxAttempts = (args.maxRetries ?? 1) + 1;
   const reminderPrompt = args.prompt + REMINDER;
+  const maxTokens = args.maxTokens ?? 8192;
 
   let lastError: unknown = null;
 
@@ -28,6 +33,7 @@ export async function completeJson<T>(args: {
       prompt: attempt === 1 ? args.prompt : reminderPrompt,
       systemMessage: args.systemMessage,
       jsonMode: true,
+      maxTokens,
     });
 
     try {
