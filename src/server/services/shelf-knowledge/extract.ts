@@ -146,6 +146,10 @@ const CACHE_NS = "extract";
 // extracted under the old prompt. isNarrative branch is also folded into the
 // key so re-classifying a book (null→true) re-runs against the new branch.
 const EXTRACT_PROMPT_VERSION = 1;
+// ponytail: bounded concurrency for the per-chunk LLM loop. OpenRouter
+// tolerates concurrent requests; lower if rate-limited, raise if the model
+// tier allows. Sequential was ~4hrs for 2,380 chunks; 6× cuts that to ~40min.
+export const EXTRACT_CONCURRENCY = 6;
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -197,6 +201,29 @@ function mostCommon(values: string[]): string | undefined {
   return best;
 }
 
+// ponytail: bounded-concurrency map preserving index order. next++ is safe —
+// JS is single-threaded, workers interleave only at awaits, so the counter
+// never races. Results land in original positions for deterministic merge.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  return results;
+}
+
 export async function extractBookConcepts(
   book: BookForExtraction,
 ): Promise<ExtractionResult> {
@@ -205,24 +232,27 @@ export async function extractBookConcepts(
   const isNarrative = book.bookMetadata?.isNarrative ?? null;
   const prompt = choosePrompt(isNarrative);
 
-  const results: ChunkResult[] = [];
-  for (const chunk of chunks) {
-    // ponytail: cache key = bookId + version + isNarrative branch + chunk.
-    // Version + isNarrative are folded in so prompt/branch edits bust the
-    // cache; without that, a tuned prompt would reuse the old branch's output.
-    const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${isNarrative ?? "?"}\x00${chunk}`;
-    const cached = await getCached<ChunkResult>(CACHE_NS, cacheInput);
-    if (cached) {
-      results.push(cached);
-      continue;
-    }
-    const result = await completeJson({
-      prompt: prompt + chunk,
-      validate: isChunkResult,
-    });
-    await setCached(CACHE_NS, cacheInput, result);
-    results.push(result);
-  }
+  // ponytail: each chunk is cache-check → LLM-on-miss → cache-write, with no
+  // shared mutable state between chunks → safe to run concurrently. Cache keys
+  // are per-chunk (content-hashed) so concurrent writes never collide.
+  const results = await mapWithConcurrency(
+    chunks,
+    EXTRACT_CONCURRENCY,
+    async (chunk): Promise<ChunkResult> => {
+      // ponytail: cache key = bookId + version + isNarrative branch + chunk.
+      // Version + isNarrative are folded in so prompt/branch edits bust the
+      // cache; without that, a tuned prompt would reuse the old branch's output.
+      const cacheInput = `${book.id}\x00${EXTRACT_PROMPT_VERSION}\x00${isNarrative ?? "?"}\x00${chunk}`;
+      const cached = await getCached<ChunkResult>(CACHE_NS, cacheInput);
+      if (cached) return cached;
+      const result = await completeJson({
+        prompt: prompt + chunk,
+        validate: isChunkResult,
+      });
+      await setCached(CACHE_NS, cacheInput, result);
+      return result;
+    },
+  );
 
   // ponytail: book-level topic = plurality vote across per-chunk topics. The
   // LLM may phrase the topic slightly differently per chunk; the most common

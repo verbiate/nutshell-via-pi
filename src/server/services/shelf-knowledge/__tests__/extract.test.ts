@@ -23,6 +23,7 @@ import {
   NARRATIVE_PROMPT,
   NONFICTION_PROMPT,
   GENERIC_PROMPT,
+  EXTRACT_CONCURRENCY,
 } from "../extract";
 
 // ponytail: build text that chunkText({softLimit:6000, hardLimit:8000}) splits
@@ -221,6 +222,37 @@ describe("extractBookConcepts", () => {
     expect(result.concepts[0].sourceBookId).toBe("book-1");
     expect(result.concepts[0].topic).toBe("real-topic"); // voted from chunk topic
     expect(result.concepts[0].form).toBe("narrative"); // from metadata, not hallucinated
+  });
+
+  it("runs at most EXTRACT_CONCURRENCY chunks concurrently (bounded pool)", async () => {
+    // ponytail: 20 chunks > concurrency(6), so all 6 workers stay busy at once.
+    // A max-in-flight counter + artificial delay proves (a) the bound holds and
+    // (b) we're actually concurrent, not just sequential under a loop.
+    vi.mocked(loadBookText).mockResolvedValue(chunkableText(20));
+    let inFlight = 0;
+    let maxInFlight = 0;
+    vi.mocked(completeJson).mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 10)); // overlap window
+      inFlight--;
+      return {
+        topic: "concurrency-test",
+        form: "narrative" as const,
+        concepts: [],
+      };
+    });
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(maxInFlight).toBeLessThanOrEqual(EXTRACT_CONCURRENCY); // bound holds
+    expect(maxInFlight).toBeGreaterThan(1); // actually concurrent, not sequential
+    expect(completeJson).toHaveBeenCalledTimes(20); // every chunk processed
+    // ponytail: results land in original order → merge/dedupe unaffected.
+    expect(result.topic).toBe("concurrency-test");
   });
 });
 
