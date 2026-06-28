@@ -1,0 +1,223 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("@/server/services/prompt-builder", () => ({
+  loadBookText: vi.fn(),
+}));
+
+vi.mock("../cache", () => ({
+  getCached: vi.fn(),
+  setCached: vi.fn(),
+}));
+
+vi.mock("../llm-json", () => ({
+  completeJson: vi.fn(),
+}));
+
+import { loadBookText } from "@/server/services/prompt-builder";
+import { getCached, setCached } from "../cache";
+import { completeJson } from "../llm-json";
+import {
+  extractBookConcepts,
+  NARRATIVE_PROMPT,
+  NONFICTION_PROMPT,
+  GENERIC_PROMPT,
+} from "../extract";
+
+// ponytail: build text that chunkText({softLimit:6000, hardLimit:8000}) splits
+// into exactly n chunks — each block is one ~6605-char sentence (over softLimit,
+// under hardLimit), so chunkText emits one chunk per block. Verified empirically.
+function chunkableText(n: number): string {
+  const blocks: string[] = [];
+  for (let i = 0; i < n; i++) {
+    blocks.push(`word${i} `.repeat(1100) + `end${i}.`);
+  }
+  return blocks.join("\n\n");
+}
+
+const baseBook = {
+  id: "book-1",
+  title: "Test Book",
+  txtPath: "data/uploads/book-1.txt",
+};
+
+describe("extractBookConcepts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(loadBookText).mockResolvedValue(chunkableText(1));
+    vi.mocked(getCached).mockResolvedValue(null);
+    vi.mocked(setCached).mockResolvedValue(undefined);
+    vi.mocked(completeJson).mockResolvedValue({
+      topic: "heroism",
+      form: "narrative",
+      concepts: [
+        {
+          conceptType: "character",
+          title: "Hero",
+          bodyFields: { role: "protagonist" },
+          relatedConceptNames: ["Villain"],
+        },
+      ],
+    });
+  });
+
+  it("narrative book (isNarrative: true) → uses the narrative prompt", async () => {
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(completeJson).mock.calls[0][0].prompt;
+    expect(prompt.startsWith(NARRATIVE_PROMPT)).toBe(true);
+    expect(prompt).toContain("character");
+    expect(result.form).toBe("narrative");
+  });
+
+  it("nonfiction book (isNarrative: false) → uses the nonfiction prompt", async () => {
+    vi.mocked(completeJson).mockResolvedValue({
+      topic: "epistemology",
+      form: "nonfiction",
+      concepts: [
+        {
+          conceptType: "argument",
+          title: "Foundationalism",
+          bodyFields: { description: "x" },
+          relatedConceptNames: [],
+        },
+      ],
+    });
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: false },
+    });
+
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(completeJson).mock.calls[0][0].prompt;
+    expect(prompt.startsWith(NONFICTION_PROMPT)).toBe(true);
+    expect(prompt).toContain("argument");
+    expect(result.form).toBe("nonfiction");
+  });
+
+  it("unknown metadata (isNarrative: null) → generic prompt + form backfilled from model output", async () => {
+    vi.mocked(completeJson).mockResolvedValue({
+      topic: "travel",
+      form: "narrative",
+      concepts: [
+        {
+          conceptType: "setting",
+          title: "The Road",
+          bodyFields: { description: "long" },
+          relatedConceptNames: [],
+        },
+      ],
+    });
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: null,
+    });
+
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(completeJson).mock.calls[0][0].prompt;
+    expect(prompt.startsWith(GENERIC_PROMPT)).toBe(true);
+    expect(result.form).toBe("narrative"); // backfilled from the model's inference
+  });
+
+  it("cache hit on a chunk → completeJson NOT called for that chunk", async () => {
+    vi.mocked(loadBookText).mockResolvedValue(chunkableText(2));
+    const cachedResult = {
+      topic: "cached-topic",
+      form: "narrative" as const,
+      concepts: [
+        {
+          conceptType: "character",
+          title: "Cached",
+          bodyFields: { role: "x" },
+          relatedConceptNames: [],
+        },
+      ],
+    };
+    // chunk 1 misses, chunk 2 hits cache.
+    vi.mocked(getCached)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(cachedResult);
+
+    await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(completeJson).toHaveBeenCalledTimes(1); // only the miss
+    expect(setCached).toHaveBeenCalledTimes(1); // only the miss is written
+  });
+
+  it("chunk-and-merge: two chunks, same title-slug → one concept with merged fields", async () => {
+    vi.mocked(loadBookText).mockResolvedValue(chunkableText(2));
+    vi.mocked(completeJson)
+      .mockResolvedValueOnce({
+        topic: "merge-topic",
+        form: "narrative" as const,
+        concepts: [
+          {
+            conceptType: "character",
+            title: "Hero", // same title → same slug
+            bodyFields: { role: "protagonist" },
+            relatedConceptNames: ["Villain"],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        topic: "merge-topic",
+        form: "narrative" as const,
+        concepts: [
+          {
+            conceptType: "character",
+            title: "Hero", // collision
+            bodyFields: { arc: "growth" }, // different field
+            relatedConceptNames: ["Mentor"], // different relation
+          },
+        ],
+      });
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(result.concepts).toHaveLength(1);
+    const merged = result.concepts[0];
+    expect(merged.title).toBe("Hero");
+    expect(merged.bodyFields).toEqual({ role: "protagonist", arc: "growth" });
+    expect([...merged.relatedConceptNames].sort()).toEqual(["Mentor", "Villain"]);
+  });
+
+  it("stamps sourceBookId + topic authoritatively (overwrites hallucinated values)", async () => {
+    vi.mocked(completeJson).mockResolvedValue({
+      topic: "real-topic", // chunk-level topic → the voted book topic
+      form: "narrative",
+      concepts: [
+        {
+          conceptType: "character",
+          title: "Hero",
+          bodyFields: { role: "x" },
+          relatedConceptNames: [],
+          // ponytail: hallucinated values the code MUST overwrite
+          sourceBookId: "HALLUCINATED-BOOK",
+          topic: "HALLUCINATED-TOPIC",
+          form: "nonfiction",
+        },
+      ],
+    });
+
+    const result = await extractBookConcepts({
+      ...baseBook,
+      bookMetadata: { isNarrative: true },
+    });
+
+    expect(result.concepts).toHaveLength(1);
+    expect(result.concepts[0].sourceBookId).toBe("book-1");
+    expect(result.concepts[0].topic).toBe("real-topic"); // voted from chunk topic
+    expect(result.concepts[0].form).toBe("narrative"); // from metadata, not hallucinated
+  });
+});
