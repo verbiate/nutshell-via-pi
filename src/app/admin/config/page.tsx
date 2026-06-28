@@ -163,6 +163,103 @@ function ConfigRow({
   );
 }
 
+type ShelfWikiStatus = {
+  state: "idle" | "building" | "done" | "error";
+  at?: string;
+  counts?: { concepts: number; themes: number; files: number };
+  message?: string;
+};
+
+function ShelfKnowledgeCard() {
+  const queryClient = useQueryClient();
+
+  const { data: status } = useQuery({
+    queryKey: ["shelf-wiki-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/shelf-wiki/status");
+      if (!res.ok) throw new Error("Failed to load shelf wiki status");
+      return res.json() as Promise<ShelfWikiStatus>;
+    },
+    // ponytail: poll only while building; otherwise a single fetch suffices.
+    refetchInterval: (q) =>
+      q.state.data?.state === "building" ? 2000 : false,
+  });
+
+  const buildMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/shelf-wiki/build", { method: "POST" });
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error === "already building" ? "already building" : "build busy");
+      }
+      if (!res.ok) throw new Error("Build failed to start");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shelf-wiki-status"] });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "Build failed to start");
+    },
+  });
+
+  const s = status ?? { state: "idle" } as ShelfWikiStatus;
+  const isBuilding = s.state === "building" || buildMutation.isPending;
+
+  const stateLabel: Record<ShelfWikiStatus["state"], string> = {
+    idle: "Idle",
+    building: "Building…",
+    done: "Ready",
+    error: "Error",
+  };
+  const badgeVariant: Record<ShelfWikiStatus["state"], "default" | "secondary"> = {
+    idle: "secondary",
+    building: "default",
+    done: "default",
+    error: "default",
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-medium">Shelf Knowledge</h3>
+          <p className="text-xs text-muted-foreground">
+            Compile the shelf wiki from extracted concepts + cluster themes.
+          </p>
+        </div>
+        <Badge variant={badgeVariant[s.state]}>{stateLabel[s.state]}</Badge>
+      </div>
+
+      <div className="text-xs text-muted-foreground space-y-1 mb-4">
+        {s.at && (
+          <div>
+            Last: {new Date(s.at).toLocaleString()}
+          </div>
+        )}
+        {s.state === "done" && s.counts && (
+          <div>
+            {s.counts.concepts} concepts · {s.counts.themes} themes · {s.counts.files} files
+          </div>
+        )}
+        {s.state === "error" && s.message && (
+          <div className="text-destructive">{s.message}</div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => buildMutation.mutate()}
+          disabled={isBuilding}
+        >
+          {isBuilding ? "Building…" : "Build shelf wiki"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 export default function ConfigPage() {
   return (
     <div>
@@ -188,6 +285,14 @@ export default function ConfigPage() {
             </TabsContent>
           ))}
         </Tabs>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-[20px] font-semibold text-foreground">Shelf Knowledge</h2>
+        <p className="mt-1 text-sm text-muted-foreground mb-4">
+          Build the cross-book knowledge index that powers &ldquo;Ask Your Bookshelf&rdquo;
+        </p>
+        <ShelfKnowledgeCard />
       </div>
     </div>
   );
