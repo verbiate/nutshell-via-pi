@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hrefBasename } from "@/lib/explainer/citations";
+import { useShelfCitedHrefs } from "@/hooks/use-shelf-cited-hrefs";
 import {
   mergeTimeline,
   isTurnZeroAttachment,
@@ -561,11 +562,23 @@ export function DiscussionsPanel({
       }
     : undefined;
 
+  // ponytail: shelf discussions cite books across the library via #ch:<bookId>:
+  // <basename> links but have no attachments → attachedBookHrefs would be empty
+  // and the links degrade to plain text. Parse cited bookIds from the messages
+  // and batch-fetch their spine hrefs (access-checked server-side). Safe to
+  // call unconditionally — returns {} when nothing is cited (non-shelf).
+  const shelfCitedHrefs = useShelfCitedHrefs(localMessages);
+  const isShelfDiscussion =
+    (activeData?.discussion as { type?: string } | undefined)?.type === "shelf";
+
   // ponytail: hrefs for each ATTACHED (co-primary) book, keyed by bookId. The
   // renderer validates #ch:<bookId>:<basename> citations against the TARGET
   // book's hrefs (not the open book's spine — that's the origin book). Sourced
   // from each attachment's DB tocJson (included by getDiscussionWithMessages).
   // Recomputed when the discussion refetch lands new/removed attachments.
+  //
+  // For SHELF discussions there are no attachments; the cited books' hrefs
+  // come from shelfCitedHrefs instead.
   //
   // ALSO includes the ORIGIN book's hrefs when viewing from a co-primary (non-
   // origin) book — so the origin book's unprefixed #ch: citations get a second
@@ -573,6 +586,13 @@ export function DiscussionsPanel({
   // origin citations degrade to plain text when the discussion is opened from
   // a different book's list.
   const { attachedBookHrefs, originBookId } = useMemo(() => {
+    if (isShelfDiscussion) {
+      return {
+        attachedBookHrefs:
+          Object.keys(shelfCitedHrefs).length > 0 ? shelfCitedHrefs : undefined,
+        originBookId: undefined as string | undefined,
+      };
+    }
     const d = activeData?.discussion as
       | {
           bookId: string;
@@ -611,7 +631,7 @@ export function DiscussionsPanel({
       attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
       originBookId: originId,
     };
-  }, [activeData, bookId]);
+  }, [activeData, bookId, isShelfDiscussion, shelfCitedHrefs]);
 
   // ─── Follow-up composer ─────────────────────────────────────────────────
   const [input, setInput] = useState("");

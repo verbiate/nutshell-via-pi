@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/command";
 import { useReaderNav } from "@/components/reader/reader-nav-context";
 import { hrefBasename } from "@/lib/explainer/citations";
+import { useShelfCitedHrefs } from "@/hooks/use-shelf-cited-hrefs";
 import type { DiscussionListItem } from "@/types/discussion";
 import type { LibraryBook } from "@/types/book";
 
@@ -875,11 +876,27 @@ export function DiscussionDetail({
     };
   }, [data]);
 
+  // ponytail: shelf discussions have no attachments/book, so attachedBookHrefs
+  // would be empty and every #ch:<bookId>:<basename> deep link in the answer
+  // would degrade to plain text. Parse the cited bookIds out of the messages
+  // and batch-fetch their spine hrefs (access-checked server-side). Safe to
+  // call unconditionally — returns {} when nothing is cited.
+  const shelfCitedHrefs = useShelfCitedHrefs(localMessages);
+  const isShelf = !d.book;
+
   // ponytail: citation deep-link plumbing — mirrors discussions-panel.tsx:575-614.
   // Origin book's hrefs validate unprefixed #ch: citations; attached books'
   // hrefs validate prefixed #ch:<bookId>:<basename> cross-book citations.
   // Sourced from the list item's tocJson (already fetched for resolveLabel).
+  // For shelf discussions, the cited-book hrefs come from shelfCitedHrefs.
   const { originBookHrefs, attachedBookHrefs } = useMemo(() => {
+    if (isShelf) {
+      const map = shelfCitedHrefs;
+      return {
+        originBookHrefs: [] as string[],
+        attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
+      };
+    }
     const parseHrefs = (tocJson: string | null | undefined): string[] => {
       if (!tocJson) return [];
       try {
@@ -901,7 +918,7 @@ export function DiscussionDetail({
       originBookHrefs: d.book ? parseHrefs(d.book.tocJson) : [],
       attachedBookHrefs: Object.keys(map).length > 0 ? map : undefined,
     };
-  }, [d]);
+  }, [d, isShelf, shelfCitedHrefs]);
 
   // ponytail: route citation clicks through the SAME pendingReaderNav deep-link
   // the chips use. On arrival the reader resolves the basename to its spine
@@ -1102,7 +1119,7 @@ export function DiscussionDetail({
   // ponytail: header — parent book as a large cover, exactly as before. Dual
   // ownership (a second book attached) shows BOTH covers and the "Two books:"
   // label treatment. Each cover opens its own book in the reader.
-  const isShelf = !d.book;
+  // (isShelf derived above, near shelfCitedHrefs.)
   const isMulti = attachedBooks.length > 0;
   const involvedTitles = [d.book?.title, ...attachedBooks.map((a) => a.book!.title)].filter(
     (t): t is string => !!t
