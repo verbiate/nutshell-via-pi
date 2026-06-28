@@ -384,7 +384,7 @@ model AppSetting {
 model Discussion {
   id              String   @id @default(cuid())
   userId          String
-  bookId          String
+  bookId          String?
   // ponytail: nullable — a "New discussion" starts blank (no explainer seed);
   // the discussion is created on the user's first message with the book as context.
   // "Ask about this" flows still pin a versioned explainer here.
@@ -401,7 +401,7 @@ model Discussion {
   updatedAt       DateTime @updatedAt
 
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  book         EpubFile   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  book         EpubFile?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
   explainer    Explainer? @relation(fields: [explainerId], references: [id], onDelete: Cascade)
   messages     DiscussionMessage[]
   attachments  DiscussionAttachment[]
