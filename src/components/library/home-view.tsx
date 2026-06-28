@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Compass, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { DailyDigest } from "./daily-digest";
 import { Bookshelf } from "./bookshelf";
 import { SmoothScrollArea } from "./smooth-scroll-area";
 import { DiscussionsHomeView } from "./discussions-home";
+import { FindBooksView } from "./find-books-view";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { LibraryBook } from "@/types/book";
+import type { FreeBook } from "@/types/free-book";
 import type { DiscussionListItem } from "@/types/discussion";
 
 // ponytail: progressive blur = stacked masked backdrop-filter layers (geometric
@@ -47,6 +49,7 @@ interface HomeViewProps {
   userName: string | null;
   books: LibraryBook[];
   digestImage: string | null;
+  freeBooks?: FreeBook[];
   // ponytail: pre-fetched by the server component so the Discussions tab
   // renders SSR without a client fetch waterfall. The client component
   // refetches on mount for freshness.
@@ -62,6 +65,7 @@ export function HomeView({
   userName,
   books,
   digestImage,
+  freeBooks = [],
   discussions,
   static: isStatic = false,
 }: HomeViewProps) {
@@ -257,17 +261,7 @@ export function HomeView({
             />
           </TabsContent>
           <TabsContent value="find" className="lg:absolute lg:inset-0">
-            <SmoothScrollArea className="lg:absolute lg:inset-0">
-              <div className="flex min-h-[50vh] flex-col items-center justify-center lg:h-full lg:min-h-0">
-                <Compass className="h-16 w-16 text-muted-foreground" />
-                <h2 className="mt-4 font-serif text-[28px] font-medium text-espresso">
-                  Find your next read
-                </h2>
-                <p className="mt-2 max-w-[400px] text-center text-base text-muted-foreground">
-                  Discover and add new books to your shelf from here.
-                </p>
-              </div>
-            </SmoothScrollArea>
+            <FindBooksView books={freeBooks} />
           </TabsContent>
         </div>
       </div>

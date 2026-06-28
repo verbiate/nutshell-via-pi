@@ -1,6 +1,7 @@
 import { readdir } from "fs/promises";
 import path from "path";
 import { requireAuth } from "@/lib/auth-guards";
+import { loadFreeBooksCatalog } from "@/lib/free-books";
 import { getPersonalLibrary } from "@/server/services/library";
 import { listAllDiscussionsForUser } from "@/server/services/discussions";
 import { EmptyLibrary } from "@/components/library/empty-library";
@@ -24,9 +25,10 @@ async function pickRandomDigestImage(): Promise<string | null> {
 }
 
 export default async function MyLibraryPage() {
-  const [user, digestImage] = await Promise.all([
+  const [user, digestImage, freeBooks] = await Promise.all([
     requireAuth(),
     pickRandomDigestImage(),
+    loadFreeBooksCatalog(),
   ]);
   const [books, discussions] = await Promise.all([
     getPersonalLibrary(user.id),
@@ -42,6 +44,7 @@ export default async function MyLibraryPage() {
       userName={user.name}
       books={books}
       digestImage={digestImage}
+      freeBooks={freeBooks}
       discussions={discussions as any}
     />
   );
