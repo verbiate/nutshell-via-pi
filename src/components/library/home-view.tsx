@@ -132,6 +132,7 @@ export function HomeView({
   // owns the queryClient + invalidate so DiscussionsHomeView's list refreshes.
   const queryClient = useQueryClient();
   const [shelfQuery, setShelfQuery] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const onCreateShelfDiscussion = async (question: string) => {
     const res = await fetch("/api/discussions", {
       method: "POST",
@@ -214,17 +215,24 @@ export function HomeView({
                       aria-label="Ask your books"
                       placeholder="Ask your books…"
                       value={shelfQuery}
+                      disabled={submitting}
                       onChange={(e) => setShelfQuery(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          const q = shelfQuery.trim();
-                          if (!q) return;
-                          e.preventDefault();
-                          void onCreateShelfDiscussion(q).then(() => {
+                        if (e.key !== "Enter") return;
+                        const q = shelfQuery.trim();
+                        if (!q || submitting) return;
+                        e.preventDefault();
+                        setSubmitting(true);
+                        void onCreateShelfDiscussion(q)
+                          .then(() => {
                             setShelfQuery("");
                             setTabValue("explainers");
-                          });
-                        }
+                          })
+                          .catch((err) => {
+                            // ponytail: minimal — keep the user's text so they can retry; Plan 3 adds polished error UX.
+                            console.error("shelf discussion create failed", err);
+                          })
+                          .finally(() => setSubmitting(false));
                       }}
                       className="flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground/70"
                     />
