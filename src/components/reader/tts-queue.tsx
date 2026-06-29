@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -24,6 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -44,6 +50,22 @@ export interface TtsQueueProps {
   onJumpToItem: (itemId: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function BookSub({
+  item,
+  className,
+}: {
+  item: PlaylistItem;
+  className?: string;
+}) {
+  if (!item.bookTitle) return null;
+  return (
+    <span className={cn("mt-0.5 block truncate text-xs", className)}>
+      {item.bookTitle}
+      {item.bookAuthor ? ` — ${item.bookAuthor}` : ""}
+    </span>
+  );
 }
 
 function QueueRow({
@@ -74,18 +96,21 @@ function QueueRow({
       <button
         type="button"
         onClick={onClick}
-        className="flex-1 text-left line-clamp-2"
+        className="flex-1 text-left min-w-0"
       >
-        {isActive && (
-          <Volume2 className="mr-1.5 inline h-3.5 w-3.5 align-text-bottom" />
-        )}
-        {item.sectionLabel || "Untitled section"}
+        <span className="block line-clamp-2 leading-snug">
+          {isActive && (
+            <Volume2 className="mr-1.5 inline h-3.5 w-3.5 align-text-bottom" />
+          )}
+          {item.sectionLabel || "Untitled section"}
+        </span>
+        <BookSub item={item} className="text-muted-foreground" />
       </button>
       <button
         type="button"
         onClick={onRemove}
         aria-label="Remove"
-        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground rounded-md p-1 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground rounded-md p-1 transition-opacity shrink-0"
       >
         <X className="h-4 w-4" />
       </button>
@@ -141,6 +166,23 @@ function SortableQueueRow({
   );
 }
 
+function SectionLabel({
+  children,
+  count,
+}: {
+  children: React.ReactNode;
+  count?: number;
+}) {
+  return (
+    <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+      {typeof count === "number" && (
+        <span className="ml-1 font-normal normal-case">({count})</span>
+      )}
+    </h4>
+  );
+}
+
 export function TtsQueue({
   items,
   activeItemId,
@@ -160,6 +202,20 @@ export function TtsQueue({
     const upcoming = items.filter((i) => i.status === "upcoming");
     return { history, active, upcoming };
   }, [items]);
+
+  const onDeckCount = (active ? 1 : 0) + upcoming.length;
+  // ponytail: Dialog unmounts content when closed, so Tabs remounts each open and defaultValue is re-evaluated fresh. "on-deck" wins ties so the playhead stays visible while reading.
+  const defaultTab =
+    onDeckCount === 0 && history.length > 0 ? "recently-played" : "on-deck";
+
+  const activeRowRef = useRef<HTMLLIElement | null>(null);
+  // Scroll the Now-Playing row into view on open. Component only mounts when open, so empty deps run once per open.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      activeRowRef.current?.scrollIntoView({ block: "nearest" });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -182,22 +238,24 @@ export function TtsQueue({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] flex flex-col">
+      <DialogContent className="h-[min(80vh,600px)] flex flex-col overflow-hidden">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-9">
             <DialogTitle>Playlist</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearAll}
-              className="text-destructive hover:text-destructive"
-            >
-              Clear all
-            </Button>
+            {items.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClearAll}
+                className="text-destructive hover:text-destructive"
+              >
+                Clear all
+              </Button>
+            )}
           </div>
         </DialogHeader>
 
-        <div className="flex items-center justify-between py-2">
+        <div className="flex items-center justify-between border-t py-3">
           <Label
             htmlFor="auto-advance"
             className="text-sm text-muted-foreground cursor-pointer"
@@ -211,90 +269,138 @@ export function TtsQueue({
           />
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          {items.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Your playlist is empty.
-              <br />
-              Start reading to add chapters.
-            </p>
-          )}
+        <Tabs
+          defaultValue={defaultTab}
+          className="flex-1 flex flex-col min-h-0 gap-3"
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="on-deck">
+              On deck
+              {onDeckCount > 0 && (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  {onDeckCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="recently-played">
+              Recently played
+              {history.length > 0 && (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  {history.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-          {history.length > 0 && (
-            <div className="mb-4">
-              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                History
-              </h4>
-              <ul className="space-y-1">
-                {history.map((item) => (
-                  <QueueRow
-                    key={item.id}
-                    item={item}
-                    isActive={false}
-                    onClick={() => onJumpToItem(item.id)}
-                    onRemove={() => onRemove(item.id)}
-                  />
-                ))}
-              </ul>
-            </div>
-          )}
+          <TabsContent value="on-deck" className="flex-1 min-h-0 mt-0">
+            <ScrollArea className="h-full -mx-6 px-6">
+              {!active && upcoming.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  Nothing on deck.
+                  <br />
+                  Start reading to queue chapters.
+                </p>
+              )}
 
-          {active && (
-            <div className="mb-4">
-              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Now playing
-              </h4>
-              <ul className="space-y-1">
-                <QueueRow
-                  item={active}
-                  isActive
-                  onClick={() => onJumpToItem(active.id)}
-                  onRemove={() => onRemove(active.id)}
-                />
-              </ul>
-            </div>
-          )}
-
-          {upcoming.length > 0 && (
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Up next
-                </h4>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClearUpcoming}
-                  className="h-auto py-0 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Clear upcoming
-                </Button>
-              </div>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={upcomingIds}
-                  strategy={verticalListSortingStrategy}
-                >
+              {/* Now playing — highlighted hero row */}
+              {active && (
+                <div className="pt-1">
+                  <SectionLabel>Now playing</SectionLabel>
                   <ul className="space-y-1">
-                    {upcoming.map((item) => (
-                      <SortableQueueRow
-                        key={item.id}
-                        item={item}
-                        isActive={item.id === activeItemId}
-                        onClick={() => onJumpToItem(item.id)}
-                        onRemove={() => onRemove(item.id)}
-                      />
-                    ))}
+                    <li
+                      ref={activeRowRef}
+                      className="group flex items-center gap-2 rounded-md border border-chocolate/20 bg-chocolate/10 px-3 py-3 text-sm font-medium text-chocolate"
+                    >
+                      <Volume2 className="h-4 w-4 shrink-0" />
+                      <button
+                        type="button"
+                        onClick={() => onJumpToItem(active.id)}
+                        className="flex-1 text-left min-w-0"
+                      >
+                        <span className="block line-clamp-2 leading-snug">
+                          {active.sectionLabel || "Untitled section"}
+                        </span>
+                        <BookSub item={active} className="text-chocolate/70" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(active.id)}
+                        aria-label="Remove"
+                        className="text-chocolate/60 hover:text-chocolate rounded-md p-1 shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
                   </ul>
-                </SortableContext>
-              </DndContext>
-            </div>
-          )}
-        </ScrollArea>
+                </div>
+              )}
+
+              {/* Up next */}
+              {upcoming.length > 0 && (
+                <div className={cn(active && "mt-4")}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <SectionLabel count={upcoming.length}>Up next</SectionLabel>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onClearUpcoming}
+                      className="h-auto py-0 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Clear upcoming
+                    </Button>
+                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={upcomingIds}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <ul className="space-y-1">
+                        {upcoming.map((item) => (
+                          <SortableQueueRow
+                            key={item.id}
+                            item={item}
+                            isActive={item.id === activeItemId}
+                            onClick={() => onJumpToItem(item.id)}
+                            onRemove={() => onRemove(item.id)}
+                          />
+                        ))}
+                      </ul>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent
+            value="recently-played"
+            className="flex-1 min-h-0 mt-0"
+          >
+            <ScrollArea className="h-full -mx-6 px-6">
+              {history.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No recently played chapters.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {history.map((item) => (
+                    <QueueRow
+                      key={item.id}
+                      item={item}
+                      isActive={false}
+                      onClick={() => onJumpToItem(item.id)}
+                      onRemove={() => onRemove(item.id)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
