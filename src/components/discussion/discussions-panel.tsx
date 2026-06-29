@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hrefBasename } from "@/lib/explainer/citations";
 import { useShelfCitedHrefs } from "@/hooks/use-shelf-cited-hrefs";
@@ -78,6 +78,7 @@ import {
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerButton,
+  useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
@@ -189,6 +190,23 @@ export interface DiscussionsPanelProps {
   // "+ book" affordance is hidden entirely (the unified attach button degrades
   // to the plain section picker). Resolved reader-side from the admin setting.
   attachBookMax?: number;
+}
+
+// ponytail:reports the MessageScroller viewport's "at bottom" state up to
+// DiscussionView, which uses it to gate auto-follow during follow-up streams:
+// when streaming a reply, the viewport pins to the user's anchored question and
+// only resumes live-edge following once the reader scrolls back to the bottom
+// (the manual "latch back on"). `end` is the primitive's "scrollable distance
+// remaining > threshold" flag (true = NOT at bottom), so we invert it to
+// `latched = !end`. The hook + this component must live INSIDE
+// MessageScrollerProvider (context boundary), which is why it's a separate
+// renderless child rather than a call inside DiscussionView itself.
+function ScrollLatch({ onChange }: { onChange: (latchedAtBottom: boolean) => void }) {
+  const { end } = useMessageScrollerScrollable();
+  useEffect(() => {
+    onChange(!end);
+  }, [end, onChange]);
+  return null;
 }
 
 export function DiscussionsPanel({
@@ -1664,6 +1682,29 @@ function DiscussionView({
     inputRef.current?.focus();
   }, [streaming, streamingInitial]);
 
+  // ponytail: scroll-follow gate for follow-up streams. When a reply is
+  // streaming (streaming && !streamingInitial), `autoScroll` follows the
+  // live edge ONLY while the reader is already at the bottom (latched). The
+  // layout effect clears the latch synchronously before paint when a
+  // follow-up generation starts, so the previous render's `latched=true`
+  // (reader was at bottom in idle state) doesn't carry through stream start
+  // and yank the user's just-pinned question off the top as the assistant
+  // bubble grows past the viewport. The ScrollLatch child re-populates
+  // `latched` from the primitive's viewport-edge state once the reader
+  // scrolls — false (off) when scrolled up, true (on) when scrolled back down.
+  // Initial-explainer streams (streamingInitial) are excluded: there is no
+  // user anchor to pin, so live-edge follow is the desired default.
+  const [latched, setLatched] = useState(true);
+  const prevFollowupStreamingRef = useRef(false);
+  useLayoutEffect(() => {
+    const followupStreaming = streaming && !streamingInitial;
+    if (followupStreaming && !prevFollowupStreamingRef.current) {
+      setLatched(false);
+    }
+    prevFollowupStreamingRef.current = followupStreaming;
+  }, [streaming, streamingInitial]);
+  const autoScroll = streaming && !streamingInitial ? latched : true;
+
   // ponytail: phase label only matters while the user is staring at an empty
   // (or growing) bubble. "Explaining" = hidden pass 1 running, nothing shown
   // yet; "Refining" = pass 2 streaming. One-pass explainers never set phase.
@@ -1783,7 +1824,12 @@ function DiscussionView({
         // autoScroll follows the live edge ONLY while the reader is already
         // there; the moment they scroll up, auto-scroll backs off and their
         // position is preserved (rule 1: never move the reader against intent).
-        autoScroll
+        // During follow-up streams we additionally gate this on `latched`
+        // (see DiscussionView): the user's question pins to the top and the
+        // viewport only resumes live-edge following once they scroll back to
+        // the bottom (manual "latch back on"). Initial-explainer streams keep
+        // `autoScroll=true` since there is no user anchor to pin.
+        autoScroll={autoScroll}
         // ponytail: 64px of the previous reply stays visible above the next
         // anchored user message — keeps the new turn visually connected to
         // what came before (rule 6: keep part of the previous conversation
@@ -1794,6 +1840,7 @@ function DiscussionView({
         // when no anchors exist or the last turn already fits in the viewport.
         defaultScrollPosition="last-anchor"
       >
+        <ScrollLatch onChange={setLatched} />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport className="px-4 py-3">
             <MessageScrollerContent className="gap-3">
