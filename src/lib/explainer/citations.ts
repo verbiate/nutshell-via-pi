@@ -71,6 +71,28 @@ export function resolveToSpineHref(target: string, spineHrefs: string[]): string
   return target;
 }
 
+/**
+ * ponytail: like resolveToSpineHref but returns null on no match instead of
+ * the input unchanged — so the navigation boundary can REFUSE to display a
+ * citation whose basename isn't in the live spine, rather than handing the
+ * bare basename to rendition.display() and dead-jumping to section start.
+ * The consume boundary is the source of truth: click-time validation for
+ * cross-book citations can only check tocJson (DB), which can drift from the
+ * live spine; this guard resolves against the same spine display() uses.
+ */
+export function resolveCitationHrefOrNull(
+  href: string,
+  spineHrefs: string[]
+): string | null {
+  if (!href) return null;
+  const b = hrefBasename(href);
+  if (!b) return null;
+  for (const h of spineHrefs) {
+    if (hrefBasename(h) === b) return h;
+  }
+  return null;
+}
+
 export function segmentText(text: string): Segment[] {
   const segments: Segment[] = [];
   let last = 0;
@@ -95,6 +117,9 @@ if (process.argv[1]?.endsWith("citations.ts")) {
   const ref = parseBookRef("ck1abc2def3ghi4jkl:chapter3.xhtml");
   if (ref.bookId !== "ck1abc2def3ghi4jkl" || ref.basename !== "chapter3.xhtml") throw new Error("parseBookRef prefixed failed");
   if (parseBookRef("chapter1.xhtml").bookId !== null) throw new Error("parseBookRef origin should be null");
-  if (parseBookRef("part1:x.xhtml").bookId !== null) throw new Error("parseBookRef short prefix should be null");
-  console.log("citations self-check OK");
+if (parseBookRef("part1:x.xhtml").bookId !== null) throw new Error("parseBookRef short prefix should be null");
+if (resolveCitationHrefOrNull("nope.xhtml", ["OEBPS/chapter1.xhtml"]) !== null) throw new Error("resolveCitationHrefOrNull should return null on no match");
+if (resolveCitationHrefOrNull("chapter1.xhtml", ["OEBPS/chapter1.xhtml"]) !== "OEBPS/chapter1.xhtml") throw new Error("resolveCitationHrefOrNull should resolve basename");
+if (resolveCitationHrefOrNull("", ["OEBPS/chapter1.xhtml"]) !== null) throw new Error("resolveCitationHrefOrNull should return null on empty");
+console.log("citations self-check OK");
 }

@@ -6,6 +6,7 @@ import {
   isValidHref,
   segmentText,
   resolveToSpineHref,
+  resolveCitationHrefOrNull,
 } from "../citations";
 
 describe("hrefBasename", () => {
@@ -150,5 +151,35 @@ describe("resolveToSpineHref", () => {
 
   it("returns empty input unchanged", () => {
     expect(resolveToSpineHref("", spineHrefs)).toBe("");
+  });
+});
+
+describe("resolveCitationHrefOrNull", () => {
+  // ponytail: the navigation boundary refuses to display() a citation whose
+  // basename isn't in the live spine. Null (not the input unchanged) is the
+  // signal to toast + stay on the restored position instead of dead-jumping.
+  const spineHrefs = ["OEBPS/chapter1.xhtml", "text/chapter-2.xhtml"];
+
+  it("resolves a bare basename to the full prefixed spine href", () => {
+    expect(resolveCitationHrefOrNull("chapter1.xhtml", spineHrefs)).toBe(
+      "OEBPS/chapter1.xhtml"
+    );
+    expect(resolveCitationHrefOrNull("chapter-2.xhtml", spineHrefs)).toBe(
+      "text/chapter-2.xhtml"
+    );
+  });
+
+  it("returns the full href when the input is already canonical", () => {
+    expect(resolveCitationHrefOrNull("OEBPS/chapter1.xhtml", spineHrefs)).toBe(
+      "OEBPS/chapter1.xhtml"
+    );
+  });
+
+  it("returns null when no spine href matches", () => {
+    expect(resolveCitationHrefOrNull("ghost.xhtml", spineHrefs)).toBeNull();
+  });
+
+  it("returns null on empty input", () => {
+    expect(resolveCitationHrefOrNull("", spineHrefs)).toBeNull();
   });
 });

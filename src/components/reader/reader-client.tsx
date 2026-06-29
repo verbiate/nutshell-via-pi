@@ -29,7 +29,7 @@ import {
   type BookSettings,
 } from "./book-settings-panel";
 import { DiscussionsPanel, type PendingDiscussionRequest } from "@/components/discussion/discussions-panel";
-import { resolveToSpineHref } from "@/lib/explainer/citations";
+import { resolveCitationHrefOrNull } from "@/lib/explainer/citations";
 import { useReaderNav } from "./reader-nav-context";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -564,11 +564,20 @@ export function ReaderClient({
     (targetBookId: string, basename: string, discussionId?: string) => {
       if (targetBookId === bookId) {
         if (basename) {
-          const resolved = resolveToSpineHref(
+          // ponytail: guard against an unresolvable citation href — the renderer
+          // validates cross-book clicks against tocJson (DB), which can drift
+          // from the live spine. Refuse to display() a bare basename that isn't
+          // in the spine; otherwise epub.js throws "No Section Found" and the
+          // safeDisplay fallback silently jumps to section start.
+          const resolved = resolveCitationHrefOrNull(
             basename,
             spineItems.map((s) => s.href)
           );
-          handleTocNavigate(resolved);
+          if (!resolved) {
+            toast.error("Couldn't find that section in this book.");
+          } else {
+            handleTocNavigate(resolved);
+          }
         }
         if (discussionId) {
           setActiveTool("bulb");
@@ -644,11 +653,25 @@ export function ReaderClient({
       // degrades gracefully (returns the input unchanged if nothing matches).
       // No early-return: the discussionId block below must run regardless of
       // whether the href resolved, so a stale citation still opens the thread.
-      const resolved = resolveToSpineHref(
+      //
+      // GUARD: refuse to display() a bare basename that isn't in the live
+      // spine. A pendingReaderNav pair of {bookId, href} where href belongs to
+      // a DIFFERENT book (state drift / HMR / shelf-origin edge case) would
+      // otherwise dead-jump to section start with only a console.warn. Toast
+      // + stay on the restored position; the thread still opens below.
+      const resolved = resolveCitationHrefOrNull(
         href,
         spineItems.map((s) => s.href)
       );
-      handleTocNavigate(resolved);
+      if (!resolved) {
+        console.warn(
+          "[ReaderClient] consume: citation href not in spine, skipping display",
+          { href, bookId, spineLen: spineItems.length }
+        );
+        toast.error("Couldn't find that section in this book.");
+      } else {
+        handleTocNavigate(resolved);
+      }
     }
     if (discussionId) {
       setActiveTool("bulb");
@@ -1671,19 +1694,24 @@ export function ReaderClient({
                 onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
                 contextWindow={contextWindow}
-                onNavigateToHref={(href) =>
+                onNavigateToHref={(href) => {
                   // ponytail: citations carry bare basenames (the chapter map
                   // emits basenames); rendition.display() needs the full spine
                   // href on prefixed-spine EPUBs or it dead-jumps. Resolve at
                   // this single nav boundary — same fix epub-viewer applies to
-                  // ToC hrefs via resolveSpineHref.
-                  handleTocNavigate(
-                    resolveToSpineHref(
-                      href,
-                      spineItems.map((s) => s.href)
-                    )
-                  )
-                }
+                  // ToC hrefs via resolveSpineHref. GUARD: refuse unresolvable
+                  // hrefs so epub.js doesn't throw "No Section Found" + silently
+                  // jump to section start; toast instead.
+                  const resolved = resolveCitationHrefOrNull(
+                    href,
+                    spineItems.map((s) => s.href)
+                  );
+                  if (!resolved) {
+                    toast.error("Couldn't find that section in this book.");
+                  } else {
+                    handleTocNavigate(resolved);
+                  }
+                }}
                 spineItems={spineItems}
                 onNavigateToCfi={(cfi) => {
                   // ponytail: jump to the source passage AND briefly flash it so
