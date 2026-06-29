@@ -356,7 +356,10 @@ describe("useTtsEngine", () => {
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
     expect(viewerRef!.current?.clearTtsHighlight).toHaveBeenCalled();
-    expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledWith("chunk one");
+    // ponytail: highlightChunk now always carries an opts arg (skipBlockJump
+    // undefined unless useVisible entry) — recursive forward chunks pass no
+    // opts but the plumbing stamps { skipBlockJump: undefined } on every call.
+    expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledWith("chunk one", { skipBlockJump: undefined });
 
     act(() => {
       const ctx = FakeAudioContext.instances[0];
@@ -370,6 +373,7 @@ describe("useTtsEngine", () => {
     );
     expect(viewerRef!.current?.highlightChunk).toHaveBeenLastCalledWith(
       "chunk two",
+      { skipBlockJump: undefined },
     );
 
     unmount();
@@ -412,6 +416,7 @@ describe("useTtsEngine", () => {
     await vi.waitFor(() =>
       expect(viewerRef!.current?.highlightChunk).toHaveBeenLastCalledWith(
         "chunk two",
+        { skipBlockJump: undefined },
       ),
     );
 
@@ -462,6 +467,53 @@ describe("useTtsEngine", () => {
       lang: "en",
       speed: 1,
     });
+
+    unmount();
+  });
+
+  it("propagates skipBlockJump=true to highlightChunk for the first chunk when useVisible is set, and clears it for subsequent chunks", async () => {
+    // ponytail: pins the "Start reading from here" no-flash contract. The first
+    // chunk's highlightChunk call carries { skipBlockJump: true } so the viewer
+    // skips display(blockCfi) when the straddling chunk's start block is on a
+    // previous column. Recursive chunks (forward playback) get no opts →
+    // display(blockCfi) runs normally.
+    const getText = createGetText("Hello world. This is a test.");
+    const highlightChunk = vi.fn(async () => {});
+    const viewerRef = {
+      current: {
+        highlightChunk,
+        clearTtsHighlight: vi.fn(),
+        setTtsPaused: vi.fn(),
+        getTtsStartOffset: vi.fn(() => 5),
+      },
+    } as unknown as Parameters<typeof useTtsEngine>[0]["viewerRef"];
+
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText,
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    } as Parameters<typeof useTtsEngine>[0]);
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1", {
+        useVisible: true,
+      });
+    });
+    await vi.waitFor(() => expect(highlightChunk).toHaveBeenCalled());
+
+    // ponytail: with the mocked chunkText (["chunk one","chunk two"]) and
+    // getTtsStartOffset returning 5, findStartChunkIndex returns 0 (offset 5
+    // is inside "chunk one"). The first highlightChunk call must carry the
+    // skipBlockJump flag so the viewer stays put instead of flashing backward
+    // to a straddling block's off-page start.
+    expect(highlightChunk).toHaveBeenNthCalledWith(
+      1,
+      "chunk one",
+      { skipBlockJump: true },
+    );
 
     unmount();
   });

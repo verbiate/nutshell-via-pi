@@ -395,7 +395,11 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
   );
 
   const playChunk = useCallback(
-    async (engine: TtsEngine, index: number) => {
+    async (
+      engine: TtsEngine,
+      index: number,
+      opts?: { skipBlockJump?: boolean },
+    ) => {
       if (!runningRef.current || abortRef.current) return;
       if (index >= chunksRef.current.length) {
         stopTimer();
@@ -406,6 +410,9 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       }
 
       currentIndexRef.current = index;
+      const chunkOpts = opts; // ponytail: one-shot — only the first chunk honors
+      // skipBlockJump ("Start reading from here" entry). Recursive calls below
+      // pass no opts → display(blockCfi) runs normally for forward playback.
       setState((s) => ({ ...s, phase: "PLAYING" }));
 
       // ponytail: follow-along highlight — clear previous chunk's highlight,
@@ -414,7 +421,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // Read viewerRef through viewerRefRef so the running source.onended chain
       // always sees the latest registered viewer (e.g. after return-to-playing).
       viewerRefRef.current?.current?.clearTtsHighlight();
-      await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index]);
+      await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index], { skipBlockJump: chunkOpts?.skipBlockJump });
 
       // ponytail: persist the spoken position. Fires whether or not the viewer
       // is mounted — off-reader the anchor is the only signal that survives,
@@ -707,7 +714,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         seedRef.current = estimateSeconds(totalWordsRef.current, cachedWpm, speed);
         setState((s) => ({ ...s, duration: seedRef.current }));
 
-        await playChunk(engine, startIndex);
+        await playChunk(engine, startIndex, { skipBlockJump: startPos?.useVisible });
       } catch (err) {
         if (!abortRef.current) {
           console.error("[TTS] Failed to start section:", err);

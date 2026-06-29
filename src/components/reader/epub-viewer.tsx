@@ -393,7 +393,7 @@ export interface EpubViewerHandle {
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
   getSectionText: () => string;
-  highlightChunk: (text: string, opts?: { force?: boolean }) => Promise<void>;
+  highlightChunk: (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
    * Fade the current chunk highlight out (paused=true → opacity 0) or back in
@@ -737,7 +737,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         const clone = doc.body.cloneNode(true) as HTMLElement;
         return htmlToTtsText(clone.innerHTML);
       },
-      highlightChunk: async (text: string, opts?: { force?: boolean }) => {
+      highlightChunk: async (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => {
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body || !text.trim()) return;
@@ -780,7 +780,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         // clearTtsHighlight) avoids this. Within-section display is just a
         // column scroll — the iframe DOM doesn't change, so the text map
         // and range stay valid for the wrapping that follows.
-        if (startBlock && !followStateRef.current.userBrowsedAway) {
+        if (startBlock && !followStateRef.current.userBrowsedAway && !opts?.skipBlockJump) {
           const rendition = renditionRef.current;
           if (rendition) {
             const chunkCfi = nodeToCfi(rendition, startBlock);
