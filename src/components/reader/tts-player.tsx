@@ -25,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Loader2, Minimize2, Maximize2, Settings, X, ListMusic } from "lucide-react";
+import { Loader2, Minimize2, Maximize2, Settings, X, ListMusic, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -118,6 +118,11 @@ export interface TtsPlayerProps {
   onToggleAutoAdvance?: (value: boolean) => void;
   /** Reorder upcoming playlist items. */
   onReorder?: (orderedIds: string[]) => void;
+  // ponytail: end-of-book signal from AudioProvider. Renders "Book finished" +
+  // an inert heart in place of the play button. Decorative — clicks are ignored
+  // at the provider level (handlePlayPause early-returns when bookFinishedRef
+  // is true) and the button is disabled here so the affordance is unambiguous.
+  bookFinished?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -207,6 +212,7 @@ export function TtsPlayer({
   onClearUpcoming,
   onToggleAutoAdvance,
   onReorder,
+  bookFinished = false,
 }: TtsPlayerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -253,6 +259,12 @@ export function TtsPlayer({
   // ponytail: nothing loaded (IDLE) — e.g. on first show or after Stop. The main
   // button then acts as "Read aloud from here" instead of resume.
   const isIdle = state.state === "IDLE";
+  // ponytail: section complete with a next section available → card advertises
+  // "Play next section" and clicking advances (explicit — bypasses auto-advance).
+  const isEnded = state.state === "ENDED";
+  // ponytail: end-of-book — pure affordance. Heart replaces the play button,
+  // the card reads "Book finished", and the row hides the book-meta sub-title.
+  const isBookFinished = !!bookFinished && state.state === "IDLE";
 
   // ponytail: voice catalog follows the *effective* engine so a WebGPU→browser
   // fallback refreshes the picker to browser voices. The engine radio + cloud
@@ -351,12 +363,25 @@ export function TtsPlayer({
       {/* Controls row */}
       <div className="flex items-center gap-3">
         <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand audio player" : "Minimize audio player"}
+          className="shrink-0 active:scale-[0.96] transition-transform"
+        >
+          {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+        </Button>
+
+        <Button
           size="icon"
           onClick={onPlayPause}
-          aria-label={isIdle ? "Read aloud" : isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Resume"}
+          disabled={isBookFinished}
+          aria-label={isBookFinished ? "Finished" : isIdle ? "Read aloud" : isEnded ? "Play next section" : isPlaying ? "Pause" : isLoading ? "Loading" : isGenerating ? "Cancel" : "Resume"}
           className="h-10 w-10 shrink-0 rounded-full bg-chocolate text-white hover:bg-chocolate/90 active:scale-[0.96] transition-transform"
         >
-          {isLoading || isGenerating ? (
+          {isBookFinished ? (
+            <Heart className="h-4 w-4 text-blue" fill="currentColor" />
+          ) : isLoading || isGenerating ? (
             <Loader2 className="h-4 w-4 animate-spin text-blue" />
           ) : isPlaying ? (
             <PauseSolid className="h-4 w-4 text-blue" />
@@ -381,9 +406,17 @@ export function TtsPlayer({
         {!collapsed && (
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <span className="truncate text-sm font-medium text-foreground">
-            {isIdle ? "Start reading from here" : isGenerating ? "Generating audio..." : state.sectionTitle}
+            {isBookFinished
+              ? "Book finished"
+              : isIdle
+                ? "Start reading from here"
+                : isEnded
+                  ? "Play next section"
+                  : isGenerating
+                    ? "Generating audio..."
+                    : state.sectionTitle}
           </span>
-          {!isIdle && (bookTitle || bookAuthor) && (
+          {!isIdle && !isEnded && !isBookFinished && (bookTitle || bookAuthor) && (
             <span className="truncate text-xs text-muted-foreground">
               {bookTitle}
               {bookTitle && bookAuthor ? " · " : ""}
@@ -428,16 +461,6 @@ export function TtsPlayer({
           <X className="h-4 w-4" />
         </Button>
         )}
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setCollapsed((c) => !c)}
-          aria-label={collapsed ? "Expand audio player" : "Minimize audio player"}
-          className="shrink-0 active:scale-[0.96] transition-transform"
-        >
-          {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-        </Button>
       </div>
 
       {/* Settings modal */}

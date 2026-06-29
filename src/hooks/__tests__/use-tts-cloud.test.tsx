@@ -468,6 +468,58 @@ describe("useTtsCloud", () => {
     unmount();
   });
 
+  // ponytail: handleEnded must fire onSectionComplete unconditionally (both
+  // with and without a next flat-toc section) so AudioProvider's
+  // handleSectionComplete can clear the session at end-of-book. Previously the
+  // no-next branch set state IDLE without firing onSectionComplete, leaving a
+  // sticky IDLE+session gap where the play button did nothing.
+  it("fires onSectionComplete and goes ENDED when a next section exists", async () => {
+    setResponses([
+      usageCheck(true, 0, 50),
+      generate("https://cdn/audio.mp3", "aud-1"),
+    ]);
+    const onSectionComplete = vi.fn();
+    const props = baseProps({ onSectionComplete });
+    const { getApi, unmount } = renderHook(props);
+
+    await act(async () => {
+      getApi().startSection("ch1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.state).toBe("READY"));
+
+    await act(async () => {
+      (props.audioRef.current as unknown as FakeHTMLAudioElement).dispatchEvent("ended");
+    });
+
+    expect(onSectionComplete).toHaveBeenCalledTimes(1);
+    expect(getApi().state.state).toBe("ENDED");
+    unmount();
+  });
+
+  it("fires onSectionComplete and goes IDLE at end of flat-toc (no next section)", async () => {
+    setResponses([
+      usageCheck(true, 0, 50),
+      generate("https://cdn/audio.mp3", "aud-1"),
+    ]);
+    const onSectionComplete = vi.fn();
+    const props = baseProps({ onSectionComplete });
+    const { getApi, unmount } = renderHook(props);
+
+    // Last chapter in the 2-chapter toc → no next flat-toc section.
+    await act(async () => {
+      getApi().startSection("ch2.xhtml", "Chapter 2");
+    });
+    await vi.waitFor(() => expect(getApi().state.state).toBe("READY"));
+
+    await act(async () => {
+      (props.audioRef.current as unknown as FakeHTMLAudioElement).dispatchEvent("ended");
+    });
+
+    expect(onSectionComplete).toHaveBeenCalledTimes(1);
+    expect(getApi().state.state).toBe("IDLE");
+    unmount();
+  });
+
   it("refreshQuota updates quota without touching playback state", async () => {
     setResponses([usageCheck(true, 7, 50)]);
     const { getApi, unmount } = renderHook(

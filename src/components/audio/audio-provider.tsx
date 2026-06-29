@@ -92,12 +92,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     string | null
   >(null);
 
+  // ponytail: end-of-book signal — set when the last flat-toc section finishes
+  // and cleared on any new playback. Rendered as a "Book finished" label + an
+  // inert heart in place of the play button. Separate from playback state
+  // (which is IDLE while the heart shows) so existing IDLE/ENDED branches stay
+  // unchanged.
+  const [bookFinished, setBookFinished] = useState(false);
+
   // Ref mirrors for stable callbacks wired to audio events.
   const openBookRef = useRef(openBook);
   const sessionRef = useRef(session);
   const activeItemRef = useRef(activeItem);
   const playlistItemsRef = useRef(playlistItems);
   const autoAdvanceRef = useRef(autoAdvanceBook);
+  const bookFinishedRef = useRef(bookFinished);
   useEffect(() => {
     openBookRef.current = openBook;
   }, [openBook]);
@@ -113,6 +121,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     autoAdvanceRef.current = autoAdvanceBook;
   }, [autoAdvanceBook]);
+  useEffect(() => {
+    bookFinishedRef.current = bookFinished;
+  }, [bookFinished]);
 
   // Viewer ref holder: the reader registers its EpubViewer ref here so
   // highlight-follow-along works when on-reader; off-reader it is null.
@@ -340,6 +351,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       title: string,
       startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
     ) => {
+      setBookFinished(false);
       const s = sessionRef.current;
       const isCloudNow = enginePref === "cloud" && s?.userRole !== "regular";
       if (isCloudNow) {
@@ -380,8 +392,55 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (!autoAdvanceRef.current) return;
 
     const nextIndex = s.currentIndex + 1;
-    if (nextIndex >= s.flatToc.length) return;
+    if (nextIndex >= s.flatToc.length) {
+      // ponytail: end of book — reset both engines to IDLE and clear the session
+      // so the floating card shows "Book finished" + a decorative heart. Cloud's
+      // handleEnded already moved it to IDLE; the browser engine stays ENDED
+      // until close() flips it, so call close() on whichever was active.
+      if (enginePref === "cloud" && s.userRole !== "regular") {
+        cloudTtsRef.current?.close();
+      } else {
+        browserTtsRef.current?.close();
+      }
+      setSession(null);
+      setBookFinished(true);
+      return;
+    }
 
+    const nextSection = s.flatToc[nextIndex];
+    const item = await playlistMutations.addItem({
+      bookId: s.bookId,
+      sectionHref: nextSection.href,
+      sectionLabel: nextSection.label,
+      mode: "last",
+      bookTitle: s.bookTitle,
+      bookAuthor: s.bookAuthor,
+      bookCoverPath: s.bookCoverPath,
+      bookLanguage: s.bookLanguage,
+    });
+    await playlistMutations.activateItem(item.id);
+    startSection(nextSection.href, nextSection.label);
+  }, [enginePref, playlistMutations, startSection]);
+
+  // ponytail: explicit "next section" click from the ENDED-state card. Same
+  // advance logic as handleSectionComplete but without the auto-advance guard
+  // — the click is an explicit intent, so it advances even when auto-advance
+  // is off. Defensive no-op at end-of-flat-toc (the card shows "Book finished"
+  // there, so this isn't reachable from the button).
+  const advanceToNextSection = useCallback(async () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const active = activeItemRef.current;
+    const nextItem = playlistItemsRef.current.find(
+      (i) => i.position === (active?.position ?? -1) + 1,
+    );
+    if (nextItem) {
+      await playlistMutations.activateItem(nextItem.id);
+      startSection(nextItem.sectionHref, nextItem.sectionLabel);
+      return;
+    }
+    const nextIndex = s.currentIndex + 1;
+    if (nextIndex >= s.flatToc.length) return;
     const nextSection = s.flatToc[nextIndex];
     const item = await playlistMutations.addItem({
       bookId: s.bookId,
@@ -500,6 +559,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       duration: browserTts.state.duration,
     };
   }, [browserTts.state, cloudTts.state, cloudGenEstimate, isCloud]);
+
+  // ponytail: ref mirror so handlePlayPause (stable, in deps of TtsPlayer) can
+  // read the current phase without rebuilding on every timeupdate — keeps the
+  // floating card from re-rendering every 250ms.
+  const playbackStateRef = useRef(playbackState);
+  useEffect(() => {
+    playbackStateRef.current = playbackState;
+  }, [playbackState]);
 
   // ─── Cloud audio playback speed ────────────────────────────────────────────
   useEffect(() => {
@@ -620,8 +687,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         active &&
         active.bookId === bookId &&
         ttsSectionMatches(active.sectionHref, href);
-      if (isSameActive && !startPos) {
-        playPause();
+      if (isSameActive && active) {
+        if (!startPos) {
+          playPause();
+        } else {
+          // ponytail: re-resume the same active item at a specific position
+          // (e.g. "Start reading from here" on the visible page of a section
+          // already in the playlist). Re-activate in place instead of adding a
+          // duplicate "next" entry.
+          await playlistMutations.activateItem(active.id);
+          ensureSessionForItem(active);
+          startSection(href, label, startPos);
+        }
         return;
       }
 
@@ -681,18 +758,35 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   );
 
   const handlePlayPause = useCallback(() => {
-    if (!sessionRef.current) {
+    // ponytail: end-of-book — heart is decorative. Ignore further plays.
+    if (bookFinishedRef.current) return;
+
+    // ponytail: route IDLE/ENDED explicitly to the semantics the UI advertises
+    // (vs. the old no-session + active-item branch which restarted the section
+    // from its beginning). IDLE on-reader → "Start reading from here" reads
+    // from the top of the visible page; ENDED → "Play next section" advances.
+    const ps = playbackStateRef.current.state;
+    if (ps === "IDLE") {
+      const open = openBookRef.current;
+      if (open) {
+        startFromHere(undefined, undefined, { useVisible: true });
+        return;
+      }
+      // Off-reader IDLE (no visible page): resume the active playlist item if
+      // any, else nothing to do.
       const active = activeItemRef.current;
       if (active) {
         ensureSessionForItem(active);
         startSection(active.sectionHref, active.sectionLabel);
-        return;
       }
-      startFromHere(undefined, undefined, { useVisible: true });
+      return;
+    }
+    if (ps === "ENDED") {
+      void advanceToNextSection();
       return;
     }
     playPause();
-  }, [playPause, startFromHere, startSection, ensureSessionForItem]);
+  }, [playPause, startFromHere, startSection, ensureSessionForItem, advanceToNextSection]);
 
   const stop = useCallback(() => {
     const s = sessionRef.current;
@@ -704,6 +798,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
     flushTtsPosSave();
     setSession(null);
+    setBookFinished(false);
   }, [enginePref, browserTts.close, cloudTts.close, flushTtsPosSave]);
 
   const scrub = useCallback(
@@ -1040,6 +1135,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           <TtsPlayer
             variant="floating"
             state={playbackState}
+            bookFinished={bookFinished}
             loadPct={browserTts.state.loadPct}
             onPlayPause={handlePlayPause}
             onStop={stop}

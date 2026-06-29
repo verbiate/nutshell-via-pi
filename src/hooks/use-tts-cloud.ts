@@ -389,13 +389,14 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
     const handleLoadedMetadata = () =>
       setState((s) => ({ ...s, duration: audio.duration }));
     const handleEnded = () => {
-      setState((s) => ({ ...s, state: "ENDED" }));
+      // ponytail: fire onSectionComplete unconditionally so AudioProvider's
+      // handleSectionComplete runs even at end-of-flat-toc (it clears the
+      // session there). Without this, the cloud engine reached IDLE with the
+      // session still set, which surfaced as the player card showing "Start
+      // reading from here" but the play button doing nothing.
       const next = getNextSection(state.sectionHref);
-      if (next) {
-        onSectionComplete?.();
-      } else {
-        setState((s) => ({ ...s, state: "IDLE" }));
-      }
+      setState((s) => ({ ...s, state: next ? "ENDED" : "IDLE" }));
+      onSectionComplete?.();
     };
     const handleError = () => {
       setState((s) => ({ ...s, state: "IDLE" }));

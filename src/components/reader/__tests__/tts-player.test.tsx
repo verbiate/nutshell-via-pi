@@ -411,6 +411,53 @@ describe("TtsPlayer: idle (nothing loaded) state", () => {
     );
     expect(html).toContain('aria-label="Resume"');
   });
+
+  it("shows 'Play next section' prompt when ENDED (section complete)", () => {
+    const html = render(
+      mkPlayer({ state: { ...playingState, state: "ENDED" } }),
+    );
+    expect(html).toContain("Play next section");
+  });
+
+  it("main button is labeled 'Play next section' when ENDED", () => {
+    const html = render(
+      mkPlayer({ state: { ...playingState, state: "ENDED" } }),
+    );
+    expect(html).toContain('aria-label="Play next section"');
+  });
+
+  it("shows 'Book finished' and an inert heart when bookFinished is set", () => {
+    const html = render(
+      mkPlayer({ state: idleState, bookFinished: true }),
+    );
+    expect(html).toContain("Book finished");
+    expect(html).toContain('aria-label="Finished"');
+    // ponytail: shadcn Button surfaces `disabled` as the HTML attribute.
+    expect(html).toMatch(/disabled(?:=|"")/);
+  });
+
+  it("hides book-meta sub-title when ENDED or bookFinished", () => {
+    const ended = render(
+      mkPlayer({
+        state: { ...playingState, state: "ENDED" },
+        bookTitle: "My Book",
+        bookAuthor: "Author",
+      }),
+    );
+    expect(ended).toContain("Play next section");
+    expect(ended).not.toContain("My Book");
+
+    const finished = render(
+      mkPlayer({
+        state: idleState,
+        bookFinished: true,
+        bookTitle: "My Book",
+        bookAuthor: "Author",
+      }),
+    );
+    expect(finished).toContain("Book finished");
+    expect(finished).not.toContain("My Book");
+  });
 });
 
 describe("TtsPlayer: thumbnail click", () => {

@@ -8,10 +8,12 @@ export interface KokoroVoice {
 export const KOKORO_VOICES: Record<string, KokoroVoice[]> = {
   en: [
     // US female
+    // ponytail: Heart first — audio-provider.tsx snaps to voices[0] when the
+    // user has no pref, so the first entry is the curated default voice.
+    { id: "af_heart", label: "Heart", gender: "female", region: "US" },
     { id: "af_alloy", label: "Alloy", gender: "female", region: "US" },
     { id: "af_aoede", label: "Aoede", gender: "female", region: "US" },
     { id: "af_bella", label: "Bella", gender: "female", region: "US" },
-    { id: "af_heart", label: "Heart", gender: "female", region: "US" },
     { id: "af_jessica", label: "Jessica", gender: "female", region: "US" },
     { id: "af_kore", label: "Kore", gender: "female", region: "US" },
     { id: "af_nicole", label: "Nicole", gender: "female", region: "US" },
