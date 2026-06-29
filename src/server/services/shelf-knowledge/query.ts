@@ -66,13 +66,15 @@ Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do no
 
 Answer using ONLY the information in these excerpts plus the book titles in the library manifest. If the excerpts do not contain the answer but a library book's title suggests it may be relevant, say so plainly and link the book. Do not use outside knowledge beyond what the excerpts and titles provide.
 
+{{token_budget}}
+
 Return ONLY valid JSON matching this schema:
 { "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
 // ponytail: fallback version mirroring the seeded default so a missing row
 // preserves cache stability. Loaded template.version overrides.
 const FALLBACK_NAV_VERSION = 2;
-const FALLBACK_ANSWER_VERSION = 5;
+const FALLBACK_ANSWER_VERSION = 6;
 
 // ponytail: shape of prior turns threaded from streamFollowup → answerShelfQuestion.
 // First turn passes none — shelf discussions start with no history.
@@ -242,11 +244,13 @@ async function buildAnswerPrompt(
   bookIndex: string,
   libraryManifest: string,
   conversation: string,
+  maxTokens?: number,
 ): Promise<{ prompt: string; version: number }> {
   const concept_excerpts = concepts
     .map((c) => `## ${c.title} (from ${c.bookId})\n${c.body}`)
     .join("\n\n");
   const tpl = await loadShelfPrompt("shelf_answer");
+  const { formatTokenBudget } = await import("@/server/services/prompt-builder");
   return {
     prompt: fillTemplate(tpl.content, {
       question,
@@ -255,6 +259,7 @@ async function buildAnswerPrompt(
       book_index: bookIndex,
       library_manifest: libraryManifest,
       conversation,
+      token_budget: formatTokenBudget(maxTokens),
     }),
     version: tpl.version,
   };
@@ -270,6 +275,7 @@ export async function answerShelfQuestion(args: {
   question: string;
   accessibleBookIds: string[];
   history?: ShelfHistoryEntry[];
+  maxTokens?: number;
 }): Promise<ShelfAnswer> {
   const access = new Set(args.accessibleBookIds);
   const hash = accessHash(args.accessibleBookIds);
@@ -414,6 +420,7 @@ export async function answerShelfQuestion(args: {
     bookIndex,
     libraryManifest,
     conversation,
+    args.maxTokens,
   );
   const answerInput = `${args.question}\x00${hash}\x00${[...accessibleSelected].sort().join(",")}\x00${answerVersion}\x00${histHash}`;
   const cachedAnswer = await getCached<AnswerResult>(ANSWER_NS, answerInput);
@@ -424,6 +431,10 @@ export async function answerShelfQuestion(args: {
     const res = await completeJson({
       prompt: answerPrompt,
       validate: isAnswerResult,
+      // ponytail: bound the JSON completion by the same admin-tier cap so the
+      // structured answer is sized to fit the eventual streamChat response
+      // (streamShelfFirstTurn takes the same number as its max_tokens).
+      maxTokens: args.maxTokens,
     });
     answer = res.answer;
     await setCached(ANSWER_NS, answerInput, { answer });

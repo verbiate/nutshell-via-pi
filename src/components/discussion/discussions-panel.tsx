@@ -52,6 +52,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { useSession } from "@/hooks/use-session";
 import {
   countTokens,
@@ -70,6 +71,14 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+} from "@/components/ui/message-scroller";
 
 // ponytail: single-file panel for the sidebar's `bulb` tool. Two views
 // (list / discussion) gated by `activeDiscussionId`. Receives `pendingPassage` from
@@ -1393,11 +1402,11 @@ function ListView({
     );
   }
   return (
-    // ponytail: flex-1 + min-h-0 + overflow-y-auto so the list scrolls
-    // internally when it outgrows the panel (parent is min-h-0 flex-1 flex-col
-    // — see reader-sidebar.tsx — so heights propagate). Without min-h-0 the
-    // flex child won't actually constrain, and overflow-y-auto won't kick in.
-    <div className="flex-1 min-h-0 overflow-y-auto py-2">
+    // ponytail: SmoothScrollArea provides Lenis momentum + fade-in thumb on
+    // desktop (≥1024px), native overflow-y-auto on tablet/reduced-motion.
+    // flex-1 + min-h-0 so heights propagate from the sidebar's flex-col parent.
+    <SmoothScrollArea className="flex-1 min-h-0">
+      <div className="py-2">
       <p className="px-4 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
         Discussions
       </p>
@@ -1488,7 +1497,8 @@ function ListView({
           </li>
         ))}
       </ul>
-    </div>
+      </div>
+    </SmoothScrollArea>
   );
 }
 
@@ -1643,11 +1653,6 @@ function DiscussionView({
   );
 
   const spineHrefs = (spineItems ?? []).map((s) => s.href);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [initialContent, messages]);
 
   // ponytail: autofocus the composer when rendered in the pop-out modal.
   // ponytail: focus the composer when a discussion opens (mount) and whenever a
@@ -1770,146 +1775,203 @@ function DiscussionView({
         </div>
       )}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {/*
-          ponytail: start-of-thread "Started from" marker — the companion to the
-          mid-conversation "Added" markers. Pinned to the top (before the first
-          message / explainer seed), gated on hasMidConvoBookAddition so it only
-          appears when there's a meaningful origin-vs-added distinction to draw.
-          Same visual as the "Added" rows; differentiated by wording. Clickable
-          to jump to the origin book only when viewing from a co-primary (a click
-          from the origin view would be a no-op).
-        */}
-        {hasMidConvoBookAddition && originBook && (
-          <TimelineEventRow
-            event={{
-              kind: "book-added",
-              createdAt: "",
-              label: originBook.title,
-              coverPath: originBook.coverPath,
-              bookId: originBook.bookId,
-            }}
-            variant="started"
-            onOpenBook={isOriginView ? undefined : onOpenBook}
-          />
-        )}
+      <MessageScrollerProvider
+        // ponytail: MessageScroller implements the "new-turn anchoring"
+        // behavior we want — when a new anchor (user message) is appended,
+        // the viewport moves it near the top and keeps a peek of the previous
+        // item above so the new turn doesn't feel detached from its context.
+        // autoScroll follows the live edge ONLY while the reader is already
+        // there; the moment they scroll up, auto-scroll backs off and their
+        // position is preserved (rule 1: never move the reader against intent).
+        autoScroll
+        // ponytail: 64px of the previous reply stays visible above the next
+        // anchored user message — keeps the new turn visually connected to
+        // what came before (rule 6: keep part of the previous conversation
+        // in context).
+        scrollPreviousItemPeek={64}
+        // ponytail: saved discussions reopen at the last anchored turn (the
+        // last user message), not the absolute bottom. Falls back to "end"
+        // when no anchors exist or the last turn already fits in the viewport.
+        defaultScrollPosition="last-anchor"
+      >
+        <MessageScroller className="min-h-0 flex-1">
+          <MessageScrollerViewport className="px-4 py-3">
+            <MessageScrollerContent className="gap-3">
+              {/*
+                ponytail: start-of-thread "Started from" marker — the companion
+                to the mid-conversation "Added" markers. Pinned to the top
+                (before the first message / explainer seed), gated on
+                hasMidConvoBookAddition so it only appears when there's a
+                meaningful origin-vs-added distinction to draw. Same visual as
+                the "Added" rows; differentiated by wording. Clickable to jump
+                to the origin book only when viewing from a co-primary (a
+                click from the origin view would be a no-op).
+              */}
+              {hasMidConvoBookAddition && originBook && (
+                <MessageScrollerItem messageId={`evt-start-${originBook.bookId}`}>
+                  <TimelineEventRow
+                    event={{
+                      kind: "book-added",
+                      createdAt: "",
+                      label: originBook.title,
+                      coverPath: originBook.coverPath,
+                      bookId: originBook.bookId,
+                    }}
+                    variant="started"
+                    onOpenBook={isOriginView ? undefined : onOpenBook}
+                  />
+                </MessageScrollerItem>
+              )}
         {/* Initial explainer response */}
-        {streamingInitial && phaseLabel && !initialContent && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {phaseLabel}
-          </div>
-        )}
-        {/*
-          ponytail: admin-only explainer provenance, co-located with the
-          explainer message it describes — version badge, cache hit/fresh,
-          newer-version note, the regenerate (re-reroll) action, and reroll
-          progress, tucked just above the first message. Regular users see a
-          normal chat with none of this.
-        */}
-        {adminMeta && !streamingInitial && (
-          <div className="mb-2 flex flex-wrap items-center gap-1.5 pl-0.5 text-[10px] text-muted-foreground">
-            <Badge variant="outline" className="h-5 gap-1 px-1.5 font-normal">
-              <Database className="h-2.5 w-2.5" />
-              Explainer · v{adminMeta.version}
-            </Badge>
-            {adminMeta.initialCacheHit === true && <span>from cache</span>}
-            {adminMeta.initialCacheHit === false && <span>freshly generated</span>}
-            {adminMeta.version < adminMeta.latestVersion && (
-              <span className="text-amber-600 dark:text-amber-500">
-                newer v{adminMeta.latestVersion} available
-              </span>
-            )}
-            {onReroll && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                className="h-5 w-5"
-                onClick={() => onReroll(adminMeta.explainerId)}
-                disabled={!!rerolling}
-                title="Regenerate explainer (new version)"
-                aria-label="Regenerate explainer"
-              >
-                <RefreshCw className={cn("h-3 w-3", rerolling && "animate-spin")} />
-              </Button>
-            )}
-            {(rerolling || rerollResult !== null) && (
-              <div className="w-full pt-0.5">
-                {rerolling ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {rerollPhase === "explaining"
-                        ? "Explaining the book…"
-                        : rerollPhase === "refining"
-                        ? "Refining the explanation…"
-                        : "Regenerating explainer…"}
-                    </div>
-                    {rerollContent && <p className="line-clamp-3">{rerollContent}</p>}
+              {streamingInitial && phaseLabel && !initialContent && (
+                <MessageScrollerItem messageId="phase-status">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {phaseLabel}
                   </div>
+                </MessageScrollerItem>
+              )}
+              {/*
+                ponytail: admin-only explainer provenance, co-located with the
+                explainer message it describes — version badge, cache hit/fresh,
+                newer-version note, the regenerate (re-reroll) action, and reroll
+                progress, tucked just above the first message. Regular users see
+                a normal chat with none of this.
+              */}
+              {adminMeta && !streamingInitial && (
+                <MessageScrollerItem messageId="admin-meta">
+                  <div className="mb-2 flex flex-wrap items-center gap-1.5 pl-0.5 text-[10px] text-muted-foreground">
+                    <Badge variant="outline" className="h-5 gap-1 px-1.5 font-normal">
+                      <Database className="h-2.5 w-2.5" />
+                      Explainer · v{adminMeta.version}
+                    </Badge>
+                    {adminMeta.initialCacheHit === true && <span>from cache</span>}
+                    {adminMeta.initialCacheHit === false && <span>freshly generated</span>}
+                    {adminMeta.version < adminMeta.latestVersion && (
+                      <span className="text-amber-600 dark:text-amber-500">
+                        newer v{adminMeta.latestVersion} available
+                      </span>
+                    )}
+                    {onReroll && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => onReroll(adminMeta.explainerId)}
+                        disabled={!!rerolling}
+                        title="Regenerate explainer (new version)"
+                        aria-label="Regenerate explainer"
+                      >
+                        <RefreshCw className={cn("h-3 w-3", rerolling && "animate-spin")} />
+                      </Button>
+                    )}
+                    {(rerolling || rerollResult !== null) && (
+                      <div className="w-full pt-0.5">
+                        {rerolling ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              {rerollPhase === "explaining"
+                                ? "Explaining the book…"
+                                : rerollPhase === "refining"
+                                ? "Refining the explanation…"
+                                : "Regenerating explainer…"}
+                            </div>
+                            {rerollContent && <p className="line-clamp-3">{rerollContent}</p>}
+                          </div>
+                        ) : (
+                          <p className="text-emerald-600 dark:text-emerald-500">
+                            ✓ v{rerollResult} now live for new discussions
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </MessageScrollerItem>
+              )}
+
+              {/* Initial explainer response (blank "New discussion" discussions
+                  have no explainer seed — skip the bubble entirely so the
+                  conversation starts at the user's own first message). */}
+              {(initialContent || streamingInitial) && (
+                <MessageScrollerItem messageId="explainer-seed">
+                  <MessageBubble
+                    role="assistant"
+                    content={initialContent}
+                    pulsing={streamingInitial && !initialContent}
+                    spineHrefs={spineHrefs}
+                    onNavigateToHref={onNavigateToHref}
+                    attachedBookHrefs={attachedBookHrefs}
+                    onNavigateToBookSection={onNavigateToBookSection}
+                    originBookId={originBookId}
+                    isAdmin={isAdmin}
+                  />
+                </MessageScrollerItem>
+              )}
+
+              {/*
+                Follow-up messages interleaved with attachment "added" event
+                markers. mergeTimeline places each mid-conversation book/
+                section addition at the chronological point where it entered
+                the conversation (between the bracketing turns). Turn-0
+                attachments are already filtered out by the panel derivation,
+                so they don't render as events (co-original).
+
+                ponytail: every row is a MessageScrollerItem so the scroller
+                can measure, anchor, preserve position, track visibility, and
+                jump to it. scrollAnchor on user messages implements **new-turn
+                anchoring** — when the user sends a message, the viewport moves
+                it near the top and keeps a peek of the previous reply above
+                it (see MessageScrollerProvider's scrollPreviousItemPeek). The
+                assistant's reply rows are NOT anchors, so they grow into the
+                space below without yanking the user's anchored turn.
+              */}
+              {mergeTimeline(messages, timelineEvents ?? []).map((slot) =>
+                slot.type === "event" ? (
+                  <MessageScrollerItem
+                    key={`evt-${slot.event.kind}-${slot.event.createdAt}`}
+                    messageId={`evt-${slot.event.kind}-${slot.event.createdAt}`}
+                  >
+                    <TimelineEventRow
+                      event={slot.event}
+                      onOpenBook={onOpenBook}
+                      onNavigateToHref={onNavigateToHref}
+                    />
+                  </MessageScrollerItem>
                 ) : (
-                  <p className="text-emerald-600 dark:text-emerald-500">
-                    ✓ v{rerollResult} now live for new discussions
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Initial explainer response (blank "New discussion" discussions have
-            no explainer seed — skip the bubble entirely so the conversation
-            starts at the user's own first message). */}
-        {(initialContent || streamingInitial) && (
-          <MessageBubble
-            role="assistant"
-            content={initialContent}
-            pulsing={streamingInitial && !initialContent}
-            spineHrefs={spineHrefs}
-            onNavigateToHref={onNavigateToHref}
-            attachedBookHrefs={attachedBookHrefs}
-            onNavigateToBookSection={onNavigateToBookSection}
-            originBookId={originBookId}
-            isAdmin={isAdmin}
-          />
-        )}
-
-        {/*
-          Follow-up messages interleaved with attachment "added" event markers.
-          mergeTimeline places each mid-conversation book/section addition at the
-          chronological point where it entered the conversation (between the
-          bracketing turns). Turn-0 attachments are already filtered out by the
-          panel derivation, so they don't render as events (co-original).
-        */}
-        {mergeTimeline(messages, timelineEvents ?? []).map((slot) =>
-          slot.type === "event" ? (
-            <TimelineEventRow
-              key={`evt-${slot.event.kind}-${slot.event.createdAt}`}
-              event={slot.event}
-              onOpenBook={onOpenBook}
-              onNavigateToHref={onNavigateToHref}
-            />
-          ) : (
-            <MessageBubble
-              key={`msg-${slot.index}`}
-              role={slot.message.role}
-              content={slot.message.content}
-              pulsing={
-                slot.message.role === "assistant" &&
-                streaming &&
-                !slot.message.content &&
-                slot.index === messages.length - 1
-              }
-              spineHrefs={spineHrefs}
-              onNavigateToHref={onNavigateToHref}
-              attachedBookHrefs={attachedBookHrefs}
-              onNavigateToBookSection={onNavigateToBookSection}
-              originBookId={originBookId}
-              isAdmin={isAdmin}
-            />
-          )
-        )}
-      </div>
+                  <MessageScrollerItem
+                    key={`msg-${slot.index}`}
+                    messageId={`msg-${slot.index}`}
+                    // ponytail: scrollAnchor on user messages = new-turn
+                    // anchoring. The viewport pins this row near the top
+                    // when it's appended, so the user sees their question
+                    // and the assistant's reply grows below it.
+                    scrollAnchor={slot.message.role === "user"}
+                  >
+                    <MessageBubble
+                      role={slot.message.role}
+                      content={slot.message.content}
+                      pulsing={
+                        slot.message.role === "assistant" &&
+                        streaming &&
+                        !slot.message.content &&
+                        slot.index === messages.length - 1
+                      }
+                      spineHrefs={spineHrefs}
+                      onNavigateToHref={onNavigateToHref}
+                      attachedBookHrefs={attachedBookHrefs}
+                      onNavigateToBookSection={onNavigateToBookSection}
+                      originBookId={originBookId}
+                      isAdmin={isAdmin}
+                    />
+                  </MessageScrollerItem>
+                )
+              )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
       <div className="border-t border-border p-2 flex flex-col gap-1.5">
         {/*

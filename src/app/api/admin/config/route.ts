@@ -77,13 +77,14 @@ export async function PATCH(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = await request.json();
-    const { category, userType, apiKey, model, voiceId, maxContextTokens } = body as {
+    const { category, userType, apiKey, model, voiceId, maxContextTokens, maxOutputTokens } = body as {
       category: "openrouter" | "elevenlabs" | "fal";
       userType: string;
       apiKey?: string;
       model?: string;
       voiceId?: string;
       maxContextTokens?: number | null;
+      maxOutputTokens?: number | null;
     };
 
     if (!category || !userType) {
@@ -103,11 +104,13 @@ export async function PATCH(request: Request) {
     if (category === "openrouter") {
       const existing = await db.openRouterConfig.findUnique({
         where: { userType },
-      }) as { apiKey: string | null; model: string | null; maxContextTokens: number | null } | null;
-      // ponytail: maxContextTokens nullable. `undefined` means "don't touch";
-      // `null` means "clear the override" (use model lookup / 128K fallback).
+      }) as { apiKey: string | null; model: string | null; maxContextTokens: number | null; maxOutputTokens: number | null } | null;
+      // ponytail: maxContextTokens + maxOutputTokens nullable. `undefined` means
+      // "don't touch"; `null` means "clear the override" (use fallback).
       const maxContextTokensValue =
         maxContextTokens === undefined ? undefined : maxContextTokens;
+      const maxOutputTokensValue =
+        maxOutputTokens === undefined ? undefined : maxOutputTokens;
       await db.openRouterConfig.upsert({
         where: { userType },
         create: {
@@ -115,11 +118,13 @@ export async function PATCH(request: Request) {
           apiKey: apiKey ?? null,
           model: model ?? null,
           maxContextTokens: maxContextTokensValue ?? null,
+          maxOutputTokens: maxOutputTokensValue ?? null,
         },
         update: {
           apiKey: apiKey !== undefined ? apiKey : undefined,
           model: model !== undefined ? model : undefined,
           maxContextTokens: maxContextTokensValue,
+          maxOutputTokens: maxOutputTokensValue,
         },
       });
       await db.auditLog.create({
@@ -133,12 +138,14 @@ export async function PATCH(request: Request) {
                 apiKey: mask(existing.apiKey ?? undefined),
                 model: existing.model,
                 maxContextTokens: existing.maxContextTokens,
+                maxOutputTokens: existing.maxOutputTokens,
               })
             : null,
           newValue: JSON.stringify({
             apiKey: mask(apiKey),
             model,
             maxContextTokens: maxContextTokensValue ?? null,
+            maxOutputTokens: maxOutputTokensValue ?? null,
           }),
         },
       });

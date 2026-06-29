@@ -152,6 +152,8 @@ Do NOT add a separate "Sources:" list; the inline links ARE the citations. Do no
 
 Answer using ONLY the information in these excerpts plus the book titles in the library manifest. If the excerpts do not contain the answer but a library book's title suggests it may be relevant, say so plainly and link the book. Do not use outside knowledge beyond what the excerpts and titles provide.
 
+{{token_budget}}
+
 Return ONLY valid JSON matching this schema:
 { "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
@@ -164,39 +166,39 @@ async function main() {
   await prisma.promptTemplate.upsert({
     where: { type: "book" },
     update: {
-      content: "You are an expert literary analyst. The user has uploaded a book and wants to understand it deeply.\n\nBook title: {{title}}\nAuthor: {{author}}\nLanguage: {{language}}\n\nBelow is the full text of the book:\n---\n{{book_text}}\n---\n\nPlease provide a comprehensive explanation of this book in {{target_language}}. Cover the main themes, key arguments or plot points, important characters, and the author's style. Help the reader understand not just what happens, but why it matters. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 5,
+      content: "You are an expert literary analyst. The user has uploaded a book and wants to understand it deeply.\n\nBook title: {{title}}\nAuthor: {{author}}\nLanguage: {{language}}\n\nBelow is the full text of the book:\n---\n{{book_text}}\n---\n\nPlease provide a comprehensive explanation of this book in {{target_language}}. Cover the main themes, key arguments or plot points, important characters, and the author's style. Help the reader understand not just what happens, but why it matters. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 7,
     },
     create: {
       type: "book",
-      content: "You are an expert literary analyst. The user has uploaded a book and wants to understand it deeply.\n\nBook title: {{title}}\nAuthor: {{author}}\nLanguage: {{language}}\n\nBelow is the full text of the book:\n---\n{{book_text}}\n---\n\nPlease provide a comprehensive explanation of this book in {{target_language}}. Cover the main themes, key arguments or plot points, important characters, and the author's style. Help the reader understand not just what happens, but why it matters. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 5,
+      content: "You are an expert literary analyst. The user has uploaded a book and wants to understand it deeply.\n\nBook title: {{title}}\nAuthor: {{author}}\nLanguage: {{language}}\n\nBelow is the full text of the book:\n---\n{{book_text}}\n---\n\nPlease provide a comprehensive explanation of this book in {{target_language}}. Cover the main themes, key arguments or plot points, important characters, and the author's style. Help the reader understand not just what happens, but why it matters. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 7,
     },
   });
 
   await prisma.promptTemplate.upsert({
     where: { type: "section" },
     update: {
-      content: "You are an expert literary analyst. The user is reading a book and wants to understand a specific section.\n\nBook title: {{title}}\nAuthor: {{author}}\nSection: {{section_title}}\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe user wants to understand this specific section:\n---\n{{chosen_text}}\n---\n\nPlease provide a clear explanation of this section in {{target_language}}. Cover what happens or what is argued, why it matters in the context of the whole book, any important themes or symbols, and connections to other parts of the book. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 4,
+      content: "You are an expert literary analyst. The user is reading a book and wants to understand a specific section.\n\nBook title: {{title}}\nAuthor: {{author}}\nSection: {{section_title}}\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe user wants to understand this specific section:\n---\n{{chosen_text}}\n---\n\nPlease provide a clear explanation of this section in {{target_language}}. Cover what happens or what is argued, why it matters in the context of the whole book, any important themes or symbols, and connections to other parts of the book. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 5,
     },
     create: {
       type: "section",
-      content: "You are an expert literary analyst. The user is reading a book and wants to understand a specific section.\n\nBook title: {{title}}\nAuthor: {{author}}\nSection: {{section_title}}\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe user wants to understand this specific section:\n---\n{{chosen_text}}\n---\n\nPlease provide a clear explanation of this section in {{target_language}}. Cover what happens or what is argued, why it matters in the context of the whole book, any important themes or symbols, and connections to other parts of the book. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 4,
+      content: "You are an expert literary analyst. The user is reading a book and wants to understand a specific section.\n\nBook title: {{title}}\nAuthor: {{author}}\nSection: {{section_title}}\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe user wants to understand this specific section:\n---\n{{chosen_text}}\n---\n\nPlease provide a clear explanation of this section in {{target_language}}. Cover what happens or what is argued, why it matters in the context of the whole book, any important themes or symbols, and connections to other parts of the book. Do NOT simply summarize — explain and illuminate.\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 5,
     },
   });
 
   await prisma.promptTemplate.upsert({
     where: { type: "passage" },
     update: {
-      content: "You are an expert literary assistant. Explain the following passage from the book \"{{title}}\" by {{author}} in {{target_language}}. Provide context, key concepts, and any difficult vocabulary.\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe passage to explain:\n---\n{{chosen_text}}\n---\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 4,
+      content: "You are an expert literary assistant. Explain the following passage from the book \"{{title}}\" by {{author}} in {{target_language}}. Provide context, key concepts, and any difficult vocabulary.\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe passage to explain:\n---\n{{chosen_text}}\n---\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 5,
     },
     create: {
       type: "passage",
-      content: "You are an expert literary assistant. Explain the following passage from the book \"{{title}}\" by {{author}} in {{target_language}}. Provide context, key concepts, and any difficult vocabulary.\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe passage to explain:\n---\n{{chosen_text}}\n---\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.",
-      version: 4,
+      content: "You are an expert literary assistant. Explain the following passage from the book \"{{title}}\" by {{author}} in {{target_language}}. Provide context, key concepts, and any difficult vocabulary.\n\nFor context, here is the full text of the book:\n---\n{{book_text}}\n---\n\nThe passage to explain:\n---\n{{chosen_text}}\n---\n\nChapter map — each entry below is a ready-to-use link; copy the (#ch:…) href verbatim and reword the label if you like:\n{{chapter_index}}\n\nWhen you name where something happens — a chapter, section, or scene, or when you answer \"which chapter?\" or \"where does the author …?\" — turn that name into a link by copying an href from the map above, in the exact form [Chapter One](#ch:chapter1.xhtml). One link per location you reference. Do not invent hrefs that are not in the map, and do not add links for locations you did not otherwise mention.\n\n{{token_budget}}",
+      version: 5,
     },
   });
 
@@ -211,13 +213,13 @@ async function main() {
   await prisma.promptTemplate.upsert({
     where: { type: "book_pass2" },
     update: {
-      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.\n\nPreserve any [..](#ch:..) citation links present in the first draft verbatim; do not strip or rewrite them.",
-      version: 3,
+      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.\n\nPreserve any [..](#ch:..) citation links present in the first draft verbatim; do not strip or rewrite them.\n\n{{token_budget}}",
+      version: 4,
     },
     create: {
       type: "book_pass2",
-      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.\n\nPreserve any [..](#ch:..) citation links present in the first draft verbatim; do not strip or rewrite them.",
-      version: 3,
+      content: "You are refining a first-draft book explainer. Below is the source book, then a first-draft explanation of it. Rewrite the explanation into a polished, well-structured overview that a reader can absorb quickly.\n\nBook: \"{{title}}\" by {{author}} (source language: {{language}})\nWrite the refined explanation in {{target_language}}.\n\nSource book:\n---\n{{book_text}}\n---\n\nFirst-draft explanation:\n---\n{{previous_response}}\n---\n\nTighten the prose, remove redundancy, and use clear structure where it helps. Preserve the key themes, tone, and insights of the first draft. Do NOT introduce information that was not in the first draft or the source book.\n\nPreserve any [..](#ch:..) citation links present in the first draft verbatim; do not strip or rewrite them.\n\n{{token_budget}}",
+      version: 4,
     },
   });
 
@@ -337,12 +339,12 @@ async function main() {
     where: { type: "shelf_answer" },
     update: {
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 5,
+      version: 6,
     },
     create: {
       type: "shelf_answer",
       content: SHELF_ANSWER_PROMPT_CONTENT,
-      version: 5,
+      version: 6,
     },
   });
 

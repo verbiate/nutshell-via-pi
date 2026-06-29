@@ -25,6 +25,7 @@ export interface ContextSourceStrategy {
     userId: string;
     accessibleBookIds: string[];
     history?: ShelfHistoryEntry[];
+    maxTokens?: number;
   }): Promise<BuiltPrompt>;
 }
 

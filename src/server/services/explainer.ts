@@ -48,13 +48,21 @@ export interface ContentHashInput {
   promptVersion: number;
   twoPassVersion?: number;
   metadataVersion?: string;
+  // ponytail: fold maxOutputTokens into the cache key so raising the cap
+  // invalidates cached explainers — otherwise a user who hit truncation
+  // keeps getting the truncated cached answer even after the admin bumps
+  // maxOutputTokens. Shared globally (explainer cache is per-tier/key, not
+  // per-user), so one admin cap raise regenerates everyone, which is the
+  // intent. Upgrade path: per-type overrides if needed.
+  maxOutputTokens?: number;
 }
 
 export function computeExplainerContentHash(input: ContentHashInput): string {
-  const { type, sourceText, bookMd5, promptVersion, twoPassVersion, metadataVersion } = input;
+  const { type, sourceText, bookMd5, promptVersion, twoPassVersion, metadataVersion, maxOutputTokens } = input;
   const parts: string[] = [];
   if (twoPassVersion) parts.push(`twoPass:${twoPassVersion}`);
   if (metadataVersion) parts.push(`meta:${metadataVersion}`);
+  if (maxOutputTokens) parts.push(`maxTok:${maxOutputTokens}`);
   const extraSalt = parts.length > 0 ? parts.join("|") : undefined;
   const includeBookMd5 = type === "section" || type === "passage";
   return computeContentHash(
@@ -147,6 +155,12 @@ export async function* generateExplainer(
 ): AsyncGenerator<string, void, unknown> {
   const { bookId, type, language, tier, sectionHref, passageText } = params;
 
+  // Resolve per-tier output budget before building the prompt so the
+  // {{token_budget}} var can carry it into the system message AND the cache
+  // key can fold it in.
+  const { getTierMaxOutputTokens } = await import("./model-info");
+  const maxTokens = await getTierMaxOutputTokens(tier, type);
+
   // Build prompt and get source text
   let promptData: {
     prompt: string;
@@ -159,18 +173,18 @@ export async function* generateExplainer(
   const { buildBookPrompt, buildSectionPrompt } = await getPromptBuilder();
 
   if (type === "book") {
-    promptData = await buildBookPrompt(bookId, language);
+    promptData = await buildBookPrompt(bookId, language, maxTokens);
   } else if (type === "passage") {
     if (!passageText) {
       throw new Error("passageText is required for passage-level explainer");
     }
     const buildPassagePrompt = await getBuildPassagePrompt();
-    promptData = await buildPassagePrompt(bookId, passageText, language);
+    promptData = await buildPassagePrompt(bookId, passageText, language, maxTokens);
   } else {
     if (!sectionHref) {
       throw new Error("sectionHref is required for section-level explainer");
     }
-    const sectionData = await buildSectionPrompt(bookId, sectionHref, language);
+    const sectionData = await buildSectionPrompt(bookId, sectionHref, language, maxTokens);
     promptData = {
       prompt: sectionData.prompt,
       sourceText: sectionData.sourceText,
@@ -188,6 +202,7 @@ export async function* generateExplainer(
     bookMd5: promptData.bookMd5,
     promptVersion: promptData.promptVersion,
     metadataVersion: promptData.metadataVersion,
+    maxOutputTokens: maxTokens,
   });
 
   // Check cache
@@ -207,7 +222,6 @@ export async function* generateExplainer(
   const { streamExplainer, getOpenRouterConfig } = await getStreamExplainer();
   const { apiKey, model } = await getOpenRouterConfig(tier);
   if (!apiKey) throw new OpenRouterError("OpenRouter API key not configured", 500);
-  const maxTokens = type === "book" ? 4096 : 2048;
 
   // Size guard: combined source + book text against the ~900K-token ceiling.
   // ponytail: book type has sourceText === bookText, so the sum double-counts —

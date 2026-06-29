@@ -8,7 +8,8 @@ import {
 import { recordError } from "./errors";
 import { getSetting } from "./settings";
 import { verifyBookAccess } from "./reader";
-import { getTierBookTokenLimit } from "./model-info";
+import { getTierBookTokenLimit, getTierMaxOutputTokens } from "./model-info";
+import { formatTokenBudget } from "./prompt-builder";
 
 // ponytail: a discussion attachment the user can add mid-thread. Two slices:
 // sections of the current book (sectionHref) and whole OTHER books (bookId).
@@ -97,8 +98,13 @@ export async function* streamInitialDiscussionResponse(
   }
   const type = params.type;
 
+  // ponytail: resolve the per-tier maxTokens BEFORE building the prompt so the
+  // {{token_budget}} template var lands in the system message AND the cache
+  // key folds it in (raising the cap invalidates cached truncated explainers).
+  const maxTokens = await getTierMaxOutputTokens(tier, type);
+
   // Build the prompt + source text via existing prompt-builder
-  const promptData = await buildPromptData(params);
+  const promptData = await buildPromptData({ ...params, maxTokens });
 
   // Two-pass book explainer: when the admin toggle is on and this is a book
   // request, run a hidden pass-1 explanation then a streamed pass-2 refinement.
@@ -124,6 +130,7 @@ export async function* streamInitialDiscussionResponse(
     promptVersion: promptData.promptVersion,
     twoPassVersion: twoPass ? pass2Version : undefined,
     metadataVersion: promptData.metadataVersion,
+    maxOutputTokens: maxTokens,
   });
 
   // Reopen: if this user already has a discussion for the same context
@@ -176,7 +183,6 @@ export async function* streamInitialDiscussionResponse(
       yield { type: "error", error: "OpenRouter API key not configured" };
       return;
     }
-    const maxTokens = type === "book" ? 4096 : 2048;
 
     // Size guard: combined source + book text. Book type has sourceText ===
     // bookText (double-counts), so use just sourceText there.
@@ -222,7 +228,8 @@ export async function* streamInitialDiscussionResponse(
               bookId,
               language,
               pass1Response,
-              promptData.bookText
+              promptData.bookText,
+              maxTokens
             ).then((r) => r.prompt),
           apiKey,
           model,
@@ -373,6 +380,7 @@ export async function buildPromptData(params: {
   language: string;
   passageText?: string;
   sectionHref?: string;
+  maxTokens?: number;
 }): Promise<{
   prompt: string;
   sourceText: string;
@@ -387,7 +395,7 @@ export async function buildPromptData(params: {
       throw new Error("passageText is required for passage type");
     }
     const { buildPassagePrompt } = await import("./prompt-builder");
-    return buildPassagePrompt(params.bookId, params.passageText, params.language);
+    return buildPassagePrompt(params.bookId, params.passageText, params.language, params.maxTokens);
   }
   if (type === "section") {
     if (!params.sectionHref) {
@@ -397,7 +405,8 @@ export async function buildPromptData(params: {
     return buildSectionPrompt(
       params.bookId,
       params.sectionHref,
-      params.language
+      params.language,
+      params.maxTokens
     );
   }
   if (type === "shelf") {
@@ -410,7 +419,7 @@ export async function buildPromptData(params: {
   }
   // book
   const { buildBookPrompt } = await import("./prompt-builder");
-  return buildBookPrompt(params.bookId, params.language);
+  return buildBookPrompt(params.bookId, params.language, params.maxTokens);
 }
 
 export interface RerollEvent {
@@ -480,12 +489,15 @@ export async function* rerollExplainer(params: {
   // (buildPass2Prompt callback) keep the non-null narrowing across the
   // function boundary — TS won't propagate it through the callback.
   const bookId = discussion.bookId;
+  const tier = explainer.tier as "regular" | "pro" | "admin";
+  const maxTokens = await getTierMaxOutputTokens(tier, type);
   const promptData = await buildPromptData({
     type,
     bookId: discussion.bookId,
     language: discussion.language,
     passageText: discussion.passageText ?? undefined,
     sectionHref: discussion.sectionHref ?? undefined,
+    maxTokens,
   });
 
   // Re-derive the salt exactly as streamInitialDiscussionResponse does so the
@@ -505,17 +517,15 @@ export async function* rerollExplainer(params: {
     promptVersion: promptData.promptVersion,
     twoPassVersion: pass2Version,
     metadataVersion: promptData.metadataVersion,
+    maxOutputTokens: maxTokens,
   });
 
   const { streamExplainer, streamBookTwoPass, getOpenRouterConfig } = await import("./openrouter");
-  const { apiKey, model } = await getOpenRouterConfig(
-    explainer.tier as "regular" | "pro" | "admin"
-  );
+  const { apiKey, model } = await getOpenRouterConfig(tier);
   if (!apiKey) {
     yield { type: "error", error: "OpenRouter API key not configured" };
     return;
   }
-  const maxTokens = type === "book" ? 4096 : 2048;
 
   let fullContent = "";
   try {
@@ -524,7 +534,7 @@ export async function* rerollExplainer(params: {
       for await (const evt of streamBookTwoPass({
         pass1Prompt: promptData.prompt,
         buildPass2Prompt: (pass1) =>
-          buildBookPass2Prompt(bookId, discussion.language, pass1, promptData.bookText).then(
+          buildBookPass2Prompt(bookId, discussion.language, pass1, promptData.bookText, maxTokens).then(
             (r) => r.prompt
           ),
         apiKey,
@@ -959,7 +969,7 @@ export async function* streamFollowup(params: {
   // Build the system message by re-filling the template with the source text.
   // ponytail: we stored passageText/sectionHref in the discussion row at
   // creation so we can rebuild the prompt without re-reading the book.
-  const systemPrompt = await rebuildSystemPrompt(discussion, params.userMessage);
+  const { prompt: systemPrompt, maxTokens } = await rebuildSystemPrompt(discussion, params.userMessage);
   const attachmentSuffix = await buildAttachmentSuffix(discussion);
 
   // Compose messages array. The explainer seed is optional — blank
@@ -988,7 +998,7 @@ export async function* streamFollowup(params: {
 
   let fullContent = "";
   try {
-    for await (const chunk of streamChat({ apiKey, model, messages })) {
+    for await (const chunk of streamChat({ apiKey, model, messages, maxTokens })) {
       fullContent += chunk;
       yield { type: "chunk", chunk };
     }
@@ -1033,9 +1043,21 @@ async function rebuildSystemPrompt(
     // ponytail: only present on the streamFollowup path (where history matters).
     // Other callers (none today, but kept permissive) may omit it.
     messages?: { role: string; content: string }[];
+    tier?: string;
   },
   currentUserMessage?: string
-): Promise<string> {
+): Promise<{ prompt: string; maxTokens: number }> {
+  // ponytail: resolve the per-tier output budget ONCE here so every prompt-
+  // type branch (book/section/passage/shelf) sees the same tokenBudget hint
+  // AND the correct max_tokens request cap. tier is read off the discussion
+  // row (the initial-response tier is frozen); admin override + per-type
+  // fallback resolve identically to the initial-response path.
+  const tier = (discussion.tier ?? "regular") as "regular" | "pro" | "admin";
+  const typeNarrow = (["book", "section", "passage", "shelf"].includes(
+    discussion.type
+  ) ? discussion.type : "book") as "book" | "section" | "passage" | "shelf";
+  const maxTokens = await getTierMaxOutputTokens(tier, typeNarrow);
+
   if (discussion.type === "shelf") {
     const { getContextSource } = await import("./shelf-knowledge/context-source");
     const { getAccessibleBookIds } = await import("./shelf-knowledge/access");
@@ -1056,8 +1078,12 @@ async function rebuildSystemPrompt(
       userId: discussion.userId,
       accessibleBookIds,
       history,
+      maxTokens,
     });
-    return ctx.prompt;
+    // The shelf answer template's {{token_budget}} is substituted inside
+    // buildContext (see shelf-knowledge/query.ts). If the template omits the
+    // var, this literal append is a fallback so the model still sees the cap.
+    return { prompt: ctx.prompt + formatTokenBudget(maxTokens), maxTokens };
   }
   if (discussion.type === "passage") {
     if (!discussion.passageText) {
@@ -1070,9 +1096,10 @@ async function rebuildSystemPrompt(
     const data = await buildPassagePrompt(
       discussion.bookId,
       discussion.passageText,
-      discussion.language
+      discussion.language,
+      maxTokens
     );
-    return data.prompt;
+    return { prompt: data.prompt, maxTokens };
   }
   if (discussion.type === "section") {
     if (!discussion.sectionHref) {
@@ -1085,9 +1112,10 @@ async function rebuildSystemPrompt(
     const data = await buildSectionPrompt(
       discussion.bookId,
       discussion.sectionHref,
-      discussion.language
+      discussion.language,
+      maxTokens
     );
-    return data.prompt;
+    return { prompt: data.prompt, maxTokens };
   }
   // book
   // ponytail: book discussions always have a bookId by construction; null here
@@ -1097,8 +1125,8 @@ async function rebuildSystemPrompt(
     throw new Error("book discussion has no bookId");
   }
   const { buildBookPrompt } = await import("./prompt-builder");
-  const data = await buildBookPrompt(discussion.bookId, discussion.language);
-  return data.prompt;
+  const data = await buildBookPrompt(discussion.bookId, discussion.language, maxTokens);
+  return { prompt: data.prompt, maxTokens };
 }
 
 /**
@@ -1291,8 +1319,9 @@ export async function* streamBlankFirstTurn(params: {
   // System prompt = full-book context (the same template follow-ups reuse),
   // plus the attachment suffix so the opening turn already sees any attached
   // books/sections. Empty suffix => byte-identical to the pre-attach behavior.
+  const maxTokens = await getTierMaxOutputTokens(tier, "book");
   const { buildBookPrompt } = await import("./prompt-builder");
-  const promptData = await buildBookPrompt(bookId, language);
+  const promptData = await buildBookPrompt(bookId, language, maxTokens);
   const attachmentSuffix =
     attachments.length > 0
       ? await buildAttachmentSuffix({ bookId, attachments })
@@ -1312,7 +1341,7 @@ export async function* streamBlankFirstTurn(params: {
 
   let fullContent = "";
   try {
-    for await (const chunk of streamChat({ apiKey, model, messages })) {
+    for await (const chunk of streamChat({ apiKey, model, messages, maxTokens })) {
       fullContent += chunk;
       yield { type: "chunk", chunk };
     }
@@ -1391,14 +1420,23 @@ export async function* streamShelfFirstTurn(params: {
     return;
   }
 
+  // ponytail: shelf uses the admin-tier output budget — shelf answers run
+  // against the admin config in getShelfLlmConfig, so the token cap must
+  // come from the same tier for consistency. Threading maxTokens into
+  // buildContext lets the shelf_answer template substitute {{token_budget}}
+  // (see shelf-knowledge/query.ts). If the template omits the var, the
+  // appended formatTokenBudget fallback below still surfaces it.
+  const maxTokens = await getTierMaxOutputTokens("admin", "shelf");
+
   let ctx;
   try {
-    ctx = await source.buildContext({ question: userMessage, userId, accessibleBookIds });
+    ctx = await source.buildContext({ question: userMessage, userId, accessibleBookIds, maxTokens });
   } catch (err: any) {
     const message = err instanceof OpenRouterError ? err.message : "Failed to build shelf context";
     yield { type: "error", error: message };
     return;
   }
+  const shelfPrompt = ctx.prompt + formatTokenBudget(maxTokens);
 
   // Pre-flight passed — now safe to persist. Shelf discussion: no book, no
   // explainer, no cache key, no passage/section.
@@ -1412,14 +1450,14 @@ export async function* streamShelfFirstTurn(params: {
   });
 
   const messages: { role: "system" | "user"; content: string }[] = [
-    { role: "system", content: ctx.prompt },
+    { role: "system", content: shelfPrompt },
     { role: "user", content: userMessage },
   ];
 
   const { streamChat } = await import("./openrouter");
   let fullContent = "";
   try {
-    for await (const chunk of streamChat({ apiKey, model, messages })) {
+    for await (const chunk of streamChat({ apiKey, model, messages, maxTokens })) {
       fullContent += chunk;
       yield { type: "chunk", chunk };
     }

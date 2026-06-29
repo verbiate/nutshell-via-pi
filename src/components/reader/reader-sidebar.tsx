@@ -8,8 +8,8 @@ import {
   Lightbulb,
   Type,
 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { READER_TOOLS, type ReaderTool } from "./reader-tools";
 
 const ICONS = {
@@ -125,12 +125,12 @@ export function ReaderSidebar({
                 {panels[tool.id]}
               </div>
             ) : (
-              <ScrollArea className="min-h-0 flex-1">
+              <SmoothScrollArea className="min-h-0 flex-1">
                 {/* ponytail: pb-12 gives every panel a uniform 48px trailing
                     margin so the last item never butts against the sidebar's
                     bottom edge (matches the px-12 horizontal margin). */}
                 <div className="pb-12">{panels[tool.id]}</div>
-              </ScrollArea>
+              </SmoothScrollArea>
             )}
           </>
         )}

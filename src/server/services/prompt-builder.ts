@@ -10,6 +10,17 @@ export function fillTemplate(
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
 }
 
+// ponytail: one-liner the model can plan its answer length against.
+// Substituted into templates as {{token_budget}} by the path that resolves
+// a per-tier maxTokens; templates that don't reference it get "" via the
+// fillTemplate ?? "" fallback, so opt-in is per-template, not per-code-path.
+// Phrasing kept short + directive: the actionable bit is the number, not the
+// prose. Admin can reword per-template via the existing template editor.
+export function formatTokenBudget(maxTokens: number | undefined): string {
+  if (!maxTokens || maxTokens <= 0) return "";
+  return `\n\nToken budget: ~${maxTokens} tokens. Pace the length of your answer to fit within this budget — prioritize the most important points rather than starting an answer you can't finish.`;
+}
+
 // ponytail: shared result shape so callers (explainer.ts, discussions.ts)
 // can hash, size-guard, and rebuild prompts without type drift between cases.
 // metadataVersion: updatedAt of the BookMetadata row (or undefined when no row).
@@ -143,7 +154,8 @@ export function buildBookIndex(
 
 export async function buildBookPrompt(
   bookId: string,
-  language: string
+  language: string,
+  maxTokens?: number
 ): Promise<BuiltPrompt> {
   const book = await db.epubFile.findUnique({
     where: { id: bookId },
@@ -167,6 +179,7 @@ export async function buildBookPrompt(
     text: sourceText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
     chapter_index: buildChapterIndex(book.tocJson),
+    token_budget: formatTokenBudget(maxTokens),
   });
 
   return {
@@ -182,7 +195,8 @@ export async function buildBookPrompt(
 export async function buildSectionPrompt(
   bookId: string,
   sectionHref: string,
-  language: string
+  language: string,
+  maxTokens?: number
 ): Promise<BuiltPrompt & { sectionTitle: string }> {
   const book = await db.epubFile.findUnique({
     where: { id: bookId },
@@ -233,6 +247,7 @@ export async function buildSectionPrompt(
     book_text: bookText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
     chapter_index: buildChapterIndex(book.tocJson),
+    token_budget: formatTokenBudget(maxTokens),
   });
 
   return {
@@ -249,7 +264,8 @@ export async function buildSectionPrompt(
 export async function buildPassagePrompt(
   bookId: string,
   passageText: string,
-  language: string
+  language: string,
+  maxTokens?: number
 ): Promise<BuiltPrompt> {
   const book = await db.epubFile.findUnique({
     where: { id: bookId },
@@ -271,6 +287,7 @@ export async function buildPassagePrompt(
     book_text: bookText,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
     chapter_index: buildChapterIndex(book.tocJson),
+    token_budget: formatTokenBudget(maxTokens),
   });
 
   return {
@@ -305,7 +322,8 @@ export async function buildBookPass2Prompt(
   bookId: string,
   language: string,
   previousResponse: string,
-  bookText: string
+  bookText: string,
+  maxTokens?: number
 ): Promise<{ prompt: string; promptVersion: number; metadataVersion?: string }> {
   const book = await db.epubFile.findUnique({
     where: { id: bookId },
@@ -323,6 +341,7 @@ export async function buildBookPass2Prompt(
     book_text: bookText,
     previous_response: previousResponse,
     expanded_metadata: formatExpandedMetadata(book.bookMetadata),
+    token_budget: formatTokenBudget(maxTokens),
   });
 
   return {

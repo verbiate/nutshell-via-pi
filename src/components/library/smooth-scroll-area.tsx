@@ -20,10 +20,16 @@ interface SmoothScrollAreaProps {
   className?: string;
 }
 
-export function SmoothScrollArea({
+export interface SmoothScrollAreaHandle {
+  scrollTo(target: number | HTMLElement, opts?: { immediate?: boolean }): void;
+  rootElement: HTMLDivElement | null;
+}
+
+export const SmoothScrollArea = React.forwardRef<SmoothScrollAreaHandle, SmoothScrollAreaProps>(
+function SmoothScrollArea({
   children,
   className,
-}: SmoothScrollAreaProps): React.JSX.Element {
+}: SmoothScrollAreaProps, ref): React.JSX.Element {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -79,6 +85,28 @@ export function SmoothScrollArea({
     };
   }, []);
 
+  React.useImperativeHandle(ref, () => ({
+    scrollTo(target: number | HTMLElement, opts?: { immediate?: boolean }) {
+      const lenis = lenisRef.current;
+      if (lenis) {
+        lenis.scrollTo(target, opts);
+      } else {
+        const viewport = viewportRef.current;
+        if (!viewport) return;
+        if (typeof target === "number") {
+          viewport.scrollTop = target;
+        } else {
+          const targetRect = target.getBoundingClientRect();
+          const viewportRect = viewport.getBoundingClientRect();
+          viewport.scrollTop = targetRect.top - viewportRect.top + viewport.scrollTop;
+        }
+      }
+    },
+    get rootElement(): HTMLDivElement | null {
+      return viewportRef.current;
+    },
+  }), []);
+
   useGSAP(
     () => {
       if (!wire || !viewportRef.current) return;
@@ -116,20 +144,16 @@ export function SmoothScrollArea({
     { scope: viewportRef, dependencies: [wire], revertOnUpdate: true },
   );
 
-  if (!isDesktop) {
-    return <>{children}</>;
-  }
-
-  if (reducedMotion) {
+  if (!isDesktop || reducedMotion) {
     // ponytail: no .smooth-scroll-area here — that class hides the native
-    // scrollbar (globals.css:347-353) and reduced-motion users need it as their
-    // only affordance. Trade-off: on desktop + reduced motion the original
-    // layout-shift (the reason .smooth-scroll-area exists) returns. That's an
-    // explicit a11y trade — a usable scrollbar beats no scrollbar. If we later
-    // want both, scope the hide to a modifier (.smooth-scroll-area.is-custom-thumb)
-    // and apply that variant in the wired branch only.
+    // scrollbar (globals.css:347-353); mobile + reduced-motion users need it
+    // as their only affordance. The scroll div carries overflow-y-auto +
+    // h-full so the reader sidebar (fixed-height flex child at 640–1023px)
+    // gets a proper scroll container. On the bookshelf (normal flow, no
+    // explicit parent height), h-full resolves to auto and overflow-y-auto
+    // never triggers — the page scrolls, as before.
     return (
-      <div className={cn("overflow-y-auto h-full", className)}>
+      <div ref={viewportRef} className={cn("h-full overflow-y-auto", className)}>
         {children}
       </div>
     );
@@ -217,3 +241,4 @@ export function SmoothScrollArea({
     </div>
   );
 }
+);

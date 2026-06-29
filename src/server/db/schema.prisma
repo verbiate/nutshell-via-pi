@@ -363,6 +363,7 @@ model OpenRouterConfig {
   apiKey           String?
   model            String?
   maxContextTokens Int?
+  maxOutputTokens  Int?
   updatedAt        DateTime @updatedAt
 }
 

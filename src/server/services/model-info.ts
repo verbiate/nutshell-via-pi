@@ -105,3 +105,30 @@ export async function getTierBookTokenLimit(
   // 3. Fallback (128K matches the most-restrictive common model context)
   return 128_000 - HEADROOM_TOKENS;
 }
+
+// ponytail: per-type OUTPUT budget fallbacks. Book answers are the deepest
+// (whole-book synthesis), section/passage shorter (a single locus), shelf
+// broad synthetic answers, so the defaults reflect that. Admin's
+// `OpenRouterConfig.maxOutputTokens` overrides ALL types when set > 0.
+// Upgrade path: split into per-type overrides if a tier needs different
+// ceilings for book vs section vs shelf answers.
+const DEFAULT_MAX_OUTPUT_TOKENS: Record<"book" | "section" | "passage" | "shelf", number> = {
+  book: 4096,
+  section: 2048,
+  passage: 2048,
+  shelf: 4096,
+};
+
+export async function getTierMaxOutputTokens(
+  userType: string,
+  type: "book" | "section" | "passage" | "shelf"
+): Promise<number> {
+  const config = await db.openRouterConfig.findUnique({
+    where: { userType },
+    select: { maxOutputTokens: true },
+  });
+  if (config?.maxOutputTokens && config.maxOutputTokens > 0) {
+    return config.maxOutputTokens;
+  }
+  return DEFAULT_MAX_OUTPUT_TOKENS[type] ?? 4096;
+}

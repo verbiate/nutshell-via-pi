@@ -68,12 +68,12 @@ Return ONLY valid JSON matching this schema:
 { "answer": "<your grounded answer with inline #book: and #ch: links>" }`;
 
 // ponytail: mirror the seeded versions (prisma/seed.ts) so cache-key assertions
-// reflect the live contract. Nav=2, answer=5 after the {{library_manifest}} bump.
+// reflect the live contract. Nav=2, answer=6 after the {{token_budget}} bump.
 const SEEDED_NAV_VERSION = 2;
-const SEEDED_ANSWER_VERSION = 5;
+const SEEDED_ANSWER_VERSION = 6;
 // ponytail: fallback (missing DB row) mirrors the seeded default — same versions.
 const FALLBACK_NAV_VERSION = 2;
-const FALLBACK_ANSWER_VERSION = 5;
+const FALLBACK_ANSWER_VERSION = 6;
 
 // Index fixture mirrors render.ts buildIndex output. bookA + bookB are
 // accessible; bookC is NOT (its concept must be filtered out at every layer).

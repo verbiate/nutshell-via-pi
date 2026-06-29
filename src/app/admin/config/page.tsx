@@ -17,7 +17,7 @@ const TIERS = [
 ] as const;
 
 const CATEGORIES = [
-  { key: "openrouter", label: "OpenRouter", fields: ["apiKey", "model", "maxContextTokens"] as const },
+  { key: "openrouter", label: "OpenRouter", fields: ["apiKey", "model", "maxContextTokens", "maxOutputTokens"] as const },
   { key: "elevenlabs", label: "ElevenLabs", fields: ["apiKey", "model", "voiceId"] as const },
   { key: "fal", label: "fal.ai", fields: ["apiKey", "model", "voiceId"] as const },
 ] as const;
@@ -74,11 +74,11 @@ function ConfigRow({
               f,
               // ponytail: per-field encoding rules:
               //   apiKey: empty = "skip" (don't wipe stored key)
-              //   maxContextTokens: empty = null (clear override); non-empty = Number(...)
+              //   maxContextTokens / maxOutputTokens: empty = null (clear override); non-empty = Number(...)
               //   everything else: empty = null (clear)
               f === "apiKey"
                 ? edits[f] || undefined
-                : f === "maxContextTokens"
+                : f === "maxContextTokens" || f === "maxOutputTokens"
                 ? (displayValue(f) ? Number(displayValue(f)) : null)
                 : displayValue(f) || null,
             ])
@@ -113,17 +113,34 @@ function ConfigRow({
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {fields.map((field) => {
-          // ponytail: maxContextTokens is a number input with custom placeholder.
-          // Display existing numeric value as string; empty = cleared override.
-          const isNumeric = field === "maxContextTokens";
+          // ponytail: maxContextTokens + maxOutputTokens are numeric inputs with
+          // custom placeholders. Display existing numeric value as string; empty
+          // = cleared override.
+          const isNumeric = field === "maxContextTokens" || field === "maxOutputTokens";
           const numericValue =
             isNumeric && existing[field] != null
               ? String(existing[field])
               : "";
+          const label =
+            field === "maxContextTokens"
+              ? "Max context tokens (override)"
+              : field === "maxOutputTokens"
+              ? "Max output tokens (override)"
+              : field;
+          const placeholder =
+            field === "apiKey"
+              ? "Enter new key"
+              : field === "model"
+              ? "Model ID"
+              : field === "maxContextTokens"
+              ? "Empty = use model limit"
+              : field === "maxOutputTokens"
+              ? "Empty = use per-type default (4096 book / 2048 section / passage)"
+              : "Voice ID";
           return (
             <div key={field} className="space-y-2">
               <Label className="text-xs text-muted-foreground capitalize">
-                {field === "maxContextTokens" ? "Max context tokens (override)" : field}
+                {label}
               </Label>
               <Input
                 type={field === "apiKey" ? "password" : isNumeric ? "number" : "text"}
@@ -131,23 +148,20 @@ function ConfigRow({
                 onChange={(e) =>
                   setEdits((prev) => ({ ...prev, [field]: e.target.value }))
                 }
-                placeholder={
-                  field === "apiKey"
-                    ? "Enter new key"
-                    : field === "model"
-                    ? "Model ID"
-                    : field === "maxContextTokens"
-                    ? "Empty = use model limit"
-                    : "Voice ID"
-                }
+                placeholder={placeholder}
                 className="text-sm"
               />
               {field === "apiKey" && existing[field] && (
                 <p className="text-xs text-muted-foreground">Current: {existing[field]}</p>
               )}
-              {isNumeric && (
+              {field === "maxContextTokens" && (
                 <p className="text-[10px] text-muted-foreground">
                   Empty = model context length lookup, else 128K fallback.
+                </p>
+              )}
+              {field === "maxOutputTokens" && (
+                <p className="text-[10px] text-muted-foreground">
+                  {"Caps every answer length; folded into the prompt as a {{token_budget}} hint and into the cache key."}
                 </p>
               )}
             </div>

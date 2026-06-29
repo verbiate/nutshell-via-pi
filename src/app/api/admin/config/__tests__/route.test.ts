@@ -201,6 +201,71 @@ describe("PATCH /api/admin/config", () => {
     expect(newValue.apiKey).toBe("sk-e...1234");
   });
 
+  it("threads maxOutputTokens through to openrouter upsert + audit log", async () => {
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "admin1" } as any);
+    vi.mocked(db.openRouterConfig.findUnique).mockResolvedValue(null);
+    vi.mocked(db.openRouterConfig.upsert).mockResolvedValue({} as any);
+    vi.mocked(db.auditLog.create).mockResolvedValue({} as any);
+
+    const req = new Request("http://localhost/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({
+        category: "openrouter",
+        userType: "pro",
+        apiKey: "sk-proj-abcdefgh1234567",
+        model: "anthropic/claude-sonnet-4.6",
+        maxOutputTokens: 8192,
+      }),
+    });
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    expect(db.openRouterConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userType: "pro" },
+        create: expect.objectContaining({
+          userType: "pro",
+          maxOutputTokens: 8192,
+        }),
+        update: expect.objectContaining({
+          maxOutputTokens: 8192,
+        }),
+      })
+    );
+    const auditCall = vi.mocked(db.auditLog.create).mock.calls[0][0];
+    const newValue = JSON.parse(auditCall.data.newValue!);
+    expect(newValue.maxOutputTokens).toBe(8192);
+  });
+
+  it("clears maxOutputTokens override when null is sent", async () => {
+    vi.mocked(requireAdmin).mockResolvedValue({ id: "admin1" } as any);
+    vi.mocked(db.openRouterConfig.findUnique).mockResolvedValue({
+      apiKey: "sk-x", model: "m", maxContextTokens: null, maxOutputTokens: 8192,
+    } as any);
+    vi.mocked(db.openRouterConfig.upsert).mockResolvedValue({} as any);
+    vi.mocked(db.auditLog.create).mockResolvedValue({} as any);
+
+    const req = new Request("http://localhost/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({
+        category: "openrouter",
+        userType: "pro",
+        maxOutputTokens: null,
+      }),
+    });
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    expect(db.openRouterConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ maxOutputTokens: null }),
+      })
+    );
+    const auditCall = vi.mocked(db.auditLog.create).mock.calls[0][0];
+    const oldValue = JSON.parse(auditCall.data.oldValue!);
+    expect(oldValue.maxOutputTokens).toBe(8192);
+    const newValue = JSON.parse(auditCall.data.newValue!);
+    expect(newValue.maxOutputTokens).toBeNull();
+  });
+
   it("returns 403 when non-admin accesses endpoint", async () => {
     vi.mocked(requireAdmin).mockRejectedValue({ statusCode: 403 } as any);
 
