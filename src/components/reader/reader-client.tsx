@@ -359,6 +359,7 @@ export function ReaderClient({
     pendingReaderSyncBookId,
     clearPendingReaderSync,
     openBookId,
+    openAudioSettings,
   } = useAudio();
   // ponytail: when the reader re-mounts while TTS is already playing THIS book
   // (user left for the bookshelf, audio kept going, came back), the viewer must
@@ -1203,7 +1204,6 @@ export function ReaderClient({
       spineItems,
       userRole,
       currentHref,
-      voiceSpeed: bookSettings.voiceSpeed,
       readableEndSectionHref: endSectionHref,
     });
     registerViewer(viewerRef);
@@ -1224,7 +1224,6 @@ export function ReaderClient({
     userRole,
     currentHref,
     readableEndSectionHref,
-    bookSettings.voiceSpeed,
   ]);
 
   // ponytail: idle-fade predicate shared by chrome, progress, and the right
@@ -1754,6 +1753,7 @@ export function ReaderClient({
                 onThemeChange={handleThemeChange}
                 settings={bookSettings}
                 onChange={handleSettingsChange}
+                onOpenAudioSettings={openAudioSettings}
               />
             ),
           }}

@@ -84,10 +84,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+// ponytail: TtsPlayer only reads `openAudioSettings` from useAudio now — the
+// Audio Settings modal lives in AudioProvider, not here. Stub the context with
+// the minimum the component touches so we can assert "click gear → open modal".
+const audioStub = vi.hoisted(() => ({
+  openAudioSettings: vi.fn(),
+}));
+vi.mock("@/components/audio/audio-context", () => ({
+  useAudio: () => audioStub,
+}));
+
 import { TtsPlayer } from "../tts-player";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
-import type { EngineId } from "@/lib/tts/languages";
-import type { UserRole } from "@/types/book";
 import type { PlaylistItem } from "@/types/playlist";
 
 function render(el: React.ReactElement) {
@@ -122,18 +130,12 @@ const baseProps = {
   onPlayPause: () => {},
   onStop: () => {},
   onScrub: () => {},
-  onEngineChange: (_: EngineId) => {},
-  onVoiceChange: (_: string) => {},
 };
 
 function mkPlayer(overrides: Partial<Parameters<typeof TtsPlayer>[0]> = {}) {
   return (
     <TtsPlayer
       state={playingState}
-      bookLanguage="en"
-      enginePref="kokoro"
-      voicePref="af_bella"
-      userRole={"regular" as UserRole}
       {...baseProps}
       {...overrides}
     />
@@ -191,88 +193,26 @@ describe("TtsPlayer: playback controls", () => {
   });
 });
 
-describe("TtsPlayer: engine switcher", () => {
-  it("renders all three engine options with the spec labels", () => {
-    const html = render(mkPlayer());
-    expect(html).toContain("Free (Highest Quality)");
-    expect(html).toContain("Free (Faster)");
-    expect(html).toContain("Premium");
-  });
+describe("TtsPlayer: Audio Settings entrypoint", () => {
+  it("clicking the gear icon invokes openAudioSettings (the modal lives upstream)", () => {
+    audioStub.openAudioSettings.mockClear();
 
-  it("emits engine ids as radio values", () => {
-    const html = render(mkPlayer());
-    expect(html).toContain('value="kokoro"');
-    expect(html).toContain('value="supertonic"');
-    expect(html).toContain('value="cloud"');
-  });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(mkPlayer());
+    });
 
-  it('disables "Premium" for regular users and shows the upgrade tooltip', () => {
-    const html = render(mkPlayer({ userRole: "regular" }));
-    const cloudRadio = html.match(
-      /<button[^\u003e]*value="cloud"[^\u003e]*>/,
-    )?.[0];
-    expect(cloudRadio, "cloud radio should be present").toBeTruthy();
-    expect(cloudRadio!).toContain('disabled=""');
-    expect(html).toContain("Upgrade to Pro");
-  });
+    const gear = container.querySelector(
+      'button[aria-label="Audio settings"]',
+    ) as HTMLButtonElement;
+    expect(gear).toBeTruthy();
+    act(() => gear.click());
+    expect(audioStub.openAudioSettings).toHaveBeenCalledTimes(1);
 
-  it("does not disable Premium or show the upgrade tooltip for pro users", () => {
-    const html = render(mkPlayer({ userRole: "pro" }));
-    expect(html).not.toContain("Upgrade to Pro");
-    const cloudRadio = html.match(/<button[^\u003e]*value="cloud"[^\u003e]*>/)?.[0];
-    expect(cloudRadio).toBeTruthy();
-    expect(cloudRadio!).not.toContain('disabled=""');
-  });
-
-  it("disables Kokoro for a language it doesn't support (de) with a tooltip", () => {
-    const html = render(mkPlayer({ bookLanguage: "de" }));
-    const kokoroRadio = html.match(
-      /<button[^\u003e]*value="kokoro"[^\u003e]*>/,
-    )?.[0];
-    expect(kokoroRadio).toBeTruthy();
-    expect(kokoroRadio!).toContain('disabled=""');
-    expect(html).toContain("Not available for de");
-  });
-
-  it("keeps Supertonic enabled for a supertonic-only language (de)", () => {
-    const html = render(mkPlayer({ bookLanguage: "de" }));
-    const supertonicRadio = html.match(
-      /<button[^\u003e]*value="supertonic"[^\u003e]*>/,
-    )?.[0];
-    expect(supertonicRadio).toBeTruthy();
-    expect(supertonicRadio!).not.toContain('disabled=""');
-  });
-});
-
-describe("TtsPlayer: voice picker", () => {
-  it("renders the voice select trigger", () => {
-    const html = render(mkPlayer());
-    expect(html).toContain('data-trigger');
-    expect(html).toContain('aria-label="Voice"');
-  });
-
-  it("renders Kokoro English voices with region tags", () => {
-    const html = render(
-      mkPlayer({ enginePref: "kokoro", bookLanguage: "en" }),
-    );
-    expect(html).toContain("Bella (US)");
-    expect(html).toContain("Daniel (GB)");
-  });
-
-  it("renders Supertonic voices without region tags", () => {
-    const html = render(
-      mkPlayer({ enginePref: "supertonic", bookLanguage: "en" }),
-    );
-    expect(html).toContain("Male 1");
-    expect(html).toContain("Female 1");
-    expect(html).not.toContain("Male 1 (");
-  });
-
-  it("renders the Default voice placeholder for the cloud engine", () => {
-    const html = render(
-      mkPlayer({ enginePref: "cloud", userRole: "pro" }),
-    );
-    expect(html).toContain("Default voice");
+    act(() => root.unmount());
+    container.remove();
   });
 });
 

@@ -7,6 +7,7 @@ const KEY = "tts.pref.v1";
 export interface TtsPref {
   engineId: EngineId;
   voiceId: string;
+  speed: number;
 }
 
 export type PartialTtsPref = Partial<TtsPref>;

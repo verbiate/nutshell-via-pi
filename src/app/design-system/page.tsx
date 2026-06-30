@@ -588,6 +588,7 @@ export default function DesignSystemPage() {
         onThemeChange={setReaderTheme}
         settings={bookSettings}
         onChange={(patch) => setBookSettings((s) => ({ ...s, ...patch }))}
+        onOpenAudioSettings={() => undefined}
       />
     ),
   };
@@ -1207,6 +1208,7 @@ export default function DesignSystemPage() {
                     onThemeChange={setReaderTheme}
                     settings={bookSettings}
                     onChange={(patch) => setBookSettings((s) => ({ ...s, ...patch }))}
+                    onOpenAudioSettings={() => undefined}
                   />
                 </div>
               </div>

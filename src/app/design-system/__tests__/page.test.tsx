@@ -235,7 +235,7 @@ describe("Design system page", () => {
       expect(html).toContain("Reader sidebar"); // section-08-specific — "Book Settings" alone overlaps with section 04
       expect(html).toContain("Book Settings");
       expect(html).toContain("Page Adjustments");
-      expect(html).toContain("Voice Adjustments");
+      expect(html).toContain("Open audio settings");
     });
   });
 

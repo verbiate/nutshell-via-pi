@@ -21,7 +21,6 @@ export type BookAudioContext = {
   spineItems: SpineItem[];
   userRole: UserRole;
   currentHref: string;
-  voiceSpeed: number;
   // ponytail: LLM-pinned last readable section href. When auto-advance is on,
   // playback stops after this section instead of continuing into back matter.
   readableEndSectionHref?: string | null;
@@ -36,7 +35,6 @@ export type AudioSession = {
   flatToc: FlatSection[];
   userRole: UserRole;
   currentIndex: number;
-  voiceSpeed: number;
   // ponytail: null when no metadata row or no end anchor pinned.
   readableEndSectionHref?: string | null;
 };
@@ -126,6 +124,13 @@ export type AudioContextValue = {
   scrub: (time: number) => void;
   setEngine: (id: EngineId) => void;
   setVoice: (id: string) => void;
+  /** Reading speed multiplier (0.5–2). Owned by the provider, persisted via saveTtsPref. */
+  voiceSpeed: number;
+  setVoiceSpeed: (speed: number) => void;
+  /** Open the unified Audio Settings modal. Two entrypoints: TtsPlayer gear icon and BookSettingsPanel button. */
+  audioSettingsOpen: boolean;
+  openAudioSettings: () => void;
+  closeAudioSettings: () => void;
   /** Jump to a section by index in the session playlist. */
   jumpTo: (index: number) => void;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { AlignJustify, AlignLeft, Play } from "lucide-react";
+import { AlignJustify, AlignLeft, Settings } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,12 @@ export const SANS_STACK = '"DM Sans", system-ui, -apple-system, sans-serif';
 export type FontFamilyChoice = "serif" | "sans" | "publisher";
 export type AlignmentChoice = "left" | "justify";
 export type LineSpacingChoice = 1.4 | 1.5 | 1.65;
-export type VoiceName = "Val" | "Kim" | "Bo";
 
 export interface BookSettings {
   fontFamily: FontFamilyChoice;
   fontSize: number; // px, 14–24
   alignment: AlignmentChoice;
   lineSpacing: LineSpacingChoice;
-  voiceSpeed: number; // 0.5–2
-  voiceName: VoiceName;
 }
 
 export const DEFAULT_BOOK_SETTINGS: BookSettings = {
@@ -32,8 +29,6 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
   fontSize: 18,
   alignment: "justify",
   lineSpacing: 1.5,
-  voiceSpeed: 1,
-  voiceName: "Val",
 };
 
 export const BOOK_SETTINGS_MIN_FONT = 14;
@@ -50,8 +45,6 @@ const FONT_FAMILY_OPTIONS: { value: FontFamilyChoice; label: string }[] = [
   { value: "sans", label: "Sans" },
   { value: "publisher", label: "Publisher" },
 ];
-
-const VOICE_OPTIONS: VoiceName[] = ["Val", "Kim", "Bo"];
 
 // ponytail: inline line-stack icons for spacing toggles — lucide has none.
 function LineSpacingIcon({ density }: { density: "tight" | "medium" | "relaxed" }) {
@@ -83,7 +76,7 @@ export interface BookSettingsPanelProps {
   onThemeChange: (theme: ReaderThemeName) => void;
   settings: BookSettings;
   onChange: (patch: Partial<BookSettings>) => void;
-  onTestVoice?: () => void;
+  onOpenAudioSettings: () => void;
 }
 
 export function BookSettingsPanel({
@@ -91,12 +84,8 @@ export function BookSettingsPanel({
   onThemeChange,
   settings,
   onChange,
-  onTestVoice,
+  onOpenAudioSettings,
 }: BookSettingsPanelProps) {
-  const handleVoiceSpeed = useCallback(
-    (v: number[]) => onChange({ voiceSpeed: v[0] }),
-    [onChange],
-  );
   const handleFontSize = useCallback(
     (v: number[]) => onChange({ fontSize: v[0] }),
     [onChange],
@@ -209,53 +198,18 @@ export function BookSettingsPanel({
         </ToggleGroup>
       </div>
 
-      {/* VOICE ADJUSTMENTS */}
+      {/* AUDIO SETTINGS ENTRY */}
       <div className="px-12 flex flex-col gap-5">
-        <SectionLabel>Voice Adjustments</SectionLabel>
-
-        {/* Reading speed */}
-        <div className="flex flex-col gap-2">
-          <Slider
-            value={[settings.voiceSpeed]}
-            min={0.5}
-            max={2}
-            step={0.25}
-            onValueChange={handleVoiceSpeed}
-            aria-label="Reading speed"
-          />
-          <div className="flex justify-between text-[10px] font-medium tabular-nums text-muted-foreground">
-            <span>0.5×</span>
-            <span className="text-center">REGULAR<br />SPEED</span>
-            <span>1.25×</span>
-            <span>1.5×</span>
-            <span>2×</span>
-          </div>
-        </div>
-
-        {/* Voice */}
-        <ToggleGroup
-          type="single"
-          value={settings.voiceName}
-          onValueChange={(v) => {
-            if (v === "Val" || v === "Kim" || v === "Bo") {
-              onChange({ voiceName: v });
-            }
-          }}
-          variant="outline"
-        >
-          {VOICE_OPTIONS.map((name) => (
-            <ToggleGroupItem key={name} value={name}>{name}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
+        <SectionLabel>Audio</SectionLabel>
         <Button
           variant="outline"
           size="sm"
           className="w-full gap-1.5"
-          onClick={onTestVoice}
+          onClick={onOpenAudioSettings}
+          aria-label="Open audio settings"
         >
-          <Play className="h-3.5 w-3.5" />
-          Test voice
+          <Settings className="h-3.5 w-3.5" />
+          Open audio settings
         </Button>
       </div>
     </div>

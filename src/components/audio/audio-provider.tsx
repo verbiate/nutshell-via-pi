@@ -17,6 +17,7 @@ import { buildSpinePlaylist } from "@/lib/reader/spine-playlist";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
+import type { CloudQuota } from "@/hooks/use-tts-cloud";
 import { useTtsEngine } from "@/hooks/use-tts-engine";
 import { useTtsCloud } from "@/hooks/use-tts-cloud";
 import {
@@ -26,11 +27,51 @@ import {
 } from "@/lib/tts/languages";
 import { ENGINES } from "@/lib/tts/engines";
 import { loadTtsPref, saveTtsPref } from "@/lib/tts/pref";
+import type { TtsVoice } from "@/lib/tts/types";
 import { countWords, estimateSeconds, FALLBACK_WPM } from "@/lib/tts/estimate";
 import { cn } from "@/lib/utils";
 import { usePlaylist, usePlaylistMutations } from "@/hooks/use-playlist";
 import { useSession } from "@/hooks/use-session";
+import type { UserRole } from "@/types/book";
 import type { PlaylistItem } from "@/types/playlist";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Play } from "lucide-react";
+
+// ponytail: the three user-facing engine choices. cloud/browser aren't pickable
+// here — cloud maps to "Premium", browser has no slot in the UI.
+const ENGINE_OPTIONS: ReadonlyArray<{ id: EngineId; label: string }> = [
+  { id: "kokoro", label: "Free (Highest Quality)" },
+  { id: "supertonic", label: "Free (Faster)" },
+  { id: "cloud", label: "Premium" },
+];
+
+function voiceLabel(v: TtsVoice): string {
+  // ponytail: Kokoro English voices carry region (US/GB) → "Bella (US)".
+  // Supertonic + non-en Kokoro have none → plain label. One rule covers both.
+  return v.region ? `${v.label} (${v.region})` : v.label;
+}
 
 function createSession(
   ctx: BookAudioContext,
@@ -45,9 +86,185 @@ function createSession(
     flatToc: buildSpinePlaylist(ctx.spineItems, ctx.toc),
     userRole: ctx.userRole,
     currentIndex,
-    voiceSpeed: ctx.voiceSpeed,
     readableEndSectionHref: ctx.readableEndSectionHref,
   };
+}
+
+interface AudioSettingsModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  bookLanguage: string;
+  enginePref: EngineId;
+  effectiveEngineId: EngineId;
+  onEngineChange: (id: EngineId) => void;
+  voicePref: string;
+  onVoiceChange: (id: string) => void;
+  voiceSpeed: number;
+  onVoiceSpeedChange: (v: number) => void;
+  userRole: UserRole;
+  quota: CloudQuota | null;
+  onTestVoice?: () => void;
+}
+
+export function AudioSettingsModal({
+  open,
+  onOpenChange,
+  bookLanguage,
+  enginePref,
+  effectiveEngineId,
+  onEngineChange,
+  voicePref,
+  onVoiceChange,
+  voiceSpeed,
+  onVoiceSpeedChange,
+  userRole,
+  quota,
+  onTestVoice,
+}: AudioSettingsModalProps) {
+  // ponytail: voice catalog follows the *effective* engine so a WebGPU→browser
+  // fallback refreshes the picker to browser voices. The engine radio + cloud
+  // flag still track enginePref — browser isn't a selectable radio option and
+  // cloud never falls back through this hook.
+  const activeEngine = ENGINES[effectiveEngineId];
+  const voices: TtsVoice[] = activeEngine?.getVoices(bookLanguage) ?? [];
+  const isCloud = enginePref === "cloud";
+
+  function disabledReason(id: EngineId): string | null {
+    if (!engineSupportsLanguage(id, bookLanguage)) {
+      return `Not available for ${bookLanguage || "this language"}`;
+    }
+    if (id === "cloud" && userRole === "regular") {
+      return "Upgrade to Pro";
+    }
+    // ponytail: at-quota → same disabled surface as the role gate so users see
+    // a single "Premium is off" message instead of a second bespoke state.
+    if (id === "cloud" && quota && quota.limit > 0 && quota.used >= quota.limit) {
+      return "Monthly limit reached";
+    }
+    return null;
+  }
+
+  // ponytail: badge copy. limit=0 reads as "no cloud access" (regular tier) —
+  // surface the upgrade CTA rather than "0 / 0".
+  const quotaBadge = (() => {
+    if (!isCloud || !quota) return null;
+    if (quota.limit <= 0) return "Premium: upgrade to Pro";
+    return `${quota.used} / ${quota.limit} generations this month`;
+  })();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Audio settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5">
+          <TooltipProvider>
+            <RadioGroup
+              value={enginePref}
+              onValueChange={(v) => onEngineChange(v as EngineId)}
+              className="flex flex-col gap-2"
+              aria-label="Text-to-speech engine"
+            >
+              {ENGINE_OPTIONS.map((opt) => {
+                const reason = disabledReason(opt.id);
+                const disabled = reason !== null;
+                const radio = (
+                  <span className="inline-flex items-center gap-1.5 text-sm">
+                    <RadioGroupItem
+                      value={opt.id}
+                      id={`tts-eng-${opt.id}`}
+                      disabled={disabled}
+                      className="size-4"
+                    />
+                    <Label
+                      htmlFor={`tts-eng-${opt.id}`}
+                      className={cn(
+                        "text-sm font-medium cursor-pointer",
+                        disabled && "text-muted-foreground cursor-not-allowed",
+                      )}
+                    >
+                      {opt.label}
+                    </Label>
+                  </span>
+                );
+                if (!disabled) return <span key={opt.id}>{radio}</span>;
+                return (
+                  <Tooltip key={opt.id}>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">{radio}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{reason}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </RadioGroup>
+          </TooltipProvider>
+
+          {quotaBadge && (
+            <span
+              className="inline-block text-[11px] tabular-nums text-muted-foreground px-1.5 py-0.5 rounded border border-border bg-muted/40"
+              title="Monthly Premium TTS generation quota"
+            >
+              {quotaBadge}
+            </span>
+          )}
+
+          <Select value={isCloud ? "default" : voicePref} onValueChange={onVoiceChange}>
+            <SelectTrigger size="sm" className="w-full" aria-label="Voice">
+              <SelectValue placeholder="Voice" />
+            </SelectTrigger>
+            <SelectContent>
+              {isCloud ? (
+                <SelectItem value="default">Default voice</SelectItem>
+              ) : voices.length === 0 ? (
+                <SelectItem value="__none" disabled>
+                  No voices
+                </SelectItem>
+              ) : (
+                voices.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {voiceLabel(v)}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+
+          {/* Reading speed */}
+          <div className="flex flex-col gap-2">
+            <Slider
+              value={[voiceSpeed]}
+              min={0.5}
+              max={2}
+              step={0.25}
+              onValueChange={([v]) => onVoiceSpeedChange(v)}
+              aria-label="Reading speed"
+            />
+            <div className="flex justify-between text-[10px] font-medium tabular-nums text-muted-foreground">
+              <span>0.5×</span>
+              <span className="text-center">REGULAR<br />SPEED</span>
+              <span>1.25×</span>
+              <span>1.5×</span>
+              <span>2×</span>
+            </div>
+          </div>
+
+          {onTestVoice && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={onTestVoice}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Test voice
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ponytail: section hrefs can carry a #fragment (or query) that differs
@@ -64,11 +281,18 @@ function ttsSectionMatches(a: string, b: string): boolean {
 }
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
-  // ponytail: engine/voice prefs are global to the app session, not per-book.
+  // ponytail: engine/voice/speed prefs are global to the app session, not per-book.
   const [enginePref, setEnginePref] = useState<EngineId>(() =>
     defaultEngineForLanguage("en"),
   );
   const [voicePref, setVoicePref] = useState<string>("");
+  const [voiceSpeed, setVoiceSpeedState] = useState<number>(1);
+
+  // Unified Audio Settings modal — opened from the TtsPlayer gear icon AND
+  // the Book Settings sidebar. Single owner means a single open/close path.
+  const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
+  const openAudioSettings = useCallback(() => setAudioSettingsOpen(true), []);
+  const closeAudioSettings = useCallback(() => setAudioSettingsOpen(false), []);
   const { leavingReader, entering } = useSceneTransition();
   const { user } = useSession();
 
@@ -144,7 +368,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // mirrors on-reader controls instead of tracking pointer idle itself.
   const [readerControlsHidden, setReaderControlsHidden] = useState(false);
 
-  // ponytail: hydrate saved engine/voice once at app start. Runs in useEffect
+  // ponytail: hydrate saved engine/voice/speed once at app start. Runs in useEffect
   // to avoid SSR hydration mismatch (navigator doesn't exist on server).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -154,6 +378,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
     if (saved.voiceId) {
       setVoicePref(saved.voiceId);
+    }
+    if (typeof saved.speed === "number" && saved.speed >= 0.5 && saved.speed <= 2) {
+      setVoiceSpeedState(saved.speed);
     }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -173,8 +400,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Persist resolved prefs once voice has settled.
   useEffect(() => {
     if (!voicePref) return;
-    saveTtsPref("en", { engineId: enginePref, voiceId: voicePref });
-  }, [enginePref, voicePref]);
+    saveTtsPref("en", { engineId: enginePref, voiceId: voicePref, speed: voiceSpeed });
+  }, [enginePref, voicePref, voiceSpeed]);
+
+  const setVoiceSpeed = useCallback((speed: number) => {
+    // ponytail: clamp at the boundary so the slider can pass raw values and
+    // every consumer reads a clean 0.5–2 number.
+    const clamped = Math.min(2, Math.max(0.5, speed));
+    setVoiceSpeedState(clamped);
+  }, []);
 
   // Snap voicePref to the active engine's catalog when engine or language changes.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -485,7 +719,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     viewerRef: registeredViewer ?? undefined,
     engineId: enginePref,
     voiceId: voicePref,
-    speed: session?.voiceSpeed ?? 1,
+    speed: voiceSpeed,
     onSectionComplete: handleSectionComplete,
     onChunkAdvance: (info) =>
       scheduleTtsPosSave({
@@ -527,22 +761,22 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setCloudGenEstimate(0);
       return;
     }
-    let cancelled = false;
-    getText(section.href)
-      .then((text) => {
-        if (cancelled) return;
-        const words = countWords(text);
-        setCloudGenEstimate(
-          words > 0 ? estimateSeconds(words, FALLBACK_WPM, s.voiceSpeed) : 0,
-        );
-      })
+let cancelled = false;
+      getText(section.href)
+        .then((text) => {
+          if (cancelled) return;
+          const words = countWords(text);
+          setCloudGenEstimate(
+            words > 0 ? estimateSeconds(words, FALLBACK_WPM, voiceSpeed) : 0,
+          );
+        })
       .catch(() => {
         if (!cancelled) setCloudGenEstimate(0);
       });
     return () => {
       cancelled = true;
     };
-  }, [enginePref, cloudTts.state, getText]);
+  }, [enginePref, cloudTts.state, getText]); // eslint-disable-line react-hooks/exhaustive-deps -- voiceSpeed is a snapshot at generation start; mid-generation speed changes shouldn't recompute the estimate
 
   // ─── Derived playback state ────────────────────────────────────────────────
   const isCloud =
@@ -591,11 +825,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Cloud audio playback speed ────────────────────────────────────────────
   useEffect(() => {
-    const speed = session?.voiceSpeed ?? 1;
     if (cloudAudioRef.current) {
-      cloudAudioRef.current.playbackRate = speed;
+      cloudAudioRef.current.playbackRate = voiceSpeed;
     }
-  }, [session?.voiceSpeed, cloudAudioRef, cloudTts.state.state]);
+  }, [voiceSpeed, cloudAudioRef, cloudTts.state.state]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
   const ensureSessionForItem = useCallback((item: PlaylistItem) => {
@@ -1066,6 +1299,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       scrub,
       setEngine,
       setVoice,
+      setVoiceSpeed,
+      voiceSpeed,
+      audioSettingsOpen,
+      openAudioSettings,
+      closeAudioSettings,
       jumpTo,
       playlistItems,
       autoAdvanceBook,
@@ -1102,6 +1340,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       scrub,
       setEngine,
       setVoice,
+      setVoiceSpeed,
+      voiceSpeed,
+      audioSettingsOpen,
+      openAudioSettings,
+      closeAudioSettings,
       jumpTo,
       playlistItems,
       autoAdvanceBook,
@@ -1174,19 +1417,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             canSkipAhead={canSkipAhead}
             onStop={stop}
             onScrub={scrub}
-            bookLanguage={cardBookMeta.bookLanguage}
-            enginePref={enginePref}
-            effectiveEngineId={isCloud ? enginePref : browserTts.effectiveEngineId}
-            onEngineChange={setEngine}
-            voicePref={voicePref}
-            onVoiceChange={setVoice}
-            userRole={
-              session?.userRole ??
-              openBook?.userRole ??
-              ((user as { role?: import("@/types/book").UserRole })?.role) ??
-              "regular"
-            }
-            quota={isCloud ? cloudTts.quota : null}
             bookTitle={cardBookMeta.bookTitle}
             bookAuthor={cardBookMeta.bookAuthor}
             bookCoverPath={cardBookMeta.bookCoverPath}
@@ -1207,6 +1437,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           />
         </div>
       )}
+      <AudioSettingsModal
+        open={audioSettingsOpen}
+        onOpenChange={setAudioSettingsOpen}
+        bookLanguage={cardBookMeta.bookLanguage}
+        enginePref={enginePref}
+        effectiveEngineId={isCloud ? enginePref : browserTts.effectiveEngineId}
+        onEngineChange={setEngine}
+        voicePref={voicePref}
+        onVoiceChange={setVoice}
+        voiceSpeed={voiceSpeed}
+        onVoiceSpeedChange={setVoiceSpeed}
+        userRole={
+          session?.userRole ??
+          openBook?.userRole ??
+          ((user as { role?: import("@/types/book").UserRole })?.role) ??
+          "regular"
+        }
+        quota={isCloud ? cloudTts.quota : null}
+      />
     </AudioContext.Provider>
   );
 }
