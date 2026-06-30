@@ -70,6 +70,7 @@ vi.mock("@dnd-kit/utilities", () => ({
 
 import { TtsQueue } from "../tts-queue";
 import type { PlaylistItem } from "@/types/playlist";
+import type { GhostItem } from "@/lib/reader/ghost";
 
 function mkItem(over: Partial<PlaylistItem>): PlaylistItem {
   return {
@@ -94,6 +95,8 @@ const noop = () => {};
 const baseProps = {
   activeItemId: null,
   autoAdvanceBook: true,
+  ghostItem: null,
+  onPlayGhost: noop,
   onReorder: noop,
   onRemove: noop,
   onClearAll: noop,
@@ -210,5 +213,64 @@ describe("TtsQueue: recently-played content", () => {
   it("shows an empty-state message when there is no history", () => {
     const html = render(<TtsQueue items={[]} {...baseProps} />);
     expect(html).toContain("No recently played chapters.");
+  });
+});
+
+describe("TtsQueue: ghost card", () => {
+  const ghost: GhostItem = {
+    sectionHref: "ch2.xhtml",
+    sectionLabel: "Chapter 2",
+  };
+  const active = mkItem({ id: "a1", status: "active", position: 0 });
+
+  it("renders nothing ghost-related when ghostItem is null", () => {
+    const html = render(
+      <TtsQueue items={[active]} {...baseProps} ghostItem={null} />,
+    );
+    expect(html).not.toContain("data-ghost");
+  });
+
+  it("renders the ghost section label between active and upcoming", () => {
+    const html = render(
+      <TtsQueue items={[active]} {...baseProps} ghostItem={ghost} />,
+    );
+    expect(html).toContain("Chapter 2");
+    expect(html).toContain("data-ghost");
+  });
+
+  it("counts the ghost in the on-deck total", () => {
+    const upcoming = mkItem({
+      id: "u1",
+      status: "upcoming",
+      position: 1,
+      sectionLabel: "Later",
+    });
+    const html = render(
+      <TtsQueue
+        items={[active, upcoming]}
+        {...baseProps}
+        ghostItem={ghost}
+      />,
+    );
+    // active(1) + ghost(1) + upcoming(1) = 3
+    expect(html).toContain(">3<");
+  });
+
+  it("renders the ghost even when a manual upcoming item exists (option c)", () => {
+    const upcoming = mkItem({
+      id: "u1",
+      status: "upcoming",
+      position: 1,
+      sectionLabel: "Chapter 2",
+    });
+    const html = render(
+      <TtsQueue
+        items={[active, upcoming]}
+        {...baseProps}
+        ghostItem={ghost}
+      />,
+    );
+    // Both the dashed ghost and the solid manual row carry the label.
+    expect(html.match(/Chapter 2/g)?.length).toBe(2);
   });
 });

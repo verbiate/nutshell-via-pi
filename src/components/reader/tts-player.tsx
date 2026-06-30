@@ -12,6 +12,7 @@ import { useAudio } from "@/components/audio/audio-context";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import { TtsQueue } from "./tts-queue";
 import type { PlaylistItem } from "@/types/playlist";
+import type { GhostItem } from "@/lib/reader/ghost";
 
 export interface TtsPlayerProps {
   state: TtsPlaybackState;
@@ -79,6 +80,8 @@ export interface TtsPlayerProps {
   onToggleAutoAdvance?: (value: boolean) => void;
   /** Reorder upcoming playlist items. */
   onReorder?: (orderedIds: string[]) => void;
+  /** Computed next readable segment to show as a ghost card. */
+  ghostItem?: GhostItem | null;
   // ponytail: end-of-book signal from AudioProvider. Renders "Book finished" +
   // an inert heart in place of the play button. Decorative — clicks are ignored
   // at the provider level (handlePlayPause early-returns when bookFinishedRef
@@ -161,6 +164,7 @@ export function TtsPlayer({
   onClearUpcoming,
   onToggleAutoAdvance,
   onReorder,
+  ghostItem,
   bookFinished = false,
 }: TtsPlayerProps) {
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -404,6 +408,8 @@ export function TtsPlayer({
         items={queueItems}
         activeItemId={activeItemId}
         autoAdvanceBook={autoAdvanceBook}
+        ghostItem={ghostItem}
+        onPlayGhost={onSkipNext}
         onJumpToItem={onJumpToItem}
         onRemove={onRemove ?? (() => {})}
         onClearAll={onClearAll ?? (() => {})}

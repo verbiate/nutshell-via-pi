@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { GripVertical, X, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlaylistItem } from "@/types/playlist";
+import type { GhostItem } from "@/lib/reader/ghost";
 
 export interface TtsQueueProps {
   items: PlaylistItem[];
@@ -48,6 +49,10 @@ export interface TtsQueueProps {
   onClearUpcoming: () => void;
   onToggleAutoAdvance: (value: boolean) => void;
   onJumpToItem: (itemId: string) => void;
+  /** Computed next readable segment; rendered as a pinned dashed card. */
+  ghostItem?: GhostItem | null;
+  /** Promote the ghost (behaves as skip). */
+  onPlayGhost?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -193,6 +198,8 @@ export function TtsQueue({
   onClearUpcoming,
   onToggleAutoAdvance,
   onJumpToItem,
+  ghostItem,
+  onPlayGhost,
   open,
   onOpenChange,
 }: TtsQueueProps) {
@@ -203,7 +210,8 @@ export function TtsQueue({
     return { history, active, upcoming };
   }, [items]);
 
-  const onDeckCount = (active ? 1 : 0) + upcoming.length;
+  const onDeckCount =
+    (active ? 1 : 0) + (ghostItem ? 1 : 0) + upcoming.length;
   // ponytail: Dialog unmounts content when closed, so Tabs remounts each open and defaultValue is re-evaluated fresh. "on-deck" wins ties so the playhead stays visible while reading.
   const defaultTab =
     onDeckCount === 0 && history.length > 0 ? "recently-played" : "on-deck";
@@ -335,11 +343,38 @@ export function TtsQueue({
                 </div>
               )}
 
+              {/* Auto-advance ghost — computed next readable segment.
+                  Pinned on-deck, non-draggable; clicking it behaves as skip. */}
+              {ghostItem && (
+                <div className={cn(active && "mt-4")}>
+                  <SectionLabel>Up next</SectionLabel>
+                  <ul className="space-y-1">
+                    <li
+                      data-ghost
+                      className="group flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+                    >
+                      <Volume2 className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                      <button
+                        type="button"
+                        onClick={onPlayGhost}
+                        className="flex-1 text-left min-w-0"
+                      >
+                        <span className="block line-clamp-2 leading-snug">
+                          {ghostItem.sectionLabel || "Untitled section"}
+                        </span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+
               {/* Up next */}
               {upcoming.length > 0 && (
-                <div className={cn(active && "mt-4")}>
+                <div className={cn(active && "mt-4", ghostItem && "mt-2")}>
                   <div className="mb-1 flex items-center justify-between">
-                    <SectionLabel count={upcoming.length}>Up next</SectionLabel>
+                    <SectionLabel count={upcoming.length}>
+                      {ghostItem ? "Queued" : "Up next"}
+                    </SectionLabel>
                     <Button
                       variant="ghost"
                       size="sm"

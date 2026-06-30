@@ -1464,6 +1464,7 @@ let cancelled = false;
             onPlayPause={handlePlayPause}
             onSkipNext={advanceToNextSection}
             canSkipAhead={canSkipAhead}
+            ghostItem={ghostItem}
             onStop={stop}
             onScrub={scrub}
             bookTitle={cardBookMeta.bookTitle}
