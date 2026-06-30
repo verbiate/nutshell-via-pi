@@ -612,6 +612,24 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [enginePref, scheduleTtsPosSave],
   );
 
+  // ponytail: shared terminal-state transition — close the active engine,
+  // drop the session, and raise the "Book finished" flag. Used by both the
+  // readable-end stop and the end-of-flat-toc stop in handleSectionComplete
+  // (2 callers — extract-at-2 because the bodies are byte-identical and the
+  // intent is the same; if a 3rd terminal state appears, this is the seam).
+  const markBookFinished = useCallback(
+    (s: AudioSession) => {
+      if (enginePref === "cloud" && s.userRole !== "regular") {
+        cloudTtsRef.current?.close();
+      } else {
+        browserTtsRef.current?.close();
+      }
+      setSession(null);
+      setBookFinished(true);
+    },
+    [enginePref],
+  );
+
   const handleSectionComplete = useCallback(async () => {
     const s = sessionRef.current;
     const active = activeItemRef.current;
@@ -626,41 +644,35 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (!autoAdvanceRef.current) return;
-
-    // ponytail: if the book has a pinned readable-end section and we just
-    // finished that section, stop here rather than auto-advancing into back
-    // matter (glossary/index/etc.). Mirrors "stop at the end of the readable
-    // content" even if auto-advance is enabled.
+    // ponytail: terminal-state detection fires regardless of auto-advance
+    // pref — if there's nothing more to play (readable-end pinned, or end of
+    // the flat TOC), close the session and mark the book finished. Without
+    // this hoist, finishing the last cued section with auto-advance OFF left
+    // the engine IDLE with session still set, so the floating card showed a
+    // stale "Start reading from here" instead of "Book finished".
     if (
       s.readableEndSectionHref &&
       ttsSectionMatches(active.sectionHref, s.readableEndSectionHref)
     ) {
-      if (enginePref === "cloud" && s.userRole !== "regular") {
-        cloudTtsRef.current?.close();
-      } else {
-        browserTtsRef.current?.close();
-      }
-      setSession(null);
-      setBookFinished(true);
+      // ponytail: stop at the pinned readable end — even if auto-advance is
+      // on, don't push into back matter (glossary/index/etc.).
+      markBookFinished(s);
       return;
     }
 
     const nextIndex = s.currentIndex + 1;
     if (nextIndex >= s.flatToc.length) {
-      // ponytail: end of book — reset both engines to IDLE and clear the session
-      // so the floating card shows "Book finished" + a decorative heart. Cloud's
-      // handleEnded already moved it to IDLE; the browser engine stays ENDED
-      // until close() flips it, so call close() on whichever was active.
-      if (enginePref === "cloud" && s.userRole !== "regular") {
-        cloudTtsRef.current?.close();
-      } else {
-        browserTtsRef.current?.close();
-      }
-      setSession(null);
-      setBookFinished(true);
+      // ponytail: end of book — Cloud's handleEnded already moved it to IDLE;
+      // the browser engine stays ENDED until close() flips it, so
+      // markBookFinished calls close() on whichever was active.
+      markBookFinished(s);
       return;
     }
+
+    // ponytail: only the "advance into the NEXT spine section" branch is
+    // gated by the auto-advance preference. Manual queueing above and
+    // terminal states above fire regardless.
+    if (!autoAdvanceRef.current) return;
 
     const nextSection = s.flatToc[nextIndex];
     const item = await playlistMutations.addItem({
@@ -675,7 +687,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     });
     await playlistMutations.activateItem(item.id);
     startSection(nextSection.href, nextSection.label);
-  }, [enginePref, playlistMutations, startSection]);
+  }, [markBookFinished, playlistMutations, startSection]);
 
   // ponytail: explicit "next section" click from the ENDED-state card. Same
   // advance logic as handleSectionComplete but without the auto-advance guard
