@@ -385,8 +385,17 @@ function PlayFromStartButton({
   toc: NavItem[];
   bookMeta: PlaylistBookMeta;
 }) {
-  const { playSection, clearPlaylist } = useAudio();
+  const { playSection, clearPlaylist, playbackState } = useAudio();
   const [pending, setPending] = useState(false);
+  // ponytail: clearPlaylist + playSection resolve as soon as the item is
+  // queued, but startSection is fired un-awaited — so `pending` drops while
+  // the Kokoro engine is still downloading its WASM model (multi-second,
+  // silent). Stay "loading" until playback actually leaves the preparing
+  // states, which also disables the button and prevents the double-click race
+  // where the second click's clearPlaylist tears down the first's source.
+  const isLoading =
+    playbackState.state === "LOADING" ||
+    playbackState.state === "GENERATING";
 
   // ponytail: basename compare mirrors ttsSectionMatches in audio-provider.ts.
   // ToC hrefs may carry #fragments or path prefixes the spine omits.
@@ -424,14 +433,14 @@ function PlayFromStartButton({
       variant="default"
       className="w-full gap-2"
       onClick={handleClick}
-      disabled={pending}
+      disabled={pending || isLoading}
     >
-      {pending ? (
+      {pending || isLoading ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         <Play className="h-4 w-4" />
       )}
-      Play from the start
+      {isLoading ? "Loading voice\u2026" : "Play from the start"}
     </Button>
   );
 }
