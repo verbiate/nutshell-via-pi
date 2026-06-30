@@ -71,10 +71,14 @@ function TocEntry({
             isActive
               ? "font-medium text-foreground"
               : "font-normal text-foreground hover:text-primary",
-            level > 0 && "border-l-2 border-border ml-4"
+            level > 0 && "border-l-2 border-border"
           )}
           style={{
-            paddingLeft: level > 0 ? `${48 + level * 16}px` : "48px",
+            // ponytail: border shares the parent's content edge (48px for level 1,
+            // +18px per level = 16 indent + 2px border) so the vertical line reads
+            // as an extension of the parent, not a separate left rail.
+            marginLeft: level > 0 ? `${48 + (level - 1) * 18}px` : undefined,
+            paddingLeft: level > 0 ? "16px" : "48px",
           }}
         >
           {item.label}
