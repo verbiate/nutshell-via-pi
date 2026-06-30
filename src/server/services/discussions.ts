@@ -9,7 +9,6 @@ import { recordError } from "./errors";
 import { getSetting } from "./settings";
 import { verifyBookAccess } from "./reader";
 import { getTierBookTokenLimit, getTierMaxOutputTokens } from "./model-info";
-import { formatTokenBudget } from "./prompt-builder";
 
 // ponytail: a discussion attachment the user can add mid-thread. Two slices:
 // sections of the current book (sectionHref) and whole OTHER books (bookId).
@@ -1080,10 +1079,9 @@ async function rebuildSystemPrompt(
       history,
       maxTokens,
     });
-    // The shelf answer template's {{token_budget}} is substituted inside
-    // buildContext (see shelf-knowledge/query.ts). If the template omits the
-    // var, this literal append is a fallback so the model still sees the cap.
-    return { prompt: ctx.prompt + formatTokenBudget(maxTokens), maxTokens };
+    // ponytail: the shelf_answer template already substitutes {{token_budget}}
+    // via shelf-knowledge/query.ts buildAnswerPrompt — no re-append.
+    return { prompt: ctx.prompt, maxTokens };
   }
   if (discussion.type === "passage") {
     if (!discussion.passageText) {
@@ -1424,8 +1422,7 @@ export async function* streamShelfFirstTurn(params: {
   // against the admin config in getShelfLlmConfig, so the token cap must
   // come from the same tier for consistency. Threading maxTokens into
   // buildContext lets the shelf_answer template substitute {{token_budget}}
-  // (see shelf-knowledge/query.ts). If the template omits the var, the
-  // appended formatTokenBudget fallback below still surfaces it.
+  // (see shelf-knowledge/query.ts). No re-append: the template owns the var.
   const maxTokens = await getTierMaxOutputTokens("admin", "shelf");
 
   let ctx;
@@ -1436,7 +1433,7 @@ export async function* streamShelfFirstTurn(params: {
     yield { type: "error", error: message };
     return;
   }
-  const shelfPrompt = ctx.prompt + formatTokenBudget(maxTokens);
+  const shelfPrompt = ctx.prompt;
 
   // Pre-flight passed — now safe to persist. Shelf discussion: no book, no
   // explainer, no cache key, no passage/section.
