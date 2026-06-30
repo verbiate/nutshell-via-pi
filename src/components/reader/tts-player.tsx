@@ -25,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { Loader2, Minimize2, Maximize2, Settings, X, ListMusic, Heart } from "lucide-react";
+import { Loader2, Minimize2, Maximize2, Settings, X, ListMusic, Heart, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/tts/engines";
 import { engineSupportsLanguage, type EngineId } from "@/lib/tts/languages";
@@ -51,6 +51,14 @@ export interface TtsPlayerProps {
   /** Model-load progress 0–100, surfaced while `state.state === "LOADING"`. */
   loadPct?: number;
   onPlayPause: () => void;
+  /**
+   * Skip ahead to the next queued playlist item (or auto-advance to the next
+   * spine section). Only rendered when `canSkipAhead` is true and the card is
+   * expanded. Activates the next item and starts it.
+   */
+  onSkipNext?: () => Promise<void> | void;
+  /** Whether there's a next item/section to skip to. Gates the button. */
+  canSkipAhead?: boolean;
   /** Stop resets playback to IDLE (nothing loaded) but keeps the card mounted. */
   onStop: () => void;
   onScrub: (time: number) => void;
@@ -184,6 +192,8 @@ export function TtsPlayer({
   state,
   loadPct = 0,
   onPlayPause,
+  onSkipNext,
+  canSkipAhead = false,
   onStop,
   onScrub,
   bookLanguage,
@@ -389,6 +399,17 @@ export function TtsPlayer({
             <PlaySolid className="h-4 w-4 text-blue" />
           )}
         </Button>
+        {onSkipNext && canSkipAhead && !collapsed && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => void onSkipNext()}
+            aria-label="Skip ahead"
+            className="shrink-0 active:scale-[0.96] transition-transform"
+          >
+            <SkipForward className="h-4 w-4" />
+          </Button>
+        )}
 
         {!collapsed && bookId && (
           <button

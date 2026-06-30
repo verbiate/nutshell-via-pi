@@ -168,6 +168,27 @@ model BookMetadata {
   authorGender  String? // null = LLM couldn't tell / undeclared; otherwise free-form ("male"/"female"/"nonbinary"/self-description)
   isNarrative   Boolean? // null = LLM couldn't tell
   language      String?
+  // ponytail: readable-content window for audiobook playback. The LLM picks
+  // verbatim snippets of the first/last passage meant to be read aloud
+  // (skipping title/copyright/ToC/dedication/glossary/index/etc.). The service
+  // validates each anchor via fullText.indexOf/lastIndexOf and stores the
+  // derived absolute char offset so the player has a ready coordinate without
+  // re-parsing. Anchor null = LLM couldn't pick one OR snippet wasn't found
+  // verbatim in the source (misquote). Offset null mirrors anchor null.
+  // readableEndOffset is the EXCLUSIVE end of the last readable paragraph
+  // (anchorStart + anchor.length) so [startOffset, endOffset) is the window.
+  readableStartAnchor  String?
+  readableStartOffset Int?
+  readableEndAnchor    String?
+  readableEndOffset    Int?
+  // ponytail: spine-section href (rootDir-prefixed, as extractText produces)
+  // that contains the corresponding offset. Pinned by computeSectionOffsets
+  // matching against the EPUB spine. Null mirrors anchor/offset null. The
+  // reader resolves to its own spine href via ttsSectionMatches (basename
+  // compare) — see audio-provider.ts. readableEndSectionHref is the LAST
+  // readable section; a future player-UI step will use it to auto-stop.
+  readableStartSectionHref String?
+  readableEndSectionHref   String?
   promptVersion Int
   model         String?
   extractedAt   DateTime @default(now())

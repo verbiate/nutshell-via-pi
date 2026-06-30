@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BookCover } from "@/components/library/book-cover";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
+import { useAudio } from "@/components/audio/audio-context";
 import type { PlaylistBookMeta } from "@/types/playlist";
 
 // ponytail: leading-trim/text-edge are draft CSS (css-inline-3) that crop the
@@ -158,6 +159,10 @@ export interface ReaderPanelProps {
   description?: string | null;
   descriptionLoading?: boolean;
   isNarrative?: boolean | null;
+  // ponytail: LLM-pinned spine-section href where readable content begins.
+  // Drives the "Play from the start" button. Null = not extracted yet or
+  // anchor couldn't be pinned to a section (button hidden).
+  readableStartSectionHref?: string | null;
   toc: NavItem[];
   currentHref: string;
   onNavigate: (href: string) => void;
@@ -182,6 +187,7 @@ export function ReaderPanel({
   metadataTitle,
   subtitle,
   isNarrative,
+  readableStartSectionHref,
   toc,
   currentHref,
   onNavigate,
@@ -293,6 +299,19 @@ export function ReaderPanel({
 
       {/* Action row */}
       <div className="flex flex-col gap-3 px-12">
+        {readableStartSectionHref && (
+          <PlayFromStartButton
+            bookId={bookId}
+            sectionHref={readableStartSectionHref}
+            toc={toc}
+            bookMeta={{
+              bookTitle,
+              bookAuthor: author,
+              bookCoverPath: coverPath,
+              bookLanguage: language,
+            }}
+          />
+        )}
         <Button
           variant="outline"
           className="w-full gap-2"
@@ -346,5 +365,73 @@ export function ReaderPanel({
         </div>
       )}
     </div>
+  );
+}
+
+// ponytail: "Play from the start" — clears the playlist then plays the
+// LLM-pinned readable-start section from the top. The sectionHref comes from
+// BookMetadata.readableStartSectionHref (rootDir-prefixed, e.g. "OEBPS/Text/chap1.xhtml");
+// the reader's ttsSectionMatches (basename compare) resolves it to the spine
+// href, so we pass it straight through. Label resolved from the ToC by basename
+// so the playlist item reads e.g. "Chapter 1" instead of a raw href.
+function PlayFromStartButton({
+  bookId,
+  sectionHref,
+  toc,
+  bookMeta,
+}: {
+  bookId: string;
+  sectionHref: string;
+  toc: NavItem[];
+  bookMeta: PlaylistBookMeta;
+}) {
+  const { playSection, clearPlaylist } = useAudio();
+  const [pending, setPending] = useState(false);
+
+  // ponytail: basename compare mirrors ttsSectionMatches in audio-provider.ts.
+  // ToC hrefs may carry #fragments or path prefixes the spine omits.
+  const label = (() => {
+    const target = sectionHref.split("/").pop()?.split("#")[0] ?? "";
+    const walk = (items: NavItem[]): string | null => {
+      for (const item of items) {
+        const b = item.href.split("/").pop()?.split("#")[0] ?? "";
+        if (b && b === target) return item.label;
+        if (item.subitems?.length) {
+          const found = walk(item.subitems);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return walk(toc) ?? "Beginning";
+  })();
+
+  async function handleClick() {
+    setPending(true);
+    try {
+      // ponytail: clear-all stops any current playback and wipes the queue so
+      // "Play from the start" is unambiguous — the readable-start section
+      // becomes the new active item, nothing before it.
+      await clearPlaylist("all");
+      await playSection(bookId, sectionHref, label, "now", undefined, bookMeta);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="default"
+      className="w-full gap-2"
+      onClick={handleClick}
+      disabled={pending}
+    >
+      {pending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Play className="h-4 w-4" />
+      )}
+      Play from the start
+    </Button>
   );
 }

@@ -50,6 +50,12 @@ interface MetadataView {
     authorGender: string | null;
     isNarrative: boolean | null;
     language: string | null;
+    readableStartAnchor: string | null;
+    readableStartOffset: number | null;
+    readableEndAnchor: string | null;
+    readableEndOffset: number | null;
+    readableStartSectionHref: string | null;
+    readableEndSectionHref: string | null;
     promptVersion: number;
     extractionCount: number;
     model: string | null;
@@ -145,6 +151,7 @@ export default function BookMetadataPage() {
       </p>
 
       <ModelSettingRow />
+      <ReextractAllRow />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[400px_1fr]">
         <div className="flex flex-col gap-3">
@@ -296,6 +303,18 @@ export default function BookMetadataPage() {
                           revertMutation.variables === "language"
                         }
                       />
+                      <AnchorRow
+                        label="Readable start"
+                        anchor={md.readableStartAnchor}
+                        offset={md.readableStartOffset}
+                        sectionHref={md.readableStartSectionHref}
+                      />
+                      <AnchorRow
+                        label="Readable end"
+                        anchor={md.readableEndAnchor}
+                        offset={md.readableEndOffset}
+                        sectionHref={md.readableEndSectionHref}
+                      />
                     </TableBody>
                   </Table>
                   <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -345,6 +364,58 @@ export default function BookMetadataPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ponytail: anchor rows show the verbatim LLM-picked snippet (truncated, mono)
+// plus the derived char offset as a badge so admins can eyeball whether the
+// extraction pinned a location. Offset null = anchor wasn't found verbatim
+// (LLM misquote) or no anchor was returned — both render as "not pinned".
+function AnchorRow({
+  label,
+  anchor,
+  offset,
+  sectionHref,
+}: {
+  label: string;
+  anchor: string | null;
+  offset: number | null;
+  sectionHref?: string | null;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium align-top">{label}</TableCell>
+      <TableCell className="text-muted-foreground align-top">—</TableCell>
+      <TableCell>
+        {anchor ? (
+          <div className="flex flex-col gap-1">
+            <span className="line-clamp-3 font-mono text-xs leading-snug text-foreground">
+              {anchor}
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge
+                variant="outline"
+                className={`text-[10px] ${
+                  offset === null ? "text-amber-600" : "text-green-600"
+                }`}
+              >
+                {offset === null
+                  ? "not pinned"
+                  : `offset ${offset.toLocaleString()}`}
+              </Badge>
+              {sectionHref && (
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {sectionHref.split("/").pop() ?? sectionHref}
+                </Badge>
+              )}
+            </div>
+          </div>
+        ) : (
+          <span className="text-muted-foreground italic">not determined</span>
+        )}
+      </TableCell>
+      <TableCell />
+    </TableRow>
   );
 }
 
@@ -494,6 +565,113 @@ function ModelSettingRow() {
             .
           </>
         )}
+      </p>
+    </div>
+  );
+}
+
+// ponytail: batch re-extract button + polled progress. Mirrors the shelf-wiki
+// build pattern: POST kicks off a fire-and-forget job, GET polls the
+// AppSetting-stashed status. Polling stops on done/error. While running the
+// button is disabled and replaced by a progress bar.
+interface ReextractAllStatus {
+  state: "idle" | "running" | "done" | "error";
+  at: string;
+  total?: number;
+  done?: number;
+  current?: { id: string; title: string } | null;
+  error?: string;
+}
+
+function ReextractAllRow() {
+  const queryClient = useQueryClient();
+
+  const statusQuery = useQuery({
+    queryKey: ["admin-book-metadata-reextract-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/book-metadata/reextract-all");
+      if (!res.ok) throw new Error("Failed to load reextract status");
+      return res.json() as Promise<ReextractAllStatus>;
+    },
+    // ponytail: poll only while running; stop on done/error/idle.
+    refetchInterval: (query) =>
+      query.state.data?.state === "running" ? 2000 : false,
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/book-metadata/reextract-all", {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to start");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Re-extract all started");
+      queryClient.invalidateQueries({
+        queryKey: ["admin-book-metadata-reextract-all"],
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const s = statusQuery.data;
+  const running = s?.state === "running";
+  const pct =
+    running && s?.total && s.total > 0
+      ? Math.round(((s.done ?? 0) / s.total) * 100)
+      : null;
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border bg-white p-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Re-extract all
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => startMutation.mutate()}
+        disabled={running || startMutation.isPending}
+      >
+        {running ? (
+          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Sparkles className="mr-2 h-3.5 w-3.5" />
+        )}
+        {running ? "Running…" : "Re-extract every book"}
+      </Button>
+      {running && s && (
+        <div className="flex min-w-[200px] flex-1 items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${pct ?? 0}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {s.done ?? 0}/{s.total ?? "?"}
+          </span>
+        </div>
+      )}
+      {running && s?.current && (
+        <span className="w-full line-clamp-1 text-[11px] text-muted-foreground">
+          Now: <span className="font-medium text-foreground">{s.current.title}</span>
+        </span>
+      )}
+      {s?.state === "done" && (
+        <span className="w-full text-[11px] text-green-600">
+          Done — {s.done ?? 0} book{(s.done ?? 0) === 1 ? "" : "s"} re-extracted.
+        </span>
+      )}
+      {s?.state === "error" && (
+        <span className="w-full text-[11px] text-red-600">
+          Failed after {s.done ?? 0} book{(s.done ?? 0) === 1 ? "" : "s"}: {s.error}
+        </span>
+      )}
+      <p className="w-full text-[11px] text-muted-foreground">
+        Runs the LLM extraction on every book sequentially. Each book takes a
+        few seconds; progress is polled here.
       </p>
     </div>
   );

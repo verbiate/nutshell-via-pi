@@ -197,11 +197,51 @@ async function extractText(
   opfContent: string,
   rootDir: string
 ): Promise<string> {
-  // Get spine order
+  // ponytail: delegates to extractSections, which builds per-section text +
+  // offsets in one pass so computeSectionOffsets can reuse the exact same
+  // stripping logic. Joined with "\n\n" to preserve the original txt format.
+  const sections = await extractSections(zip, opfContent, rootDir);
+  return sections.map((s) => s.text).filter(Boolean).join("\n\n");
+}
+
+// ponytail: shared HTML→plaintext stripper. extractText and computeSectionOffsets
+// both go through this so per-section offsets align byte-for-byte with the
+// stored book.txtPath. Any change here MUST be reflected in both call sites.
+function stripSectionHtml(content: string): string {
+  return content
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#\d+;/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+interface SectionText {
+  /** Spine-item href (rootDir-prefixed, e.g. "OEBPS/Text/chap1.xhtml"). */
+  href: string;
+  /** Stripped plaintext for this section (empty string if section had no text). */
+  text: string;
+}
+
+// ponytail: iterates the EPUB spine in reading order, strips HTML per section
+// (same logic as extractText), returns per-section href + text. Used by
+// extractText (joins with "\n\n") and computeSectionOffsets (computes char
+// offset ranges). Shared so offsets align byte-for-byte with stored txt.
+async function extractSections(
+  zip: any,
+  opfContent: string,
+  rootDir: string
+): Promise<SectionText[]> {
   const spineMatch = opfContent.match(
     /<spine[^>]*>([\s\S]*?)<\/spine>/i
   );
-  if (!spineMatch) return "";
+  if (!spineMatch) return [];
 
   const idrefs: string[] = [];
   const itemrefRegex = /<itemref[^>]+idref="([^"]+)"[^>]*>/gi;
@@ -210,43 +250,86 @@ async function extractText(
     idrefs.push(refMatch[1]);
   }
 
-  // Build manifest map: id -> href
   const manifest: Record<string, string> = {};
   for (const item of parseManifest(opfContent)) {
     manifest[item.id] = rootDir + item.href;
   }
 
-  const textParts: string[] = [];
+  const sections: SectionText[] = [];
   for (const idref of idrefs) {
     const href = manifest[idref];
     if (!href) continue;
-
     const content = await zip.file(href)?.async("text");
     if (!content) continue;
-
-    // Strip HTML tags to get plain text
-    const text = content
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#\d+;/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (text) {
-      textParts.push(text);
-    }
+    const text = stripSectionHtml(content);
+    sections.push({ href, text });
   }
-
-  return textParts.join("\n\n");
+  return sections;
 }
 
-function getAttr(tag: string, name: string): string | null {
+export interface SectionOffset {
+  /** Spine-item href (rootDir-prefixed). */
+  href: string;
+  /** Absolute char offset where this section's text starts in the plaintext. */
+  startOffset: number;
+  /** Exclusive end (startOffset + text.length + separator accounting). */
+  endOffset: number;
+}
+
+/**
+ * Compute per-section char-offset ranges in the stored plaintext (book.txtPath).
+ * Matches extractText's logic exactly (shared stripSectionHtml + "\n\n" join) so
+ * an offset from readableStartOffset/readableEndOffset lands in the right section.
+ *
+ * ponytail: opens the EPUB from a storage path (used by the book-metadata
+ * service during extraction, which already has book.epubPath). Reads the OPF,
+ * iterates the spine, and accumulates offsets with the same "\n\n" separator
+ * extractText uses. Returns [] on any parse failure — caller treats as
+ * "couldn't pin section".
+ */
+export async function computeSectionOffsets(
+  epubPath: string
+): Promise<SectionOffset[]> {
+  const buf = await storage.read(epubPath);
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buf);
+
+  const containerXml = await zip.file("META-INF/container.xml")?.async("text");
+  if (!containerXml) return [];
+  const rootfilePathMatch = containerXml.match(
+    /full-path="([^"]+\.opf)"/i
+  );
+  if (!rootfilePathMatch) return [];
+  const rootfilePath = rootfilePathMatch[1];
+  const rootDir = rootfilePath.includes("/")
+    ? rootfilePath.substring(0, rootfilePath.lastIndexOf("/") + 1)
+    : "";
+  const opfContent = await zip.file(rootfilePath)?.async("text");
+  if (!opfContent) return [];
+
+  const sections = await extractSections(zip, opfContent, rootDir);
+  const nonEmpty = sections.filter((s) => s.text.length > 0);
+
+  // ponytail: reproduce extractText's join("\n\n") exactly. The i-th non-empty
+  // section's text starts at sum(len(nonEmpty[0..i-1])) + i*2 (i separators of
+  // length 2). End = start + text.length. The last section has no trailing
+  // separator — matches String.join semantics.
+  const offsets: SectionOffset[] = [];
+  let cursor = 0;
+  for (let i = 0; i < nonEmpty.length; i++) {
+    const text = nonEmpty[i].text;
+    const startOffset = cursor;
+    const endOffset = startOffset + text.length;
+    offsets.push({ href: nonEmpty[i].href, startOffset, endOffset });
+    cursor = endOffset;
+    if (i < nonEmpty.length - 1) cursor += 2; // "\n\n"
+  }
+  return offsets;
+}
+
+// ponytail: exported for computeSectionOffsets (section-href pinning for
+// readable-start/end). Kept private to this module otherwise.
+export function getAttr(tag: string, name: string): string | null {
   const m = tag.match(new RegExp('(?:^|\\s)' + name + '\\s*=\\s*"([^"]*)"', "i"));
   return m ? m[1] : null;
 }
@@ -258,7 +341,7 @@ interface ManifestItem {
   properties: string | null;
 }
 
-function parseManifest(opfContent: string): ManifestItem[] {
+export function parseManifest(opfContent: string): ManifestItem[] {
   const tags = opfContent.match(/<item\b[^>]*>/gi) || [];
   return tags
     .map((t) => ({

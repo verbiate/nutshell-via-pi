@@ -22,6 +22,9 @@ export type BookAudioContext = {
   userRole: UserRole;
   currentHref: string;
   voiceSpeed: number;
+  // ponytail: LLM-pinned last readable section href. When auto-advance is on,
+  // playback stops after this section instead of continuing into back matter.
+  readableEndSectionHref?: string | null;
 };
 
 export type AudioSession = {
@@ -34,6 +37,8 @@ export type AudioSession = {
   userRole: UserRole;
   currentIndex: number;
   voiceSpeed: number;
+  // ponytail: null when no metadata row or no end anchor pinned.
+  readableEndSectionHref?: string | null;
 };
 
 export type TtsStartPos = {

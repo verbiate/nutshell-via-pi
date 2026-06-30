@@ -6,11 +6,17 @@ import {
   getOpenRouterConfig,
   OpenRouterError,
 } from "./openrouter";
-import { getSetting } from "./settings";
+import { getSetting, setSetting } from "./settings";
+import { computeSectionOffsets } from "./epub-processor";
 
 // ponytail: AppSetting key for the model override. When null/missing, the
 // admin-tier model from the API Keys & Models page is used.
 export const BOOK_METADATA_MODEL_KEY = "bookMetadataModel";
+
+// ponytail: AppSetting key for batch re-extraction status (JSON: {state, at,
+// done?, total?, current?, error?}). state ∈ "idle"|"running"|"done"|"error".
+// UI polls GET /api/admin/book-metadata/reextract-all to render progress.
+export const REEXTRACT_ALL_STATUS_KEY = "bookMetadataReextractStatus";
 
 export async function getBookMetadataModel(): Promise<string | null> {
   return getSetting(BOOK_METADATA_MODEL_KEY);
@@ -27,6 +33,19 @@ export interface ExtractedBookMetadata {
   authorGender: string | null;
   isNarrative: boolean | null;
   language: string | null;
+  // ponytail: LLM returns verbatim anchors; service validates against fullText
+  // and stores the derived absolute char offset. Anchor null = LLM couldn't
+  // pick one OR snippet wasn't found verbatim (misquote). Offset null mirrors
+  // anchor null. readableEndOffset is exclusive (anchorStart+anchor.length).
+  readableStartAnchor: string | null;
+  readableStartOffset: number | null;
+  readableEndAnchor: string | null;
+  readableEndOffset: number | null;
+  // ponytail: spine-section href (rootDir-prefixed) containing the corresponding
+  // offset. Pinned by computeSectionOffsets against the EPUB spine. Null mirrors
+  // offset null. The reader resolves to its own spine href via ttsSectionMatches.
+  readableStartSectionHref: string | null;
+  readableEndSectionHref: string | null;
 }
 
 // Fields the admin can revert to the OPF originals on EpubFile. The three new
@@ -55,6 +74,12 @@ export interface BookMetadataView {
     authorGender: string | null;
     isNarrative: boolean | null;
     language: string | null;
+    readableStartAnchor: string | null;
+    readableStartOffset: number | null;
+    readableEndAnchor: string | null;
+    readableEndOffset: number | null;
+    readableStartSectionHref: string | null;
+    readableEndSectionHref: string | null;
     promptVersion: number;
     extractionCount: number;
     model: string | null;
@@ -144,6 +169,12 @@ export async function getBookMetadataView(
           authorGender: book.bookMetadata.authorGender,
           isNarrative: book.bookMetadata.isNarrative,
           language: book.bookMetadata.language,
+          readableStartAnchor: book.bookMetadata.readableStartAnchor,
+          readableStartOffset: book.bookMetadata.readableStartOffset,
+          readableEndAnchor: book.bookMetadata.readableEndAnchor,
+          readableEndOffset: book.bookMetadata.readableEndOffset,
+          readableStartSectionHref: book.bookMetadata.readableStartSectionHref,
+          readableEndSectionHref: book.bookMetadata.readableEndSectionHref,
           promptVersion: book.bookMetadata.promptVersion,
           extractionCount,
           model: book.bookMetadata.model,
@@ -185,6 +216,12 @@ export async function extractBookMetadata(
         authorGender: true,
         isNarrative: true,
         language: true,
+        readableStartAnchor: true,
+        readableStartOffset: true,
+        readableEndAnchor: true,
+        readableEndOffset: true,
+        readableStartSectionHref: true,
+        readableEndSectionHref: true,
       },
     });
     if (existing) return existing as ExtractedBookMetadata;
@@ -273,6 +310,56 @@ async function doExtractBookMetadata(
     }
   }
   if (!parsed) throw lastError;
+
+  // ponytail: validate the readable anchors against the source text and stash
+  // the derived absolute char offset. The LLM can misquote; indexOf=-1 means
+  // the anchor is silently nulled so a non-null offset is always trustworthy.
+  // readableStartOffset is the offset where the start anchor begins.
+  // readableEndOffset is EXCLUSIVE (start + anchor.length) so
+  // [startOffset, endOffset) is the readable window.
+  const startOffset = pinAnchor(parsed.readableStartAnchor, fullText);
+  const endOffsetRaw = pinAnchor(parsed.readableEndAnchor, fullText, true);
+  parsed.readableStartOffset = startOffset;
+  parsed.readableEndOffset =
+    endOffsetRaw === null ? null : endOffsetRaw + (parsed.readableEndAnchor?.length ?? 0);
+  if (startOffset === null) parsed.readableStartAnchor = null;
+  if (endOffsetRaw === null) parsed.readableEndAnchor = null;
+
+  // ponytail: pin the section hrefs by mapping the offsets to EPUB spine items.
+  // computeSectionOffsets re-derives the per-section char ranges from the EPUB
+  // (same stripSectionHtml logic that built the txt) so an offset lands in the
+  // right section. Failures (missing epub, parse error) → empty array → null
+  // hrefs (offset still trustworthy, just no section). The reader resolves the
+  // rootDir-prefixed href to its own spine href via ttsSectionMatches (basename
+  // compare). readableEndSectionHref is the section CONTAINING the end offset,
+  // i.e. the last readable section — a future player-UI step will auto-stop.
+  if (startOffset !== null || endOffsetRaw !== null) {
+    try {
+      const sections = await computeSectionOffsets(book.epubPath);
+      if (startOffset !== null) {
+        const s = sections.find(
+          (sec) => startOffset >= sec.startOffset && startOffset < sec.endOffset
+        );
+        parsed.readableStartSectionHref = s?.href ?? null;
+      }
+      if (endOffsetRaw !== null) {
+        // ponytail: endOffsetRaw is where the end anchor STARTS. The last
+        // readable section is the one containing that start. (Using the exclusive
+        // readableEndOffset would push into the next section when the anchor
+        // ends exactly at a section boundary.)
+        const s = sections.find(
+          (sec) =>
+            endOffsetRaw >= sec.startOffset && endOffsetRaw < sec.endOffset
+        );
+        parsed.readableEndSectionHref = s?.href ?? null;
+      }
+    } catch (e) {
+      console.warn(
+        `[book-metadata] computeSectionOffsets failed for ${bookId}:`,
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
 
   const previous = await db.bookMetadata.findUnique({ where: { bookId } });
   const row = await db.bookMetadata.upsert({
@@ -383,9 +470,129 @@ function safeParseMetadata(raw: string): ExtractedBookMetadata {
           ? false
           : null,
     language: asStringOrNull(obj.language),
+    // ponytail: anchors parsed as plain non-empty strings; offsets get filled
+    // in doExtractBookMetadata after a indexOf/lastIndexOf pass against the
+    // loaded fullText. Anchor left as-is here (even if it later fails to pin)
+    // so a misquote still surfaces in the audit log's newValue.
+    readableStartAnchor: asStringOrNull(obj.readableStartAnchor),
+    readableStartOffset: null,
+    readableEndAnchor: asStringOrNull(obj.readableEndAnchor),
+    readableEndOffset: null,
+    // ponytail: section hrefs filled in doExtractBookMetadata after
+    // computeSectionOffsets maps the offsets to spine items.
+    readableStartSectionHref: null,
+    readableEndSectionHref: null,
   };
+}
+
+// ponytail: exported for tests only. Validates a verbatim LLM-quoted anchor
+// against fullText and returns the absolute char offset where it starts.
+// Returns null if the anchor is null/empty or not found verbatim (LLM
+// misquote). For endAnchor use lastIndexOf so a closing snippet that appears
+// multiple times (e.g. a phrase reused earlier) pins to the LAST occurrence,
+// matching "end of the readable content".
+export function pinAnchor(
+  anchor: string | null,
+  fullText: string,
+  fromEnd = false
+): number | null {
+  if (!anchor || anchor.length === 0) return null;
+  const idx = fromEnd ? fullText.lastIndexOf(anchor) : fullText.indexOf(anchor);
+  return idx === -1 ? null : idx;
 }
 
 function asStringOrNull(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+// ─── Batch re-extraction ────────────────────────────────────────────────
+// ponytail: mirror the shelf-wiki build() pattern — fire-and-forget, module-
+// level mutex, status written to AppSetting so the UI can poll. Sequential to
+// avoid hammering OpenRouter rate limits (a few seconds per book is fine; the
+// admin doesn't sit watching). Ceiling: multi-process deploys would race on
+// `reextractInFlight` — replace with a DB-level compare-and-set if needed.
+
+export interface ReextractAllStatus {
+  state: "idle" | "running" | "done" | "error";
+  at: string;
+  total?: number;
+  done?: number;
+  current?: { id: string; title: string } | null;
+  error?: string;
+}
+
+export async function getReextractAllStatus(): Promise<ReextractAllStatus> {
+  const raw = await getSetting(REEXTRACT_ALL_STATUS_KEY);
+  if (!raw) return { state: "idle", at: new Date(0).toISOString() };
+  try {
+    return JSON.parse(raw) as ReextractAllStatus;
+  } catch {
+    return { state: "idle", at: new Date(0).toISOString() };
+  }
+}
+
+let reextractInFlight: Promise<void> | null = null;
+
+/**
+ * Re-extract metadata for every book sequentially. Fire-and-forget — caller
+ * should not await. Idempotent: a second call while one is running returns
+ * immediately. Status is stashed in AppSetting.REEXTRACT_ALL_STATUS_KEY for
+ * UI polling.
+ */
+export function reextractAllBookMetadata(actorId: string): Promise<void> {
+  if (reextractInFlight) return reextractInFlight;
+  reextractInFlight = (async () => {
+    const books = await db.epubFile.findMany({
+      select: { id: true, title: true, txtPath: true },
+      orderBy: { title: "asc" },
+    });
+    await setReextractStatus({
+      state: "running",
+      total: books.length,
+      done: 0,
+      current: null,
+    });
+    let done = 0;
+    try {
+      for (const book of books) {
+        await setReextractStatus({
+          state: "running",
+          total: books.length,
+          done,
+          current: { id: book.id, title: book.title },
+        });
+        // ponytail: skip books without plaintext (shouldn't happen post-ingest
+        // but defensive — one bad row must not abort the whole run).
+        if (!book.txtPath) {
+          console.warn(
+            `[book-metadata] reextract-all skipping ${book.id}: no txtPath`
+          );
+        } else {
+          await extractBookMetadata(book.id, actorId, { force: true });
+        }
+        done++;
+      }
+      await setReextractStatus({ state: "done", total: books.length, done });
+    } catch (err) {
+      await setReextractStatus({
+        state: "error",
+        total: books.length,
+        done,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  })().finally(() => {
+    reextractInFlight = null;
+  });
+  return reextractInFlight;
+}
+
+async function setReextractStatus(
+  s: Omit<ReextractAllStatus, "at">
+): Promise<void> {
+  await setSetting(
+    REEXTRACT_ALL_STATUS_KEY,
+    JSON.stringify({ ...s, at: new Date().toISOString() })
+  );
 }

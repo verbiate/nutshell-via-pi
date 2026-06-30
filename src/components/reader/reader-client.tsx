@@ -66,6 +66,8 @@ interface PanelSnapshot {
   description?: string | null;
   descriptionLoading: boolean;
   isNarrative?: boolean | null;
+  readableStartSectionHref?: string | null;
+  readableEndSectionHref?: string | null;
   toc: NavItem[];
   currentHref: string;
   bookCreatedAt?: string;
@@ -81,6 +83,8 @@ export interface ReaderClientProps {
   bookSubtitle?: string | null;
   bookDescription?: string | null;
   bookIsNarrative?: boolean | null;
+  readableStartSectionHref?: string | null;
+  readableEndSectionHref?: string | null;
   epubUrl?: string;
   isAdmin?: boolean;
   bookCreatedAt?: string;
@@ -111,6 +115,8 @@ export function ReaderClient({
   bookSubtitle,
   bookDescription,
   bookIsNarrative,
+  readableStartSectionHref,
+  readableEndSectionHref,
   epubUrl,
   isAdmin,
   bookCreatedAt,
@@ -258,6 +264,15 @@ export function ReaderClient({
   const [subtitle, setSubtitle] = useState<string | null>(bookSubtitle ?? null);
   const [isNarrative, setIsNarrative] = useState<boolean | null>(
     bookIsNarrative ?? null
+  );
+  // ponytail: readableStartSectionHref drives the "Play from the start" button.
+  // State-mirrored so a book-to-book swap (keepPreviousData) updates the panel
+  // when the new book's metadata resolves.
+  const [startSectionHref, setStartSectionHref] = useState<string | null>(
+    readableStartSectionHref ?? null
+  );
+  const [endSectionHref, setEndSectionHref] = useState<string | null>(
+    readableEndSectionHref ?? null
   );
 
   // ─── Position state ────────────────────────────────────────────────────────────
@@ -1189,6 +1204,7 @@ export function ReaderClient({
       userRole,
       currentHref,
       voiceSpeed: bookSettings.voiceSpeed,
+      readableEndSectionHref: endSectionHref,
     });
     registerViewer(viewerRef);
     return () => {
@@ -1207,6 +1223,7 @@ export function ReaderClient({
     spineItems,
     userRole,
     currentHref,
+    readableEndSectionHref,
     bookSettings.voiceSpeed,
   ]);
 
@@ -1346,6 +1363,8 @@ export function ReaderClient({
       description,
       descriptionLoading,
       isNarrative,
+      readableStartSectionHref: startSectionHref,
+      readableEndSectionHref: endSectionHref,
       toc,
       currentHref,
       bookCreatedAt,
@@ -1362,8 +1381,9 @@ export function ReaderClient({
     setMetadataTitle(bookMetadataTitle ?? null);
     setSubtitle(bookSubtitle ?? null);
     setIsNarrative(bookIsNarrative ?? null);
-    setDescriptionLoading(!bookDescription);
-  }, [bookDescription, bookMetadataTitle, bookSubtitle, bookIsNarrative]);
+    setStartSectionHref(readableStartSectionHref ?? null);
+    setEndSectionHref(readableEndSectionHref ?? null);
+  }, [bookDescription, bookMetadataTitle, bookSubtitle, bookIsNarrative, readableStartSectionHref, readableEndSectionHref]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Phase 2: the sidebar has closed and the new book has loaded → reopen it.
@@ -1409,6 +1429,7 @@ export function ReaderClient({
     description,
     descriptionLoading,
     isNarrative,
+    readableStartSectionHref: startSectionHref,
     toc,
     currentHref,
     bookCreatedAt,
@@ -1643,6 +1664,7 @@ export function ReaderClient({
                 description={panel.description}
                 descriptionLoading={panel.descriptionLoading}
                 isNarrative={panel.isNarrative}
+                readableStartSectionHref={panel.readableStartSectionHref}
                 toc={panel.toc}
                 currentHref={panel.currentHref}
                 onNavigate={handleTocNavigate}

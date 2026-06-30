@@ -47,12 +47,12 @@ export const AVAILABLE_TOKENS: readonly PromptToken[] = [
     description: "Full plaintext of the book (extracted at upload).",
     appliesTo: ["book", "section", "passage", "book_pass2", "book_metadata"],
   },
-    {
-      token: "expanded_metadata",
-      description:
-        "LLM-extracted Expanded Book Metadata block (all 6 fields: title, subtitle, author, author gender, narrative type, language, description). Empty when metadata hasn't been extracted yet.",
-      appliesTo: ["book", "section", "passage", "book_pass2"],
-    },
+  {
+    token: "expanded_metadata",
+    description:
+      "LLM-extracted Expanded Book Metadata block (title, subtitle, author, author gender, narrative type, language, description). Empty when metadata hasn't been extracted yet.",
+    appliesTo: ["book", "section", "passage", "book_pass2"],
+  },
     {
       token: "chapter_index",
       description:

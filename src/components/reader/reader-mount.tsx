@@ -31,6 +31,8 @@ interface BookDetailResponse {
       subtitle: string | null;
       description: string | null;
       isNarrative: boolean | null;
+      readableStartSectionHref: string | null;
+      readableEndSectionHref: string | null;
     } | null;
   };
   contextWindow: number;
@@ -81,6 +83,8 @@ export function ReaderMount() {
       bookSubtitle={b?.bookMetadata?.subtitle ?? null}
       bookDescription={b?.bookMetadata?.description ?? null}
       bookIsNarrative={b?.bookMetadata?.isNarrative ?? null}
+      readableStartSectionHref={b?.bookMetadata?.readableStartSectionHref ?? null}
+      readableEndSectionHref={b?.bookMetadata?.readableEndSectionHref ?? null}
       epubUrl={b ? `/api/files/${b.epubPath}` : undefined}
       isAdmin={data?.isAdmin}
       bookCreatedAt={b?.createdAt}

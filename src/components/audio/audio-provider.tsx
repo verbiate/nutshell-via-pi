@@ -46,6 +46,7 @@ function createSession(
     userRole: ctx.userRole,
     currentIndex,
     voiceSpeed: ctx.voiceSpeed,
+    readableEndSectionHref: ctx.readableEndSectionHref,
   };
 }
 
@@ -219,7 +220,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         prev.bookCoverPath !== openBook.bookCoverPath ||
         prev.bookTitle !== openBook.bookTitle ||
         prev.bookAuthor !== openBook.bookAuthor ||
-        prev.bookLanguage !== openBook.bookLanguage;
+        prev.bookLanguage !== openBook.bookLanguage ||
+        prev.readableEndSectionHref !== openBook.readableEndSectionHref;
       if (
         prev.currentIndex === currentIndex &&
         prev.flatToc.length === flatToc.length &&
@@ -235,6 +237,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         bookTitle: openBook.bookTitle,
         bookAuthor: openBook.bookAuthor,
         bookLanguage: openBook.bookLanguage,
+        readableEndSectionHref: openBook.readableEndSectionHref,
       };
     });
   }, [activeItem, openBook]);
@@ -390,6 +393,24 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!autoAdvanceRef.current) return;
+
+    // ponytail: if the book has a pinned readable-end section and we just
+    // finished that section, stop here rather than auto-advancing into back
+    // matter (glossary/index/etc.). Mirrors "stop at the end of the readable
+    // content" even if auto-advance is enabled.
+    if (
+      s.readableEndSectionHref &&
+      ttsSectionMatches(active.sectionHref, s.readableEndSectionHref)
+    ) {
+      if (enginePref === "cloud" && s.userRole !== "regular") {
+        cloudTtsRef.current?.close();
+      } else {
+        browserTtsRef.current?.close();
+      }
+      setSession(null);
+      setBookFinished(true);
+      return;
+    }
 
     const nextIndex = s.currentIndex + 1;
     if (nextIndex >= s.flatToc.length) {
@@ -1010,6 +1031,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const showCard =
     !!openBook || session !== null || playlistItems.length > 0;
 
+  // ponytail: skip-ahead affordance. Visible whenever playback is non-IDLE and
+  // there's somewhere to skip *to*: either an upcoming playlist item ahead of
+  // the active one, or (with auto-advance on) the next spine section.
+  const activePos = activeItem?.position;
+  const hasNextUpcoming = playlistItems.some(
+    (i) => i.status === "upcoming" && activePos != null && i.position > activePos,
+  );
+  const hasSpineNext =
+    !!session && autoAdvanceBook && session.currentIndex + 1 < session.flatToc.length;
+  const canSkipAhead = playbackState.state !== "IDLE" && (hasNextUpcoming || hasSpineNext);
+
   // ─── Context value ─────────────────────────────────────────────────────────
   const value: AudioContextValue = useMemo(
     () => ({
@@ -1138,6 +1170,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             bookFinished={bookFinished}
             loadPct={browserTts.state.loadPct}
             onPlayPause={handlePlayPause}
+            onSkipNext={advanceToNextSection}
+            canSkipAhead={canSkipAhead}
             onStop={stop}
             onScrub={scrub}
             bookLanguage={cardBookMeta.bookLanguage}

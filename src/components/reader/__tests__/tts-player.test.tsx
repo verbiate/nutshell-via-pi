@@ -460,6 +460,64 @@ describe("TtsPlayer: idle (nothing loaded) state", () => {
   });
 });
 
+describe("TtsPlayer: skip-ahead button", () => {
+  it("renders when canSkipAhead && onSkipNext while playback is active", () => {
+    const html = render(
+      mkPlayer({
+        canSkipAhead: true,
+        onSkipNext: () => {},
+      }),
+    );
+    expect(html).toContain('aria-label="Skip ahead"');
+  });
+
+  it("hides when canSkipAhead is false", () => {
+    const html = render(
+      mkPlayer({
+        canSkipAhead: false,
+        onSkipNext: () => {},
+      }),
+    );
+    expect(html).not.toContain('aria-label="Skip ahead"');
+  });
+
+  it("hides when onSkipNext is missing even if canSkipAhead is true", () => {
+    const html = render(mkPlayer({ canSkipAhead: true }));
+    expect(html).not.toContain('aria-label="Skip ahead"');
+  });
+
+  it("hides when collapsed", () => {
+    // collapsed is internal state toggled by the minimize button; start IDLE
+    // (where the collapsed affordance is reachable) and click minimize to
+    // collapse, then verify the skip button disappears from the DOM.
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        mkPlayer({
+          canSkipAhead: true,
+          onSkipNext: () => {},
+        }),
+      );
+    });
+    // expanded by default: button exists
+    expect(
+      container.querySelector('button[aria-label="Skip ahead"]'),
+    ).toBeTruthy();
+    // collapse via the minimize button
+    const minimize = container.querySelector(
+      'button[aria-label="Minimize audio player"]',
+    ) as HTMLButtonElement;
+    act(() => minimize.click());
+    expect(
+      container.querySelector('button[aria-label="Skip ahead"]'),
+    ).toBeNull();
+    act(() => root.unmount());
+    container.remove();
+  });
+});
+
 describe("TtsPlayer: thumbnail click", () => {
   it("only syncs to playback on same-book-on-reader without touching the sidebar", async () => {
     pathnameRef.current = `/book/test-book/reader`;

@@ -47,6 +47,8 @@ export async function GET(
               subtitle: book.bookMetadata.subtitle,
               description: book.bookMetadata.description,
               isNarrative: book.bookMetadata.isNarrative,
+              readableStartSectionHref: book.bookMetadata.readableStartSectionHref,
+              readableEndSectionHref: book.bookMetadata.readableEndSectionHref,
             }
           : null,
       },
