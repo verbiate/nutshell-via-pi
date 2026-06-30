@@ -53,10 +53,12 @@ export function useAddPlaylistItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      bookId: string;
-      sectionHref: string;
-      sectionLabel: string;
       mode: "next" | "last";
+      sectionLabel: string;
+      kind?: "section" | "text";
+      bookId?: string;
+      sectionHref?: string;
+      text?: string;
     } & PlaylistBookMeta) => {
       const res = await fetch("/api/playlist/items", {
         method: "POST",

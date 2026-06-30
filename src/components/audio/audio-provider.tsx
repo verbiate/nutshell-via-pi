@@ -433,6 +433,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!activeItem) return;
+    // ponytail: text tracks (discussion replies) carry no book context — they
+    // don't participate in session/flatToc alignment.
+    if (activeItem.kind === "text") return;
 
     // Fast path: the open reader IS the active item's book. (Re)build the
     // session from openBook — this refreshes flatToc + metadata + readable
@@ -441,7 +444,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (openBook && openBook.bookId === activeItem.bookId) {
       const flatToc = buildSpinePlaylist(openBook.spineItems, openBook.toc);
       const idx = flatToc.findIndex((s) =>
-        ttsSectionMatches(s.href, activeItem.sectionHref),
+        ttsSectionMatches(s.href, activeItem.sectionHref ?? ""),
       );
       const currentIndex = Math.max(0, idx);
       setSession((prev) => {
@@ -502,7 +505,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         return prev;
       }
       const idx = prev.flatToc.findIndex((s) =>
-        ttsSectionMatches(s.href, activeItem.sectionHref),
+        ttsSectionMatches(s.href, activeItem.sectionHref ?? ""),
       );
       const currentIndex = Math.max(0, idx);
       if (prev.currentIndex === currentIndex) return prev;
@@ -663,6 +666,42 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [enginePref, scheduleTtsPosSave],
   );
 
+  // ponytail: speak arbitrary text (a discussion reply). Same cloud/browser
+  // routing as startSection. No session/viewer coupling — text is self-contained.
+  const startText = useCallback(
+    (text: string, title: string) => {
+      setBookFinished(false);
+      const s = sessionRef.current;
+      const isCloudNow = enginePref === "cloud" && s?.userRole !== "regular";
+      if (isCloudNow) {
+        cloudTtsRef.current?.startText(text, title);
+      } else {
+        browserTtsRef.current?.startText(text, title);
+      }
+    },
+    [enginePref],
+  );
+
+  // ponytail: start playback for whichever playlist item is active, branching
+  // on kind. Section items use the viewer-coupled startSection path; text items
+  // use startText. Used by resume/jump/advance paths so they don't need to know
+  // the item's kind at every call site.
+  const startActiveItem = useCallback(
+    (item: PlaylistItem) => {
+      if (item.kind === "text") {
+        startText(item.text ?? "", item.sectionLabel ?? "Reading");
+      } else {
+        startSection(
+          item.sectionHref ?? "",
+          item.sectionLabel ?? "",
+          undefined,
+          item.bookId ?? undefined,
+        );
+      }
+    },
+    [startSection, startText],
+  );
+
   // ponytail: shared terminal-state transition — close the active engine,
   // drop the session, and raise the "Book finished" flag. Used by both the
   // readable-end stop and the end-of-flat-toc stop in handleSectionComplete
@@ -682,9 +721,27 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   );
 
   const handleSectionComplete = useCallback(async () => {
-    const s = sessionRef.current;
     const active = activeItemRef.current;
-    if (!s || !active) return;
+    if (!active) return;
+
+    // ponytail: text tracks (discussion replies) have no book session, so the
+    // !s bail below would skip them — handle them FIRST. Advance to the next
+    // queued item if any; else no-op (the engine already set ENDED; "book
+    // finished" doesn't apply to a reply).
+    if (active.kind === "text") {
+      const next =
+        playlistItemsRef.current.find(
+          (i) => i.position === active.position + 1,
+        ) ?? null;
+      if (next) {
+        await playlistMutations.activateItem(next.id);
+        startActiveItem(next);
+      }
+      return;
+    }
+
+    const s = sessionRef.current;
+    if (!s) return;
 
     const ghost = deriveGhost(
       autoAdvanceRef.current,
@@ -698,7 +755,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       ) ?? null;
     const atReadableEnd =
       !!s.readableEndSectionHref &&
-      ttsSectionMatches(active.sectionHref, s.readableEndSectionHref);
+      ttsSectionMatches(active.sectionHref ?? "", s.readableEndSectionHref);
     const atEndOfToc = s.currentIndex + 1 >= s.flatToc.length;
 
     const decision = resolveAdvance({
@@ -729,7 +786,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }
       case "manual": {
         await playlistMutations.activateItem(decision.item.id);
-        startSection(decision.item.sectionHref, decision.item.sectionLabel, undefined, decision.item.bookId);
+        startActiveItem(decision.item);
         return;
       }
       case "terminal": {
@@ -743,15 +800,30 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       case "idle":
         return;
     }
-  }, [markBookFinished, playlistMutations, startSection]);
+  }, [markBookFinished, playlistMutations, startSection, startActiveItem]);
 
   // ponytail: explicit "next" intent - skip button OR ghost-click OR ENDED-card
   // tap. Same ghost-first precedence as handleSectionComplete; terminal is a
   // no-op here rather than markBookFinished (the click is user-driven).
   const advanceToNextSection = useCallback(async () => {
+    const active = activeItemRef.current;
+
+    // ponytail: text tracks — no session/ghost/readable-end. Handle BEFORE the
+    // !s bail (text tracks have no session). Advance to next or no-op.
+    if (active && active.kind === "text") {
+      const next =
+        playlistItemsRef.current.find(
+          (i) => i.position === active.position + 1,
+        ) ?? null;
+      if (next) {
+        await playlistMutations.activateItem(next.id);
+        startActiveItem(next);
+      }
+      return;
+    }
+
     const s = sessionRef.current;
     if (!s) return;
-    const active = activeItemRef.current;
 
     const ghost = active
       ? deriveGhost(autoAdvanceRef.current, s, active, ttsSectionMatches)
@@ -764,7 +836,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const atReadableEnd =
       !!active &&
       !!s.readableEndSectionHref &&
-      ttsSectionMatches(active.sectionHref, s.readableEndSectionHref);
+      ttsSectionMatches(active.sectionHref ?? "", s.readableEndSectionHref);
     const atEndOfToc = s.currentIndex + 1 >= s.flatToc.length;
 
     const decision = resolveAdvance({
@@ -795,7 +867,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       }
       case "manual": {
         await playlistMutations.activateItem(decision.item.id);
-        startSection(decision.item.sectionHref, decision.item.sectionLabel, undefined, decision.item.bookId);
+        startActiveItem(decision.item);
         return;
       }
       case "terminal":
@@ -803,7 +875,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       case "idle":
         return;
     }
-  }, [playlistMutations, startSection]);
+  }, [playlistMutations, startSection, startActiveItem]);
 
   // ─── TTS engine hooks ──────────────────────────────────────────────────────
   const browserTts = useTtsEngine({
@@ -917,6 +989,18 @@ let cancelled = false;
     playbackStateRef.current = playbackState;
   }, [playbackState]);
 
+  // ponytail: mirror isCloud into a ref so playPause can read the active engine
+  // routing without depending on the session. Text tracks (kind="text") never
+  // create a session, so the old `if (!s) return` bail left them unable to
+  // pause/resume. isCloud is already null-safe (undefined !== "regular" →
+  // collapses to enginePref === "cloud", correct since regular users can't
+  // pick cloud). If that assumption ever breaks, switch to explicit
+  // activeEngineKindRef tracking set by startText/startSection.
+  const isCloudRef = useRef(isCloud);
+  useEffect(() => {
+    isCloudRef.current = isCloud;
+  }, [isCloud]);
+
   // ─── Cloud audio playback speed ────────────────────────────────────────────
   useEffect(() => {
     if (cloudAudioRef.current) {
@@ -926,11 +1010,13 @@ let cancelled = false;
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
   const ensureSessionForItem = useCallback((item: PlaylistItem) => {
+    // ponytail: text tracks need no book session (no flatToc/viewer/highlight).
+    if (item.kind === "text") return;
     const open = openBookRef.current;
     if (!open || open.bookId !== item.bookId) return;
     const flatToc = buildSpinePlaylist(open.spineItems, open.toc);
     const idx = flatToc.findIndex((s) =>
-      ttsSectionMatches(s.href, item.sectionHref),
+      ttsSectionMatches(s.href, item.sectionHref ?? ""),
     );
     const currentIndex = Math.max(0, idx);
     setSession((prev) => {
@@ -982,9 +1068,11 @@ let cancelled = false;
   }, []);
 
   const playPause = useCallback(() => {
-    const s = sessionRef.current;
-    if (!s) return;
-    const isCloudNow = enginePref === "cloud" && s.userRole !== "regular";
+    // ponytail: do NOT bail on a null session — text tracks (kind="text") never
+    // create one, and pause/resume must still work for them (e.g. a discussion
+    // reply playing on the Bookshelf). The session is only needed for the
+    // book-section "what do I start?" fallback in the IDLE/ENDED branch below.
+    const isCloudNow = isCloudRef.current;
     if (isCloudNow) {
       cloudTts.togglePlayPause();
       return;
@@ -997,13 +1085,18 @@ let cancelled = false;
     } else if (phase === "IDLE" || phase === "ENDED") {
       const active = activeItemRef.current;
       if (active) {
-        startSection(active.sectionHref, active.sectionLabel, undefined, active.bookId);
-      } else {
-        const section = s.flatToc[s.currentIndex];
-        if (section) browserTts.startSection(section.href, section.label, undefined, s.bookId);
+        startActiveItem(active);
+        return;
+      }
+      // Book-section fallback: resume the session's current section. Text
+      // tracks have no session and are handled by the active branch above.
+      const s = sessionRef.current;
+      const section = s?.flatToc[s.currentIndex];
+      if (section && s) {
+        browserTts.startSection(section.href, section.label, undefined, s.bookId);
       }
     }
-  }, [enginePref, browserTts, cloudTts, startSection]);
+  }, [browserTts, cloudTts, startActiveItem]);
 
   const playSection = useCallback(
     async (
@@ -1033,7 +1126,9 @@ let cancelled = false;
       const active = activeItemRef.current;
       const isSameActive =
         active &&
+        active.kind === "section" &&
         active.bookId === bookId &&
+        !!active.sectionHref &&
         ttsSectionMatches(active.sectionHref, href);
       if (isSameActive && active) {
         if (!startPos) {
@@ -1072,6 +1167,45 @@ let cancelled = false;
       startSection(href, label, startPos, bookId);
     },
     [playlistMutations, playPause, startSection, ensureSessionForItem],
+  );
+
+  // ponytail: play arbitrary text (a discussion reply). Mirrors playSection's
+  // mode semantics: now = interrupt + play; next/last = queue without playing.
+  // Text tracks carry no book reference, so no viewer navigation or access check.
+  const playText = useCallback(
+    async (
+      text: string,
+      label: string,
+      mode: "now" | "next" | "last",
+    ) => {
+      if (mode !== "now") {
+        await playlistMutations.addItem({
+          kind: "text",
+          text,
+          sectionLabel: label,
+          mode,
+        });
+        return;
+      }
+
+      const active = activeItemRef.current;
+      // Same active text reply → toggle/resume instead of re-queueing a dupe.
+      if (active && active.kind === "text" && active.text === text) {
+        playPause();
+        return;
+      }
+
+      const addMode = active ? "next" : "last";
+      const item = await playlistMutations.addItem({
+        kind: "text",
+        text,
+        sectionLabel: label,
+        mode: addMode,
+      });
+      await playlistMutations.activateItem(item.id);
+      startText(text, label);
+    },
+    [playlistMutations, playPause, startText],
   );
 
   const startFromHere = useCallback(
@@ -1125,7 +1259,7 @@ let cancelled = false;
       const active = activeItemRef.current;
       if (active) {
         ensureSessionForItem(active);
-        startSection(active.sectionHref, active.sectionLabel, undefined, active.bookId);
+        startActiveItem(active);
       }
       return;
     }
@@ -1134,7 +1268,7 @@ let cancelled = false;
       return;
     }
     playPause();
-  }, [playPause, startFromHere, startSection, ensureSessionForItem, advanceToNextSection]);
+  }, [playPause, startFromHere, startActiveItem, ensureSessionForItem, advanceToNextSection]);
 
   const stop = useCallback(() => {
     const s = sessionRef.current;
@@ -1178,9 +1312,9 @@ let cancelled = false;
       if (!item) return;
       await playlistMutations.activateItem(itemId);
       ensureSessionForItem(item);
-      startSection(item.sectionHref, item.sectionLabel, undefined, item.bookId);
+      startActiveItem(item);
     },
-    [playlistMutations, startSection, ensureSessionForItem],
+    [playlistMutations, startActiveItem, ensureSessionForItem],
   );
 
   const jumpTo = useCallback(
@@ -1190,7 +1324,7 @@ let cancelled = false;
       const section = s.flatToc[index];
       if (!section) return;
       const existing = playlistItemsRef.current.find((i) =>
-        ttsSectionMatches(i.sectionHref, section.href),
+        ttsSectionMatches(i.sectionHref ?? "", section.href),
       );
       if (existing) {
         await jumpToItem(existing.id);
@@ -1414,6 +1548,7 @@ let cancelled = false;
       activeItemId: activeItem?.id ?? null,
       ghostItem,
       playSection,
+      playText,
       jumpToItem,
       removePlaylistItem,
       clearPlaylist,
@@ -1456,6 +1591,7 @@ let cancelled = false;
       activeItem,
       ghostItem,
       playSection,
+      playText,
       jumpToItem,
       removePlaylistItem,
       clearPlaylist,
@@ -1527,7 +1663,7 @@ let cancelled = false;
             bookTitle={cardBookMeta.bookTitle}
             bookAuthor={cardBookMeta.bookAuthor}
             bookCoverPath={cardBookMeta.bookCoverPath}
-            bookId={session?.bookId ?? openBook?.bookId ?? activeItem?.bookId}
+            bookId={session?.bookId ?? openBook?.bookId ?? activeItem?.bookId ?? undefined}
             canScrub={isCloud}
             queueItems={playlistItems}
             activeItemId={activeItem?.id ?? null}

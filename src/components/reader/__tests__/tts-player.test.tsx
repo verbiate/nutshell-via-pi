@@ -265,9 +265,11 @@ describe("TtsPlayer: playlist queue", () => {
     {
       id: "i1",
       userId: "u1",
+      kind: "section",
       bookId: "b1",
       sectionHref: "ch1.xhtml",
       sectionLabel: "Chapter 1",
+      text: null,
       position: 0,
       status: "history",
       bookTitle: "Test Book",
@@ -280,9 +282,11 @@ describe("TtsPlayer: playlist queue", () => {
     {
       id: "i2",
       userId: "u1",
+      kind: "section",
       bookId: "b1",
       sectionHref: "ch2.xhtml",
       sectionLabel: "Chapter 2",
+      text: null,
       position: 1,
       status: "active",
       bookTitle: "Test Book",

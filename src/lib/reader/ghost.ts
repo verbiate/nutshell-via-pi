@@ -71,7 +71,7 @@ export function resolveGhostItem(
 export function deriveGhost(
   autoAdvance: boolean,
   session: GhostSession | null,
-  active: { bookId: string } | null,
+  active: { bookId: string | null } | null,
   matchFn: (a: string, b: string) => boolean,
 ): GhostItem | null {
   if (!autoAdvance || !session || !active) return null;

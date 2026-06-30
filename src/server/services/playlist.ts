@@ -2,18 +2,21 @@ import { db } from "@/server/db";
 import type {
   PlaylistItem,
   PlaylistItemStatus,
+  PlaylistItemKind,
   PlaylistBookMeta,
 } from "@/types/playlist";
 
 export const PLAYLIST_MAX_ITEMS = 50;
-export type { PlaylistItem, PlaylistItemStatus, PlaylistBookMeta };
+export type { PlaylistItem, PlaylistItemStatus, PlaylistItemKind, PlaylistBookMeta };
 
 function toPlaylistItem(row: {
   id: string;
   userId: string;
-  bookId: string;
-  sectionHref: string;
-  sectionLabel: string;
+  kind: string;
+  bookId: string | null;
+  sectionHref: string | null;
+  sectionLabel: string | null;
+  text: string | null;
   position: number;
   status: string;
   bookTitle: string | null;
@@ -25,6 +28,7 @@ function toPlaylistItem(row: {
 }): PlaylistItem {
   return {
     ...row,
+    kind: row.kind as PlaylistItemKind,
     addedAt: row.addedAt.toISOString(),
     playedAt: row.playedAt?.toISOString() ?? null,
     status: row.status as PlaylistItemStatus,
@@ -60,10 +64,14 @@ export async function setAutoAdvance(
 export async function addItem(
   userId: string,
   data: {
-    bookId: string;
-    sectionHref: string;
-    sectionLabel: string;
     mode: "next" | "last";
+    sectionLabel: string;
+    // Section tracks: kind defaults to "section" when sectionHref is present.
+    kind?: PlaylistItemKind;
+    bookId?: string;
+    sectionHref?: string;
+    // Text tracks: the full text to speak.
+    text?: string;
   } & PlaylistBookMeta,
 ): Promise<PlaylistItem> {
   const active = await db.playlistItem.findFirst({
@@ -84,12 +92,16 @@ export async function addItem(
 
   await shiftPositions(userId, insertPosition, 1);
 
+  const kind: PlaylistItemKind = data.kind ?? (data.sectionHref ? "section" : "text");
+
   const created = await db.playlistItem.create({
     data: {
       userId,
-      bookId: data.bookId,
-      sectionHref: data.sectionHref,
+      kind,
+      bookId: data.bookId ?? null,
+      sectionHref: data.sectionHref ?? null,
       sectionLabel: data.sectionLabel,
+      text: kind === "text" ? (data.text ?? "") : null,
       position: insertPosition,
       status: "upcoming",
       bookTitle: data.bookTitle ?? null,

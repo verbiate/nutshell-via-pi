@@ -168,6 +168,17 @@ export type AudioContextValue = {
       bookLanguage?: string;
     },
   ) => Promise<void>;
+  /**
+   * Start, queue, or add arbitrary text (e.g. a discussion reply) to the
+   * playlist. `now` = interrupt + play; `next`/`last` = queue without playing.
+   * Text tracks share the playlist + cache with section tracks but carry no
+   * book reference.
+   */
+  playText: (
+    text: string,
+    label: string,
+    mode: "now" | "next" | "last",
+  ) => Promise<void>;
   /** Jump the playhead to a playlist item and start playing it. */
   jumpToItem: (itemId: string) => Promise<void>;
   /** Remove a single playlist item. */

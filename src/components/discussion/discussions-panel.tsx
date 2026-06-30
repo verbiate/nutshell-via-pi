@@ -61,6 +61,8 @@ import {
 } from "@/lib/client-tokens";
 import type { SpineItem } from "@/lib/reader/spine-playlist";
 import { ExplainerContent } from "../explainer/explainer-content";
+import { ReadAloudButton } from "./read-aloud-button";
+import { markdownToTtsText } from "@/lib/tts/prepare-text";
 import { BookCover } from "../library/book-cover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -2463,37 +2465,15 @@ function MessageBubble({
             ? "bg-primary text-primary-foreground whitespace-pre-wrap"
             : showRaw
             ? "bg-muted border border-border"
-            : "bg-muted border border-border prose prose-sm dark:prose-invert max-w-none prose-pre:my-1"
+            : // ponytail: [&>p:first-of-type]/[&>p:last-of-type] force the prose
+              // <p> margin resets even when the absolute admin-tools div sits as a
+              // child of this bubble. Tailwind Typography scopes its resets to
+              // :where(p):first/:last-child, which the absolute div steals —
+              // inflating one edge's gap. :first/:last-of-type ignore the
+              // intervening div and match the real first/last paragraph.
+              "bg-muted border border-border prose prose-sm dark:prose-invert max-w-none prose-pre:my-1 [&>p:first-of-type]:mt-0 [&>p:last-of-type]:mb-0"
         )}
       >
-        {/*
-          ponytail: admin Raw/Copy float at the bubble's top-right corner so
-          they share the first line of content instead of stacking as a row
-          above/below. z-10 keeps them above prose content; bg transparent
-          avoids clipping text underneath.
-        */}
-        {showAdminTools && (
-          <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-            <button
-              type="button"
-              onClick={() => setShowRaw((v) => !v)}
-              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
-              title={showRaw ? "Show rendered" : "Show raw markdown"}
-            >
-              <Code className="h-3 w-3" />
-              {showRaw ? "Rendered" : "Raw"}
-            </button>
-            <button
-              type="button"
-              onClick={copyRaw}
-              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
-              title="Copy raw markdown"
-            >
-              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-        )}
         {content ? (
           role === "user" ? (
             content
@@ -2518,7 +2498,42 @@ function MessageBubble({
         ) : (
           ""
         )}
+        {showAdminTools && (
+          <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={() => setShowRaw((v) => !v)}
+              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+              title={showRaw ? "Show rendered" : "Show raw markdown"}
+            >
+              <Code className="h-3 w-3" />
+              {showRaw ? "Rendered" : "Raw"}
+            </button>
+            <button
+              type="button"
+              onClick={copyRaw}
+              className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+              title="Copy raw markdown"
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        )}
       </div>
+      {role === "assistant" && content && (
+        <ReadAloudButton
+          // ponytail: strip markdown to speakable plaintext so the engine
+          // doesn't read asterisks/hashes/etc. aloud. Cache key (SHA-256 of
+          // text) and both engines then receive the same plaintext.
+          text={markdownToTtsText(content)}
+          label={content
+            .replace(/[#*`>_~]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 60) || "Discussion reply"}
+        />
+      )}
     </div>
   );
 }

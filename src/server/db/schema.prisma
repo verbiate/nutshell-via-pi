@@ -40,9 +40,13 @@ model PlaylistItem {
   id            String    @id @default(cuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookId        String
-  sectionHref   String
-  sectionLabel  String
+  /// "section" (bookId+sectionHref) or "text" (arbitrary text, e.g. a discussion reply).
+  kind          String    @default("section")
+  bookId        String?
+  sectionHref   String?
+  sectionLabel  String?
+  /// Full text to speak when kind="text". Null for section tracks.
+  text          String?
   position      Int
   status        String    @default("upcoming")
   bookTitle     String?

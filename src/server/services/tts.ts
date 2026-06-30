@@ -28,6 +28,13 @@ export interface GenerateTtsParams {
   signal?: AbortSignal;
 }
 
+export interface GenerateTtsForTextParams {
+  text: string;
+  language?: string;
+  tier: "regular" | "pro" | "admin";
+  signal?: AbortSignal;
+}
+
 export interface GenerateTtsResult {
   cached: boolean;
   audioId: string;
@@ -151,11 +158,7 @@ export async function getTtsProviderConfig(
  * Flow:
  * 1. Fetch book row to get epubPath and language
  * 2. Extract section text via existing epub-ts spine traversal
- * 3. Compute content hash from source text
- * 4. Resolve provider config (elevenlabs first, then fal) for the user's tier
- * 5. Check TtsAudio cache
- * 6. Cache hit → return existing audio URL
- * 7. Cache miss → generate audio per chunk, concatenate, store, cache result
+ * 3. Hand off to synthesizeAndCache (hash → provider → cache → store)
  *
  * On concurrent cache-miss race: unique constraint error is caught and the
  * existing row is returned (same pattern as Explainer cache).
@@ -175,9 +178,38 @@ export async function generateTtsAudio(
   });
   if (!sourceText.trim()) throw new Error("Section text is empty");
 
+  // 3. Synthesize + cache (language from book metadata)
+  return synthesizeAndCache(sourceText, book.language || "en", tier, signal);
+}
+
+/**
+ * Speak arbitrary text (e.g. a discussion reply). Same cache + providers as
+ * generateTtsAudio, just without the book/section-extraction prefix. The
+ * TtsAudio cache is keyed by contentHash = SHA-256(text), so a reply spoken
+ * by two users hits the same cached audio row.
+ */
+export async function generateTtsForText(
+  params: GenerateTtsForTextParams
+): Promise<GenerateTtsResult> {
+  const { text, language = "en", tier, signal } = params;
+  const clean = text?.trim();
+  if (!clean) throw new Error("Text is empty");
+  return synthesizeAndCache(clean, language, tier, signal);
+}
+
+/**
+ * Shared core: hash → resolve provider → cache lookup → chunk + synthesize →
+ * store → write cache row. Used by both the section path (text from EPUB) and
+ * the arbitrary-text path (text from caller).
+ */
+async function synthesizeAndCache(
+  sourceText: string,
+  language: string,
+  tier: "regular" | "pro" | "admin",
+  signal?: AbortSignal,
+): Promise<GenerateTtsResult> {
   // 3. Compute content hash
   const contentHash = computeTtsContentHash(sourceText);
-  const language = book.language || "en";
 
   // 4. Resolve provider config — try elevenlabs first, then fal
   const providers = ["elevenlabs", "fal"] as const;

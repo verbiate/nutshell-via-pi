@@ -59,6 +59,8 @@ export interface UseTtsCloudReturn {
     opts?: { seekRatio?: number },
     bookIdOverride?: string,
   ) => void;
+  /** Speak arbitrary text (e.g. a discussion reply) via /api/tts/generate-text. */
+  startText: (text: string, title: string) => void;
   togglePlayPause: () => void;
   scrub: (time: number) => void;
   close: () => void;
@@ -193,29 +195,25 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
     onQuotaExhaustedRef.current?.();
   }, []);
 
-  const startSection = useCallback(
+  // ponytail: shared cloud generation core used by startSection (book section)
+  // and startText (arbitrary text). quota pre-flight → POST → wire <audio>.
+  // seekRatio is section-only (proportional start); text tracks always 0.
+  const generateAndPlay = useCallback(
     async (
-      href: string,
+      endpoint: string,
+      requestBody: Record<string, unknown>,
       title: string,
-      opts?: { seekRatio?: number },
-      bookIdOverride?: string,
+      sectionHref: string,
+      seekRatio: number,
     ) => {
-      // ponytail: prefer the caller-provided bookId; the hook-level bookId
-      // (from the session) is stale during a cross-book switch.
-      const bid = bookIdOverride ?? bookId;
-      // ponytail: stash the proportional seek target. Applied after the audio
-      // element loads metadata so playback starts near the visible block.
-      pendingSeekRatioRef.current = Math.min(
-        Math.max(opts?.seekRatio ?? 0, 0),
-        0.999,
-      );
+      pendingSeekRatioRef.current = Math.min(Math.max(seekRatio, 0), 0.999);
 
       if (abortRef.current) abortRef.current.abort();
 
       setState({
         state: "GENERATING",
         sectionTitle: title,
-        sectionHref: href,
+        sectionHref,
         audioUrl: null,
         audioId: null,
         currentTime: 0,
@@ -226,9 +224,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
       abortRef.current = controller;
 
       try {
-        // 1) Quota pre-flight. If we already know we're at the limit from the
-        // last snapshot, short-circuit without a round-trip. The route still
-        // re-checks authoritatively; this is just UX.
+        // 1) Quota pre-flight.
         const current = quotaRef.current;
         if (current && current.used >= current.limit) {
           triggerExhausted();
@@ -255,15 +251,14 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
         }
 
         // 2) Generate.
-        const res = await fetch("/api/tts/generate", {
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId: bid, sectionHref: href }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal,
         });
 
         if (res.status === 429) {
-          // ponytail: route-side gate fired (e.g. race with another tab).
           const body = (await res.json().catch(() => ({}))) as {
             used?: number;
             limit?: number;
@@ -303,9 +298,6 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
           const ratio = pendingSeekRatioRef.current;
           pendingSeekRatioRef.current = 0;
           if (ratio > 0) {
-            // ponytail: defer play until metadata loads so we can seek before
-            // any audio reaches the speaker. { once: true } prevents a stale
-            // listener from firing on a later section.
             const audio = audioRef.current;
             const onMeta = () => {
               audio.currentTime = ratio * (audio.duration || 0);
@@ -318,7 +310,6 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
         }
 
         // 3) Optimistically bump local count — server already incremented.
-        // refreshQuota() on next tick keeps it honest.
         const prev = quotaRef.current;
         if (prev) {
           applyQuota({ ...prev, used: prev.used + 1 });
@@ -335,7 +326,43 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
         }
       }
     },
-    [bookId, applyQuota, refreshQuota, triggerExhausted],
+    [applyQuota, refreshQuota, triggerExhausted],
+  );
+
+  const startSection = useCallback(
+    async (
+      href: string,
+      title: string,
+      opts?: { seekRatio?: number },
+      bookIdOverride?: string,
+    ) => {
+      // ponytail: prefer the caller-provided bookId; the hook-level bookId
+      // (from the session) is stale during a cross-book switch.
+      const bid = bookIdOverride ?? bookId;
+      await generateAndPlay(
+        "/api/tts/generate",
+        { bookId: bid, sectionHref: href },
+        title,
+        href,
+        opts?.seekRatio ?? 0,
+      );
+    },
+    [bookId, generateAndPlay],
+  );
+
+  // ponytail: speak arbitrary text (a discussion reply). Same cloud pipeline,
+  // different endpoint + body. No seekRatio — text always plays from the start.
+  const startText = useCallback(
+    async (text: string, title: string) => {
+      await generateAndPlay(
+        "/api/tts/generate-text",
+        { text },
+        title,
+        "",
+        0,
+      );
+    },
+    [generateAndPlay],
   );
 
   const togglePlayPause = useCallback(() => {
@@ -428,6 +455,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
     state,
     quota,
     startSection,
+    startText,
     togglePlayPause,
     scrub,
     close,

@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { BookCover } from "./book-cover";
 import { ExplainerContent } from "../explainer/explainer-content";
+import { ReadAloudButton } from "../discussion/read-aloud-button";
+import { markdownToTtsText } from "@/lib/tts/prepare-text";
 import { SmoothScrollArea } from "./smooth-scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -1228,15 +1230,32 @@ export function DiscussionDetail({
 
         {/* Explainer */}
         {explainerContent && (
-          <div className="mb-4 rounded-lg border border-border bg-muted p-3 prose prose-sm dark:prose-invert max-w-none">
-            <ExplainerContent
-              content={explainerContent}
-              spineHrefs={originBookHrefs}
-              attachedBookHrefs={attachedBookHrefs}
-              onNavigateToHref={onNavigateToHref}
-              onNavigateToBookSection={onNavigateToBookSection}
+          <>
+            <div className="mb-4 rounded-lg border border-border bg-muted p-3 prose prose-sm dark:prose-invert max-w-none">
+              <ExplainerContent
+                content={explainerContent}
+                spineHrefs={originBookHrefs}
+                attachedBookHrefs={attachedBookHrefs}
+                onNavigateToHref={onNavigateToHref}
+                onNavigateToBookSection={onNavigateToBookSection}
+              />
+            </div>
+            {/* ponytail: the seed explainer renders outside MessageBubble (it's a
+                pinned "explainer" presentation, not a chat turn), so the
+                ReadAloudButton footer must be added here explicitly — unlike
+                follow-up messages, which get it via MessageBubble. Matches the
+                reader's DiscussionsPanel where the seed also has read-aloud. */}
+            <ReadAloudButton
+              text={markdownToTtsText(explainerContent)}
+              label={
+                explainerContent
+                  .replace(/[#*`>_~]/g, "")
+                  .replace(/\s+/g, " ")
+                  .trim()
+                  .slice(0, 60) || "Explainer"
+              }
             />
-          </div>
+          </>
         )}
 
         {/* Messages */}
@@ -1726,6 +1745,18 @@ function MessageBubble({
           content
         )}
       </div>
+      {role === "assistant" && content && (
+        <ReadAloudButton
+          // ponytail: strip markdown to speakable plaintext so the engine
+          // doesn't read asterisks/hashes/etc. aloud.
+          text={markdownToTtsText(content)}
+          label={content
+            .replace(/[#*`>_~]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 60) || "Discussion reply"}
+        />
+      )}
     </div>
   );
 }

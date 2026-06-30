@@ -21,9 +21,11 @@ function mkItem(over: Partial<PlaylistItem>): PlaylistItem {
   return {
     id: "x",
     userId: "u",
+    kind: "section",
     bookId: "b",
     sectionHref: "ch0.xhtml",
     sectionLabel: "Ch 0",
+    text: null,
     position: 0,
     status: "upcoming",
     bookTitle: null,

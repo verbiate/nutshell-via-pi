@@ -11,6 +11,13 @@ vi.mock("@/components/reader/reader-nav-context", () => ({
   useReaderNav: () => ({ markPendingReaderNav: vi.fn() }),
 }));
 
+// ponytail: ReadAloudButton calls useAudio(), which needs an AudioProvider
+// these SSR/static-markup tests don't mount. Stub it — the citation tests
+// below assert on ExplainerContent output, not the read-aloud footer.
+vi.mock("@/components/discussion/read-aloud-button", () => ({
+  ReadAloudButton: () => null,
+}));
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
     // ponytail: SSR returns the initial data — the client refetch isn't

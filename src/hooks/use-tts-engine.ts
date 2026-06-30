@@ -80,6 +80,8 @@ export interface UseTtsEngineReturn {
     startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
     bookId?: string,
   ) => void;
+  /** Speak arbitrary text (e.g. a discussion reply). No book/viewer coupling. */
+  startText: (text: string, title: string) => void;
   pause: () => void;
   resume: () => void;
   close: () => void;
@@ -592,83 +594,15 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     }
   }, []);
 
-  const startSection = useCallback(
-    async (
-      href: string,
-      title: string,
-      startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
-      bookId?: string,
-    ) => {
-      abortRef.current = false;
-      runningRef.current = true;
-      cleanupSource();
-      stopTimer();
-      cancelBrowserSpeech();
-      bufferCacheRef.current.clear();
-      durationsRef.current = [];
-      chunkWordCountsRef.current = [];
-      totalWordsRef.current = 0;
-      seedRef.current = 0;
-      elapsedBeforeRef.current = 0;
-      chunkStartedAtRef.current = null;
-      // ponytail: clear stale chunk state immediately so getCurrentChunk() doesn't
-      // return the previous section's last chunk while the new section loads.
-      chunksRef.current = [];
-      currentIndexRef.current = 0;
-
-      // ponytail: create AudioContext synchronously within the user gesture,
-      // before any await. Browsers gate AudioContext creation/resumption on a
-      // user gesture; if we defer it past the async Kokoro-load chain, Safari
-      // and Chrome will refuse to start playback.
-      if (!audioContextRef.current) {
-        try {
-          audioContextRef.current = new AudioContext();
-        } catch {
-          // ponytail: AudioContext unavailable (SSR / very old browser) — browser
-          // speech path doesn't need it, so this is non-fatal.
-        }
-      }
-      // ponytail: resume within the user gesture, before any await. Starting a
-      // section while one is PAUSED leaves the context suspended (pause() keeps
-      // the source alive and suspends the graph for sample-accurate resume).
-      // Browsers only honor resume() near a gesture; deferring it to playChunk
-      // (after getText + resolveEngine awaits) loses the gesture and the new
-      // section's source starts against a suspended graph → silent playback.
-      if (audioContextRef.current?.state === "suspended") {
-        void audioContextRef.current.resume();
-      }
-
-      setState({
-        phase: "LOADING",
-        loadPct: 0,
-        sectionTitle: title,
-        sectionHref: href,
-        currentTime: 0,
-        duration: 0,
-      });
-      // ponytail: sync synchronously so playChunk(0)'s onChunkAdvance sees the
-      // correct href before the state-driven ref effect flushes.
-      sectionHrefRef.current = href;
-
+  // ponytail: shared playback core used by both startSection (text from a
+  // book section) and startText (arbitrary text, e.g. a discussion reply).
+  // Takes the already-resolved source text and drives engine resolution →
+  // chunking → playback. startPos is section-only (viewer offset); text
+  // tracks always start at chunk 0.
+  const playFromText = useCallback(
+    async (text: string, startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string }) => {
       try {
-      // ponytail: read text from the injected source. In the reader this is the
-      // live iframe; on the bookshelf or for playlist jumps it's the server-side
-      // section-text endpoint. We deliberately do NOT await navigateTo here —
-      // the text source handles any required navigation so the hook stays
-      // decoupled from the viewer lifecycle.
-      const text = await getText(href, bookId);
-      console.log("[TTS] getText returned", text.length, "chars");
-        if (!text.trim()) {
-          console.warn("[TTS] Section text is empty, skipping");
-          setState((s) => ({ ...s, phase: "ENDED" }));
-          onSectionComplete?.();
-          return;
-        }
-
-        console.log("[TTS] Resolving engine:", engineIdRef.current);
         const engine = await resolveEngine();
-        console.log("[TTS] Engine resolved:", engine.id);
-
         if (!runningRef.current || abortRef.current) return;
 
         const limits = CHUNK_LIMITS[engineIdRef.current];
@@ -679,33 +613,18 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         chunksRef.current = chunkText(text, limits);
 
         // ponytail: resolve startPos → character offset → start chunk index.
-        // Must happen AFTER getText (which navigates the viewer to the target
-        // section), so the viewer's DOM has the right content loaded.
+        // Section-only: requires a viewer with the section's DOM loaded.
         let startIndex = 0;
         const viewer = viewerRefRef.current?.current;
         if (startPos && viewer) {
           const offset = viewer.getTtsStartOffset(startPos);
           if (offset > 0) {
             startIndex = findStartChunkIndex(chunksRef.current, offset);
-            console.log(
-              "[TTS] startPos resolved to offset",
-              offset,
-              "→ chunk",
-              startIndex,
-            );
           }
         }
         currentIndexRef.current = startIndex;
-        console.log(
-          "[TTS] Chunked into",
-          chunksRef.current.length,
-          "pieces, starting at chunk",
-          startIndex,
-        );
 
         // ponytail: seed the section-duration estimate from a per-voice WPM rate
-        // (cached from a prior section's first chunk, else a generic fallback).
-        // recordDuration refines this proportionally as real chunks resolve.
         chunkWordCountsRef.current = chunksRef.current.map(countWords);
         totalWordsRef.current = chunkWordCountsRef.current.reduce(
           (acc, n) => acc + n,
@@ -719,6 +638,81 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         await playChunk(engine, startIndex, { skipBlockJump: startPos?.useVisible });
       } catch (err) {
         if (!abortRef.current) {
+          console.error("[TTS] Failed to start playback:", err);
+          setState((s) => ({
+            ...s,
+            phase: "IDLE",
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
+      }
+    },
+    [playChunk, resolveEngine, speed, voiceId],
+  );
+
+  // ponytail: synchronous engine preparation shared by startSection/startText —
+  // resets chunk/timing state, creates+resumes the AudioContext within the user
+  // gesture (browsers require this), and primes the LOADING state.
+  const prepareEngine = useCallback(
+    (title: string, href: string) => {
+      abortRef.current = false;
+      runningRef.current = true;
+      cleanupSource();
+      stopTimer();
+      cancelBrowserSpeech();
+      bufferCacheRef.current.clear();
+      durationsRef.current = [];
+      chunkWordCountsRef.current = [];
+      totalWordsRef.current = 0;
+      seedRef.current = 0;
+      elapsedBeforeRef.current = 0;
+      chunkStartedAtRef.current = null;
+      chunksRef.current = [];
+      currentIndexRef.current = 0;
+
+      if (!audioContextRef.current) {
+        try {
+          audioContextRef.current = new AudioContext();
+        } catch {
+          // AudioContext unavailable — browser speech path doesn't need it.
+        }
+      }
+      if (audioContextRef.current?.state === "suspended") {
+        void audioContextRef.current.resume();
+      }
+
+      setState({
+        phase: "LOADING",
+        loadPct: 0,
+        sectionTitle: title,
+        sectionHref: href,
+        currentTime: 0,
+        duration: 0,
+      });
+      sectionHrefRef.current = href;
+    },
+    [cleanupSource, stopTimer],
+  );
+
+  const startSection = useCallback(
+    async (
+      href: string,
+      title: string,
+      startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
+      bookId?: string,
+    ) => {
+      prepareEngine(title, href);
+
+      try {
+        const text = await getText(href, bookId);
+        if (!text.trim()) {
+          setState((s) => ({ ...s, phase: "ENDED" }));
+          onSectionComplete?.();
+          return;
+        }
+        await playFromText(text, startPos);
+      } catch (err) {
+        if (!abortRef.current) {
           console.error("[TTS] Failed to start section:", err);
           setState((s) => ({
             ...s,
@@ -728,7 +722,24 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         }
       }
     },
-    [cleanupSource, getText, onSectionComplete, playChunk, resolveEngine, speed, stopTimer, voiceId],
+    [getText, onSectionComplete, playFromText, prepareEngine],
+  );
+
+  // ponytail: speak arbitrary text (a discussion reply). Same engine pipeline
+  // as startSection but the text is supplied directly — no book section fetch,
+  // no viewer/startPos. sectionHref is "" so highlight-follow-along (which
+  // keys on href) stays inert for text tracks.
+  const startText = useCallback(
+    async (text: string, title: string) => {
+      prepareEngine(title, "");
+      if (!text.trim()) {
+        setState((s) => ({ ...s, phase: "ENDED" }));
+        onSectionComplete?.();
+        return;
+      }
+      await playFromText(text);
+    },
+    [onSectionComplete, playFromText, prepareEngine],
   );
 
   const pause = useCallback(() => {
@@ -799,6 +810,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     state,
     effectiveEngineId,
     startSection,
+    startText,
     pause,
     resume,
     close,
