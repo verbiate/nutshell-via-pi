@@ -401,7 +401,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
     async (
       engine: TtsEngine,
       index: number,
-      opts?: { skipBlockJump?: boolean },
+      opts?: { skipBlockJump?: boolean; force?: boolean },
     ) => {
       if (!runningRef.current || abortRef.current) return;
       if (index >= chunksRef.current.length) {
@@ -414,8 +414,11 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 
       currentIndexRef.current = index;
       const chunkOpts = opts; // ponytail: one-shot — only the first chunk honors
-      // skipBlockJump ("Start reading from here" entry). Recursive calls below
-      // pass no opts → display(blockCfi) runs normally for forward playback.
+      // skipBlockJump ("Start reading from here" entry) and force (resets
+      // userBrowsedAway so the page-turn re-engages at every section start;
+      // verse-level playlists need this for verse→verse auto-advance). Recursive
+      // calls below pass no opts → display(blockCfi) runs normally for forward
+      // playback and intentional mid-section browsing stays respected.
       setState((s) => ({ ...s, phase: "PLAYING" }));
 
       // ponytail: follow-along highlight — clear previous chunk's highlight,
@@ -424,7 +427,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // Read viewerRef through viewerRefRef so the running source.onended chain
       // always sees the latest registered viewer (e.g. after return-to-playing).
       viewerRefRef.current?.current?.clearTtsHighlight();
-      await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index], { skipBlockJump: chunkOpts?.skipBlockJump });
+      await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index], { skipBlockJump: chunkOpts?.skipBlockJump, force: chunkOpts?.force });
 
       // ponytail: persist the spoken position. Fires whether or not the viewer
       // is mounted — off-reader the anchor is the only signal that survives,
@@ -635,7 +638,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
         seedRef.current = estimateSeconds(totalWordsRef.current, cachedWpm, speed);
         setState((s) => ({ ...s, duration: seedRef.current }));
 
-        await playChunk(engine, startIndex, { skipBlockJump: startPos?.useVisible });
+        await playChunk(engine, startIndex, { skipBlockJump: startPos?.useVisible, force: true });
       } catch (err) {
         if (!abortRef.current) {
           console.error("[TTS] Failed to start playback:", err);

@@ -356,10 +356,12 @@ describe("useTtsEngine", () => {
     await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
 
     expect(viewerRef!.current?.clearTtsHighlight).toHaveBeenCalled();
-    // ponytail: highlightChunk now always carries an opts arg (skipBlockJump
-    // undefined unless useVisible entry) — recursive forward chunks pass no
-    // opts but the plumbing stamps { skipBlockJump: undefined } on every call.
-    expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledWith("chunk one", { skipBlockJump: undefined });
+    // ponytail: highlightChunk always carries an opts arg. The FIRST chunk of a
+    // section stamps { skipBlockJump, force: true } — force resets
+    // userBrowsedAway so the page-turn re-engages at section start (verse-level
+    // playlists need it for verse→verse auto-advance). Recursive forward chunks
+    // pass no opts, so their calls carry { skipBlockJump: undefined } only.
+    expect(viewerRef!.current?.highlightChunk).toHaveBeenCalledWith("chunk one", { skipBlockJump: undefined, force: true });
 
     act(() => {
       const ctx = FakeAudioContext.instances[0];
@@ -508,11 +510,12 @@ describe("useTtsEngine", () => {
     // getTtsStartOffset returning 5, findStartChunkIndex returns 0 (offset 5
     // is inside "chunk one"). The first highlightChunk call must carry the
     // skipBlockJump flag so the viewer stays put instead of flashing backward
-    // to a straddling block's off-page start.
+    // to a straddling block's off-page start, plus force:true to re-engage
+    // follow-along at this section start.
     expect(highlightChunk).toHaveBeenNthCalledWith(
       1,
       "chunk one",
-      { skipBlockJump: true },
+      { skipBlockJump: true, force: true },
     );
 
     unmount();
