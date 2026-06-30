@@ -282,7 +282,7 @@ describe("useTtsEngine", () => {
 
     // ponytail: startSection reads text through the injected source; the
     // source decides whether to use the live iframe or the server endpoint.
-    expect(getText).toHaveBeenCalledWith("xhtml/chapter1.xhtml");
+    expect(getText).toHaveBeenCalledWith("xhtml/chapter1.xhtml", undefined);
     expect(mockEngine.ensureLoaded).toHaveBeenCalled();
     expect(chunkText).toHaveBeenCalledWith(
       "Hello world. This is a test.",

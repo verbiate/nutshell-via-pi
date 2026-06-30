@@ -57,6 +57,7 @@ export interface UseTtsCloudReturn {
     href: string,
     title: string,
     opts?: { seekRatio?: number },
+    bookIdOverride?: string,
   ) => void;
   togglePlayPause: () => void;
   scrub: (time: number) => void;
@@ -197,7 +198,11 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
       href: string,
       title: string,
       opts?: { seekRatio?: number },
+      bookIdOverride?: string,
     ) => {
+      // ponytail: prefer the caller-provided bookId; the hook-level bookId
+      // (from the session) is stale during a cross-book switch.
+      const bid = bookIdOverride ?? bookId;
       // ponytail: stash the proportional seek target. Applied after the audio
       // element loads metadata so playback starts near the visible block.
       pendingSeekRatioRef.current = Math.min(
@@ -253,7 +258,7 @@ export function useTtsCloud(options: UseTtsCloudOptions): UseTtsCloudReturn {
         const res = await fetch("/api/tts/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId, sectionHref: href }),
+          body: JSON.stringify({ bookId: bid, sectionHref: href }),
           signal: controller.signal,
         });
 

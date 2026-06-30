@@ -49,7 +49,7 @@ export interface UseTtsEngineOptions {
    * highlight-follow-along aligns); on the bookshelf or for playlist jumps it
    * falls back to the server-side section-text endpoint.
    */
-  getText: (href: string) => Promise<string>;
+  getText: (href: string, bookId?: string) => Promise<string>;
   /** Optional live viewer, used only for follow-along highlighting. */
   viewerRef?: React.RefObject<EpubViewerHandle | null>;
   engineId: EngineId;
@@ -78,6 +78,7 @@ export interface UseTtsEngineReturn {
     href: string,
     title: string,
     startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
+    bookId?: string,
   ) => void;
   pause: () => void;
   resume: () => void;
@@ -596,6 +597,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       href: string,
       title: string,
       startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
+      bookId?: string,
     ) => {
       abortRef.current = false;
       runningRef.current = true;
@@ -654,7 +656,7 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // section-text endpoint. We deliberately do NOT await navigateTo here —
       // the text source handles any required navigation so the hook stays
       // decoupled from the viewer lifecycle.
-      const text = await getText(href);
+      const text = await getText(href, bookId);
       console.log("[TTS] getText returned", text.length, "chars");
         if (!text.trim()) {
           console.warn("[TTS] Section text is empty, skipping");

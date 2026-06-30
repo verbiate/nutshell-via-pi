@@ -514,9 +514,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // ─── Text source strategy ──────────────────────────────────────────────────
   // In-reader: prefer the live iframe (no navigation if already on section);
   // off-reader / playlist jumps: fetch from the server endpoint.
-  const getText = useCallback(async (href: string): Promise<string> => {
-    const bookId = sessionRef.current?.bookId ?? openBookRef.current?.bookId;
-    if (!bookId) return "";
+  const getText = useCallback(
+    async (href: string, bookIdOverride?: string): Promise<string> => {
+      // ponytail: prefer the caller-provided bookId (the caller always knows
+      // which book the href belongs to). The session/openBook refs are stale
+      // during a book switch (e.g. clicking a queued item from another book),
+      // and guessing from them sends the wrong bookId to the server → 404.
+      const bookId =
+        bookIdOverride ??
+        sessionRef.current?.bookId ??
+        openBookRef.current?.bookId;
+      if (!bookId) return "";
 
     const viewer = registeredViewerRef.current?.current;
     const currentHref = openBookRef.current?.currentHref;
@@ -629,6 +637,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       href: string,
       title: string,
       startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
+      bookId?: string,
     ) => {
       setBookFinished(false);
       const s = sessionRef.current;
@@ -645,9 +654,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
-        cloudTtsRef.current?.startSection(href, title, { seekRatio });
+        cloudTtsRef.current?.startSection(href, title, { seekRatio }, bookId);
       } else {
-        browserTtsRef.current?.startSection(href, title, startPos);
+        browserTtsRef.current?.startSection(href, title, startPos, bookId);
       }
       scheduleTtsPosSave({ sectionHref: href });
     },
@@ -715,12 +724,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           bookCoverPath: s.bookCoverPath,
           bookLanguage: s.bookLanguage,
         });
-        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
+        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel, undefined, s.bookId);
         return;
       }
       case "manual": {
         await playlistMutations.activateItem(decision.item.id);
-        startSection(decision.item.sectionHref, decision.item.sectionLabel);
+        startSection(decision.item.sectionHref, decision.item.sectionLabel, undefined, decision.item.bookId);
         return;
       }
       case "terminal": {
@@ -781,12 +790,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           bookCoverPath: s.bookCoverPath,
           bookLanguage: s.bookLanguage,
         });
-        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
+        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel, undefined, s.bookId);
         return;
       }
       case "manual": {
         await playlistMutations.activateItem(decision.item.id);
-        startSection(decision.item.sectionHref, decision.item.sectionLabel);
+        startSection(decision.item.sectionHref, decision.item.sectionLabel, undefined, decision.item.bookId);
         return;
       }
       case "terminal":
@@ -988,10 +997,10 @@ let cancelled = false;
     } else if (phase === "IDLE" || phase === "ENDED") {
       const active = activeItemRef.current;
       if (active) {
-        startSection(active.sectionHref, active.sectionLabel);
+        startSection(active.sectionHref, active.sectionLabel, undefined, active.bookId);
       } else {
         const section = s.flatToc[s.currentIndex];
-        if (section) browserTts.startSection(section.href, section.label);
+        if (section) browserTts.startSection(section.href, section.label, undefined, s.bookId);
       }
     }
   }, [enginePref, browserTts, cloudTts, startSection]);
@@ -1036,7 +1045,7 @@ let cancelled = false;
           // duplicate "next" entry.
           await playlistMutations.activateItem(active.id);
           ensureSessionForItem(active);
-          startSection(href, label, startPos);
+          startSection(href, label, startPos, bookId);
         }
         return;
       }
@@ -1060,7 +1069,7 @@ let cancelled = false;
       });
       await playlistMutations.activateItem(item.id);
       ensureSessionForItem(item);
-      startSection(href, label, startPos);
+      startSection(href, label, startPos, bookId);
     },
     [playlistMutations, playPause, startSection, ensureSessionForItem],
   );
@@ -1116,7 +1125,7 @@ let cancelled = false;
       const active = activeItemRef.current;
       if (active) {
         ensureSessionForItem(active);
-        startSection(active.sectionHref, active.sectionLabel);
+        startSection(active.sectionHref, active.sectionLabel, undefined, active.bookId);
       }
       return;
     }
@@ -1169,7 +1178,7 @@ let cancelled = false;
       if (!item) return;
       await playlistMutations.activateItem(itemId);
       ensureSessionForItem(item);
-      startSection(item.sectionHref, item.sectionLabel);
+      startSection(item.sectionHref, item.sectionLabel, undefined, item.bookId);
     },
     [playlistMutations, startSection, ensureSessionForItem],
   );
