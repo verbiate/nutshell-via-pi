@@ -15,21 +15,6 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/ui/tabs", () => ({
-  Tabs: ({ children, defaultValue }: { children: ReactNode; defaultValue: string }) => (
-    <div data-tabs data-default={defaultValue}>{children}</div>
-  ),
-  TabsList: ({ children }: { children: ReactNode }) => (
-    <div data-tabs-list>{children}</div>
-  ),
-  TabsTrigger: ({ children, value }: { children: ReactNode; value: string }) => (
-    <div data-tabs-trigger data-value={value}>{children}</div>
-  ),
-  TabsContent: ({ children, value }: { children: ReactNode; value: string }) => (
-    <div data-tabs-content data-value={value}>{children}</div>
-  ),
-}));
-
 vi.mock("@/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -80,7 +65,7 @@ function mkItem(over: Partial<PlaylistItem>): PlaylistItem {
     sectionHref: "ch1.xhtml",
     sectionLabel: "Chapter 1",
     position: 0,
-    status: "history",
+    status: "upcoming",
     bookTitle: "Test Book",
     bookAuthor: null,
     bookCoverPath: null,
@@ -123,7 +108,7 @@ describe("TtsQueue: header", () => {
   });
 
   it("shows 'Clear all' when items exist", () => {
-    const items = [mkItem({ id: "h1", status: "history" })];
+    const items = [mkItem({ id: "u1", status: "upcoming" })];
     const html = render(<TtsQueue items={items} {...baseProps} />);
     expect(html).toContain("Clear all");
   });
@@ -143,34 +128,6 @@ describe("TtsQueue: auto-advance toggle", () => {
       <TtsQueue items={[]} {...baseProps} autoAdvanceBook={false} />,
     );
     expect(html).not.toContain('checked=""');
-  });
-});
-
-describe("TtsQueue: tabs and counts", () => {
-  it("renders both tab triggers with counts", () => {
-    const items = [
-      mkItem({ id: "a1", status: "active", position: 0 }),
-      mkItem({ id: "u1", status: "upcoming", position: 1, sectionLabel: "Ch 2" }),
-      mkItem({ id: "h1", status: "history", position: 2 }),
-      mkItem({ id: "h2", status: "history", position: 3 }),
-    ];
-    const html = render(<TtsQueue items={items} {...baseProps} />);
-    // ponytail: on-deck count = active(1) + upcoming(1) = 2; history = 2.
-    expect(html).toContain("On deck");
-    expect(html).toContain("Recently played");
-    expect(html).toContain(">2<");
-  });
-
-  it("defaults to 'on-deck' when there is something on deck", () => {
-    const items = [mkItem({ id: "a1", status: "active" })];
-    const html = render(<TtsQueue items={items} {...baseProps} />);
-    expect(html).toContain('data-default="on-deck"');
-  });
-
-  it("defaults to 'recently-played' when on deck is empty but history exists", () => {
-    const items = [mkItem({ id: "h1", status: "history" })];
-    const html = render(<TtsQueue items={items} {...baseProps} />);
-    expect(html).toContain('data-default="recently-played"');
   });
 });
 
@@ -201,21 +158,6 @@ describe("TtsQueue: on-deck content", () => {
   });
 });
 
-describe("TtsQueue: recently-played content", () => {
-  it("renders history items in the recently-played tab", () => {
-    const items = [
-      mkItem({ id: "h1", status: "history", sectionLabel: "Old Chapter" }),
-    ];
-    const html = render(<TtsQueue items={items} {...baseProps} />);
-    expect(html).toContain("Old Chapter");
-  });
-
-  it("shows an empty-state message when there is no history", () => {
-    const html = render(<TtsQueue items={[]} {...baseProps} />);
-    expect(html).toContain("No recently played chapters.");
-  });
-});
-
 describe("TtsQueue: ghost card", () => {
   const ghost: GhostItem = {
     sectionHref: "ch2.xhtml",
@@ -236,24 +178,6 @@ describe("TtsQueue: ghost card", () => {
     );
     expect(html).toContain("Chapter 2");
     expect(html).toContain("data-ghost");
-  });
-
-  it("counts the ghost in the on-deck total", () => {
-    const upcoming = mkItem({
-      id: "u1",
-      status: "upcoming",
-      position: 1,
-      sectionLabel: "Later",
-    });
-    const html = render(
-      <TtsQueue
-        items={[active, upcoming]}
-        {...baseProps}
-        ghostItem={ghost}
-      />,
-    );
-    // active(1) + ghost(1) + upcoming(1) = 3
-    expect(html).toContain(">3<");
   });
 
   it("renders the ghost even when a manual upcoming item exists (option c)", () => {

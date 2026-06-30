@@ -24,12 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -203,18 +197,11 @@ export function TtsQueue({
   open,
   onOpenChange,
 }: TtsQueueProps) {
-  const { history, active, upcoming } = useMemo(() => {
-    const history = items.filter((i) => i.status === "history");
+  const { active, upcoming } = useMemo(() => {
     const active = items.find((i) => i.status === "active") ?? null;
     const upcoming = items.filter((i) => i.status === "upcoming");
-    return { history, active, upcoming };
+    return { active, upcoming };
   }, [items]);
-
-  const onDeckCount =
-    (active ? 1 : 0) + (ghostItem ? 1 : 0) + upcoming.length;
-  // ponytail: Dialog unmounts content when closed, so Tabs remounts each open and defaultValue is re-evaluated fresh. "on-deck" wins ties so the playhead stays visible while reading.
-  const defaultTab =
-    onDeckCount === 0 && history.length > 0 ? "recently-played" : "on-deck";
 
   const activeRowRef = useRef<HTMLLIElement | null>(null);
   // Scroll the Now-Playing row into view on open. Component only mounts when open, so empty deps run once per open.
@@ -263,179 +250,129 @@ export function TtsQueue({
           </div>
         </DialogHeader>
 
-        <div className="flex items-center justify-between border-t py-3">
-          <Label
-            htmlFor="auto-advance"
-            className="text-sm text-muted-foreground cursor-pointer"
-          >
-            Automatically play next book segment
-          </Label>
-          <Switch
-            id="auto-advance"
-            checked={autoAdvanceBook}
-            onCheckedChange={onToggleAutoAdvance}
-          />
-        </div>
+        <div className="flex-1 flex flex-col min-h-0 gap-3">
+          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+            {!active && upcoming.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Nothing on deck.
+                <br />
+                Start reading to queue chapters.
+              </p>
+            )}
 
-        <Tabs
-          defaultValue={defaultTab}
-          className="flex-1 flex flex-col min-h-0 gap-3"
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="on-deck">
-              On deck
-              {onDeckCount > 0 && (
-                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                  {onDeckCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="recently-played">
-              Recently played
-              {history.length > 0 && (
-                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                  {history.length}
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="on-deck" className="flex-1 min-h-0 mt-0">
-            <ScrollArea className="h-full -mx-6 px-6">
-              {!active && upcoming.length === 0 && (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Nothing on deck.
-                  <br />
-                  Start reading to queue chapters.
-                </p>
-              )}
-
-              {/* Now playing — highlighted hero row */}
-              {active && (
-                <div className="pt-1">
-                  <SectionLabel>Now playing</SectionLabel>
-                  <ul className="space-y-1">
-                    <li
-                      ref={activeRowRef}
-                      className="group flex items-center gap-2 rounded-md border border-chocolate/20 bg-chocolate/10 px-3 py-3 text-sm font-medium text-chocolate"
-                    >
-                      <Volume2 className="h-4 w-4 shrink-0" />
-                      <button
-                        type="button"
-                        onClick={() => onJumpToItem(active.id)}
-                        className="flex-1 text-left min-w-0"
-                      >
-                        <span className="block line-clamp-2 leading-snug">
-                          {active.sectionLabel || "Untitled section"}
-                        </span>
-                        <BookSub item={active} className="text-chocolate/70" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemove(active.id)}
-                        aria-label="Remove"
-                        className="text-chocolate/60 hover:text-chocolate rounded-md p-1 shrink-0"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              {/* Auto-advance ghost — computed next readable segment.
-                  Pinned on-deck, non-draggable; clicking it behaves as skip. */}
-              {ghostItem && (
-                <div className={cn(active && "mt-4")}>
-                  <SectionLabel>Up next</SectionLabel>
-                  <ul className="space-y-1">
-                    <li
-                      data-ghost
-                      className="group flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
-                    >
-                      <Volume2 className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                      <button
-                        type="button"
-                        onClick={onPlayGhost}
-                        className="flex-1 text-left min-w-0"
-                      >
-                        <span className="block line-clamp-2 leading-snug">
-                          {ghostItem.sectionLabel || "Untitled section"}
-                        </span>
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              {/* Up next */}
-              {upcoming.length > 0 && (
-                <div className={cn(active && "mt-4", ghostItem && "mt-2")}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <SectionLabel count={upcoming.length}>
-                      {ghostItem ? "Queued" : "Up next"}
-                    </SectionLabel>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onClearUpcoming}
-                      className="h-auto py-0 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Clear upcoming
-                    </Button>
-                  </div>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={upcomingIds}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <ul className="space-y-1">
-                        {upcoming.map((item) => (
-                          <SortableQueueRow
-                            key={item.id}
-                            item={item}
-                            isActive={item.id === activeItemId}
-                            onClick={() => onJumpToItem(item.id)}
-                            onRemove={() => onRemove(item.id)}
-                          />
-                        ))}
-                      </ul>
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-
-          <TabsContent
-            value="recently-played"
-            className="flex-1 min-h-0 mt-0"
-          >
-            <ScrollArea className="h-full -mx-6 px-6">
-              {history.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No recently played chapters.
-                </p>
-              ) : (
+            {/* Now playing — highlighted hero row */}
+            {active && (
+              <div className="pt-1">
+                <SectionLabel>Now playing</SectionLabel>
                 <ul className="space-y-1">
-                  {history.map((item) => (
-                    <QueueRow
-                      key={item.id}
-                      item={item}
-                      isActive={false}
-                      onClick={() => onJumpToItem(item.id)}
-                      onRemove={() => onRemove(item.id)}
-                    />
-                  ))}
+                  <li
+                    ref={activeRowRef}
+                    className="group flex items-center gap-2 rounded-md border border-chocolate/20 bg-chocolate/10 px-3 py-3 text-sm font-medium text-chocolate"
+                  >
+                    <Volume2 className="h-4 w-4 shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() => onJumpToItem(active.id)}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <span className="block line-clamp-2 leading-snug">
+                        {active.sectionLabel || "Untitled section"}
+                      </span>
+                      <BookSub item={active} className="text-chocolate/70" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemove(active.id)}
+                      aria-label="Remove"
+                      className="text-chocolate/60 hover:text-chocolate rounded-md p-1 shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
                 </ul>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
+              </div>
+            )}
+
+            {/* Auto-advance ghost — computed next readable segment.
+                Pinned on-deck, non-draggable; clicking it behaves as skip. */}
+            {ghostItem && (
+              <div className={cn(active && "mt-4")}>
+                <SectionLabel>Up next</SectionLabel>
+                <ul className="space-y-1">
+                  <li
+                    data-ghost
+                    className="group flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+                  >
+                    <Volume2 className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                    <button
+                      type="button"
+                      onClick={onPlayGhost}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <span className="block line-clamp-2 leading-snug">
+                        {ghostItem.sectionLabel || "Untitled section"}
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {/* Up next */}
+            {upcoming.length > 0 && (
+              <div className={cn(active && "mt-4", ghostItem && "mt-2")}>
+                <div className="mb-1 flex items-center justify-between">
+                  <SectionLabel count={upcoming.length}>
+                    {ghostItem ? "Queued" : "Up next"}
+                  </SectionLabel>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClearUpcoming}
+                    className="h-auto py-0 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear upcoming
+                  </Button>
+                </div>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={upcomingIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <ul className="space-y-1">
+                      {upcoming.map((item) => (
+                        <SortableQueueRow
+                          key={item.id}
+                          item={item}
+                          isActive={item.id === activeItemId}
+                          onClick={() => onJumpToItem(item.id)}
+                          onRemove={() => onRemove(item.id)}
+                        />
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </div>
+            )}
+          </ScrollArea>
+          <div className="flex items-center gap-3 border-t pt-3">
+            <Switch
+              id="auto-advance"
+              checked={autoAdvanceBook}
+              onCheckedChange={onToggleAutoAdvance}
+            />
+            <Label
+              htmlFor="auto-advance"
+              className="text-sm text-muted-foreground cursor-pointer"
+            >
+              Automatically play next book segment
+            </Label>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
