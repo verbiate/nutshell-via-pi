@@ -432,51 +432,81 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // item so percentage calc, cloud toc, and highlight-follow-along all agree.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!activeItem || !openBook) return;
-    if (openBook.bookId !== activeItem.bookId) return;
-    const flatToc = buildSpinePlaylist(openBook.spineItems, openBook.toc);
-    const idx = flatToc.findIndex((s) =>
-      ttsSectionMatches(s.href, activeItem.sectionHref),
-    );
-    const currentIndex = Math.max(0, idx);
+    if (!activeItem) return;
+
+    // Fast path: the open reader IS the active item's book. (Re)build the
+    // session from openBook — this refreshes flatToc + metadata + readable
+    // bounds as they populate async (spine/toc/cover load after first mount),
+    // and is the only path that introduces a NEW book into the session.
+    if (openBook && openBook.bookId === activeItem.bookId) {
+      const flatToc = buildSpinePlaylist(openBook.spineItems, openBook.toc);
+      const idx = flatToc.findIndex((s) =>
+        ttsSectionMatches(s.href, activeItem.sectionHref),
+      );
+      const currentIndex = Math.max(0, idx);
+      setSession((prev) => {
+        if (!prev || prev.bookId !== activeItem.bookId) {
+          return createSession(openBook, currentIndex);
+        }
+        // ponytail: refresh flatToc AND book metadata (title/author/cover/language)
+        // from openBook. spine/toc/cover all populate asynchronously after first
+        // mount — a session created while they were empty keeps stale values
+        // forever on same-bookId updates, surfacing as:
+        //   - flatToc=[]:   "no section at currentIndex" → syncViewerToPlayback no-op
+        //   - bookCoverPath=null: placeholder thumbnail in the player card
+        // Bail only when currentIndex, flatToc length, AND book metadata are all
+        // unchanged (cheap proxy for "openBook hasn't meaningfully changed").
+        const bookMetaChanged =
+          prev.bookCoverPath !== openBook.bookCoverPath ||
+          prev.bookTitle !== openBook.bookTitle ||
+          prev.bookAuthor !== openBook.bookAuthor ||
+          prev.bookLanguage !== openBook.bookLanguage ||
+          prev.readableEndSectionHref !== openBook.readableEndSectionHref ||
+          prev.readableStartSectionHref !== openBook.readableStartSectionHref;
+        if (
+          prev.currentIndex === currentIndex &&
+          prev.flatToc.length === flatToc.length &&
+          !bookMetaChanged
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          currentIndex,
+          flatToc,
+          bookCoverPath: openBook.bookCoverPath,
+          bookTitle: openBook.bookTitle,
+          bookAuthor: openBook.bookAuthor,
+          bookLanguage: openBook.bookLanguage,
+          readableEndSectionHref: openBook.readableEndSectionHref,
+          readableStartSectionHref: openBook.readableStartSectionHref,
+        };
+      });
+      return;
+    }
+
+    // Cross-book path: the user is browsing a different reader than the active
+    // item's book (openBook = Book 2, active item = Book 1). Keep the session's
+    // book context (flatToc + readable bounds, captured when Book 1's reader
+    // was open) but re-sync the playhead to the active item so ghost derivation
+    // and section advancement stay correct. Without this, currentIndex drifts
+    // behind every ghost promotion — both updaters used to bail on the book
+    // mismatch, so the ghost resolved to the wrong (often current) section and
+    // clicking it duplicated it ("now playing Part III; next up Part III").
     setSession((prev) => {
-      if (!prev) return createSession(openBook, currentIndex);
-      if (prev.bookId !== activeItem.bookId) {
-        return createSession(openBook, currentIndex);
-      }
-      // ponytail: refresh flatToc AND book metadata (title/author/cover/language)
-      // from openBook. spine/toc/cover all populate asynchronously after first
-      // mount — a session created while they were empty keeps stale values
-      // forever on same-bookId updates, surfacing as:
-      //   - flatToc=[]:   "no section at currentIndex" → syncViewerToPlayback no-op
-      //   - bookCoverPath=null: placeholder thumbnail in the player card
-      // Bail only when currentIndex, flatToc length, AND book metadata are all
-      // unchanged (cheap proxy for "openBook hasn't meaningfully changed").
-      const bookMetaChanged =
-        prev.bookCoverPath !== openBook.bookCoverPath ||
-        prev.bookTitle !== openBook.bookTitle ||
-        prev.bookAuthor !== openBook.bookAuthor ||
-        prev.bookLanguage !== openBook.bookLanguage ||
-        prev.readableEndSectionHref !== openBook.readableEndSectionHref ||
-        prev.readableStartSectionHref !== openBook.readableStartSectionHref;
-      if (
-        prev.currentIndex === currentIndex &&
-        prev.flatToc.length === flatToc.length &&
-        !bookMetaChanged
-      ) {
+      if (!prev || prev.bookId !== activeItem.bookId) {
+        // Active item's book is neither open nor the session's book, and there
+        // is no by-bookId spine endpoint. Playback still works (getText fetches
+        // section text by bookId), but the ghost can't compute without the
+        // spine — it stays null until that book's reader is opened.
         return prev;
       }
-      return {
-        ...prev,
-        currentIndex,
-        flatToc,
-        bookCoverPath: openBook.bookCoverPath,
-        bookTitle: openBook.bookTitle,
-        bookAuthor: openBook.bookAuthor,
-        bookLanguage: openBook.bookLanguage,
-        readableEndSectionHref: openBook.readableEndSectionHref,
-        readableStartSectionHref: openBook.readableStartSectionHref,
-      };
+      const idx = prev.flatToc.findIndex((s) =>
+        ttsSectionMatches(s.href, activeItem.sectionHref),
+      );
+      const currentIndex = Math.max(0, idx);
+      if (prev.currentIndex === currentIndex) return prev;
+      return { ...prev, currentIndex };
     });
   }, [activeItem, openBook]);
   /* eslint-enable react-hooks/set-state-in-effect */
