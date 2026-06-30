@@ -491,7 +491,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const viewer = registeredViewerRef.current?.current;
     const currentHref = openBookRef.current?.currentHref;
 
-    if (viewer) {
+    // ponytail: only use the live viewer when it belongs to the book we're
+    // playing. When the user is browsing a different book's reader than the
+    // active session (openBook = Book 2, session = Book 1), the registered
+    // viewer is Book 2's rendition — feeding it Book 1's href navigates to a
+    // missing section ("No Section Found") and getSectionText() silently
+    // returns Book 2's page. Fall through to the server fetch below, which
+    // uses `bookId` (the session's book). Mirrors the guards in
+    // syncViewerToPlayback and rehighlightCurrentChunk.
+    if (viewer && openBookRef.current?.bookId === bookId) {
       if (currentHref !== href) {
         await viewer.navigateTo(href, { ttsNav: true });
       }
