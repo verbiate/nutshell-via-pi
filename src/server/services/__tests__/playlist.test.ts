@@ -28,6 +28,7 @@ import {
   getPlaylist,
   addItem,
   activateItem,
+  promoteItem,
   removeItem,
   clearPlaylist,
   reorderUpcoming,
@@ -162,6 +163,79 @@ describe("Playlist service", () => {
         data: expect.objectContaining({ status: "active", playedAt: null }),
       }),
     );
+  });
+
+  it("promoteItem creates the section as active after the current active, demotes only the old active, and shifts the queue", async () => {
+    vi.mocked(db.playlistItem.findFirst).mockResolvedValue(
+      makeItem({ id: "active", position: 2, status: "active" }) as any,
+    );
+    // Desc order, as the service requests for the shift.
+    vi.mocked(db.playlistItem.findMany).mockResolvedValue([
+      makeItem({ id: "q2", position: 4, status: "upcoming" }),
+      makeItem({ id: "q1", position: 3, status: "upcoming" }),
+    ] as any);
+    vi.mocked(db.playlistItem.count).mockResolvedValue(0);
+    vi.mocked(db.playlistItem.create).mockResolvedValue(
+      makeItem({ id: "promoted", position: 3, status: "active" }) as any,
+    );
+
+    const item = await promoteItem("u1", {
+      bookId: "b1",
+      sectionHref: "ch-next.xhtml",
+      sectionLabel: "Next Chapter",
+    });
+
+    expect(item.id).toBe("promoted");
+    // Created as active at activePos+1 = 3.
+    expect(db.playlistItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ position: 3, status: "active" }),
+      }),
+    );
+    // Old active demoted to history.
+    expect(db.playlistItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "active" },
+        data: expect.objectContaining({ status: "history" }),
+      }),
+    );
+    // Queue items shifted up by 1 (position only — status untouched, so they
+    // stay upcoming and are NOT wiped to history).
+    expect(db.playlistItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "q1" },
+        data: { position: 4 },
+      }),
+    );
+    expect(db.playlistItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "q2" },
+        data: { position: 5 },
+      }),
+    );
+  });
+
+  it("promoteItem inserts at position 0 when there is no current active", async () => {
+    vi.mocked(db.playlistItem.findFirst).mockResolvedValue(null as any);
+    vi.mocked(db.playlistItem.findMany).mockResolvedValue([] as any);
+    vi.mocked(db.playlistItem.count).mockResolvedValue(0);
+    vi.mocked(db.playlistItem.create).mockResolvedValue(
+      makeItem({ id: "promoted", position: 0, status: "active" }) as any,
+    );
+
+    await promoteItem("u1", {
+      bookId: "b1",
+      sectionHref: "ch.xhtml",
+      sectionLabel: "Ch",
+    });
+
+    expect(db.playlistItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ position: 0, status: "active" }),
+      }),
+    );
+    // No old active to demote.
+    expect(db.playlistItem.update).not.toHaveBeenCalled();
   });
 
   it("removeItem deletes and compacts positions", async () => {

@@ -159,6 +159,78 @@ export async function activateItem(
   return toPlaylistItem(refreshed);
 }
 
+/**
+ * Atomically promote a section to active: insert it as a NEW active row right
+ * after the current active, demote the current active to history, and shift
+ * everything after up by one — all in a single transaction.
+ *
+ * This is the ghost-promotion path. It differs from addItem+activateItem in
+ * two critical ways:
+ *  - Single transaction -> one client refetch -> no intermediate "upcoming"
+ *    render (the flash when the new row briefly appeared in the queue before
+ *    becoming active).
+ *  - Inserted right after the active item (not at the end), and only the old
+ *    active is demoted. activateItem's "everything before the target becomes
+ *    history" rule would wipe the user's manual queue when the new row lands
+ *    at the end; this preserves queued items as upcoming.
+ */
+export async function promoteItem(
+  userId: string,
+  data: {
+    bookId: string;
+    sectionHref: string;
+    sectionLabel: string;
+  } & PlaylistBookMeta,
+): Promise<PlaylistItem> {
+  const created = await db.$transaction(async (tx) => {
+    const active = await tx.playlistItem.findFirst({
+      where: { userId, status: "active" },
+    });
+    const insertPosition = (active?.position ?? -1) + 1;
+
+    // Make room: shift items at/after insertPosition up by 1, highest
+    // position first. The (userId, position) unique constraint means an
+    // ascending-order shift would transiently collide two rows on one key.
+    const toShift = await tx.playlistItem.findMany({
+      where: { userId, position: { gte: insertPosition } },
+      orderBy: { position: "desc" },
+    });
+    for (const item of toShift) {
+      await tx.playlistItem.update({
+        where: { id: item.id },
+        data: { position: item.position + 1 },
+      });
+    }
+
+    // Demote the current active to history (only it — the queue is preserved).
+    if (active) {
+      await tx.playlistItem.update({
+        where: { id: active.id },
+        data: { status: "history", playedAt: new Date() },
+      });
+    }
+
+    // Create the promoted section as the new active at insertPosition.
+    return tx.playlistItem.create({
+      data: {
+        userId,
+        bookId: data.bookId,
+        sectionHref: data.sectionHref,
+        sectionLabel: data.sectionLabel,
+        position: insertPosition,
+        status: "active",
+        bookTitle: data.bookTitle ?? null,
+        bookAuthor: data.bookAuthor ?? null,
+        bookCoverPath: data.bookCoverPath ?? null,
+        bookLanguage: data.bookLanguage ?? "und",
+      },
+    });
+  });
+
+  await trimHistory(userId);
+  return toPlaylistItem(created);
+}
+
 export async function removeItem(
   userId: string,
   itemId: string,

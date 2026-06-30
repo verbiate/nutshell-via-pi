@@ -663,17 +663,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     switch (decision.kind) {
       case "ghost": {
-        const item = await playlistMutations.addItem({
+        // ponytail: single atomic promote (insert-as-active after the current
+        // active, demote old active, preserve the queue) — replaces the old
+        // addItem(mode:"last") + activateItem two-step, which both flashed an
+        // intermediate "upcoming" row AND wiped the manual queue (activateItem
+        // marks everything before the end-positioned row as history).
+        await playlistMutations.promoteItem({
           bookId: s.bookId,
           sectionHref: decision.ghost.sectionHref,
           sectionLabel: decision.ghost.sectionLabel,
-          mode: "last",
           bookTitle: s.bookTitle,
           bookAuthor: s.bookAuthor,
           bookCoverPath: s.bookCoverPath,
           bookLanguage: s.bookLanguage,
         });
-        await playlistMutations.activateItem(item.id);
         startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
         return;
       }
@@ -726,17 +729,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     switch (decision.kind) {
       case "ghost": {
-        const item = await playlistMutations.addItem({
+        // ponytail: single atomic promote (insert-as-active after the current
+        // active, demote old active, preserve the queue) — replaces the old
+        // addItem(mode:"last") + activateItem two-step, which both flashed an
+        // intermediate "upcoming" row AND wiped the manual queue (activateItem
+        // marks everything before the end-positioned row as history).
+        await playlistMutations.promoteItem({
           bookId: s.bookId,
           sectionHref: decision.ghost.sectionHref,
           sectionLabel: decision.ghost.sectionLabel,
-          mode: "last",
           bookTitle: s.bookTitle,
           bookAuthor: s.bookAuthor,
           bookCoverPath: s.bookCoverPath,
           bookLanguage: s.bookLanguage,
         });
-        await playlistMutations.activateItem(item.id);
         startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
         return;
       }

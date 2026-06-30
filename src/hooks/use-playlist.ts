@@ -92,6 +92,29 @@ export function useActivatePlaylistItem() {
   });
 }
 
+export function usePromotePlaylistItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      bookId: string;
+      sectionHref: string;
+      sectionLabel: string;
+    } & PlaylistBookMeta) => {
+      const res = await fetch("/api/playlist/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to promote playlist item: ${res.status}`);
+      }
+      const data = (await res.json()) as { item: PlaylistItem };
+      return data.item;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+  });
+}
+
 export function useRemovePlaylistItem() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -205,6 +228,7 @@ export function useSetAutoAdvance() {
 export function usePlaylistMutations() {
   const add = useAddPlaylistItem();
   const activate = useActivatePlaylistItem();
+  const promote = usePromotePlaylistItem();
   const remove = useRemovePlaylistItem();
   const clear = useClearPlaylist();
   const reorder = useReorderPlaylist();
@@ -214,6 +238,7 @@ export function usePlaylistMutations() {
     () => ({
       addItem: add.mutateAsync,
       activateItem: activate.mutateAsync,
+      promoteItem: promote.mutateAsync,
       removeItem: remove.mutateAsync,
       clear: clear.mutateAsync,
       reorder: reorder.mutateAsync,
@@ -221,11 +246,12 @@ export function usePlaylistMutations() {
       isPending:
         add.isPending ||
         activate.isPending ||
+        promote.isPending ||
         remove.isPending ||
         clear.isPending ||
         reorder.isPending ||
         setAutoAdvance.isPending,
     }),
-    [add, activate, remove, clear, reorder, setAutoAdvance],
+    [add, activate, promote, remove, clear, reorder, setAutoAdvance],
   );
 }
