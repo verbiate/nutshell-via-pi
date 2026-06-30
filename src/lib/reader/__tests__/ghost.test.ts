@@ -3,6 +3,7 @@ import {
   ghostOffset,
   resolveGhostItem,
   resolveAdvance,
+  deriveGhost,
 } from "../ghost";
 import type { FlatSection } from "@/lib/reader/spine-playlist";
 import type { PlaylistItem } from "@/types/playlist";
@@ -91,7 +92,7 @@ describe("resolveAdvance", () => {
         atReadableEnd: false,
         atEndOfToc: false,
       }),
-    ).toEqual({ kind: "ghost" });
+    ).toEqual({ kind: "ghost", ghost });
   });
   it("manual leads when ghost absent", () => {
     expect(
@@ -132,5 +133,35 @@ describe("resolveAdvance", () => {
         atEndOfToc: false,
       }),
     ).toEqual({ kind: "idle" });
+  });
+});
+
+describe("deriveGhost", () => {
+  const sess = (over: Partial<{}> = {}) => ({
+    bookId: "b",
+    flatToc: toc(5),
+    currentIndex: 1,
+    readableStartSectionHref: "ch0.xhtml",
+    readableEndSectionHref: "ch4.xhtml",
+    ...over,
+  });
+  const active = { bookId: "b" };
+
+  it("returns null when auto-advance is off", () => {
+    expect(deriveGhost(false, sess(), active, exact)).toBeNull();
+  });
+  it("returns null when session is null", () => {
+    expect(deriveGhost(true, null, active, exact)).toBeNull();
+  });
+  it("returns null when active is null", () => {
+    expect(deriveGhost(true, sess(), null, exact)).toBeNull();
+  });
+  it("returns null when active belongs to another book", () => {
+    expect(deriveGhost(true, sess(), { bookId: "other" }, exact)).toBeNull();
+  });
+  it("returns the next readable section otherwise", () => {
+    expect(deriveGhost(true, sess(), active, exact)?.sectionHref).toBe(
+      "ch2.xhtml",
+    );
   });
 });

@@ -3,8 +3,16 @@ import type { PlaylistItem } from "@/types/playlist";
 
 export type GhostItem = { sectionHref: string; sectionLabel: string };
 
+export type GhostSession = {
+  bookId: string;
+  flatToc: FlatSection[];
+  currentIndex: number;
+  readableStartSectionHref?: string | null;
+  readableEndSectionHref?: string | null;
+};
+
 export type AdvanceDecision =
-  | { kind: "ghost" }
+  | { kind: "ghost"; ghost: GhostItem }
   | { kind: "manual"; item: PlaylistItem }
   | { kind: "terminal" }
   | { kind: "idle" };
@@ -55,6 +63,29 @@ export function resolveGhostItem(
 }
 
 /**
+ * Derive the ghost from the active item's session. Null when auto-advance is
+ * off, there is no session/active item, the active item belongs to another
+ * book, or the readable window is exhausted. Pure; callers decide whether to
+ * feed it reactive values (for UI) or refs (for handlers).
+ */
+export function deriveGhost(
+  autoAdvance: boolean,
+  session: GhostSession | null,
+  active: { bookId: string } | null,
+  matchFn: (a: string, b: string) => boolean,
+): GhostItem | null {
+  if (!autoAdvance || !session || !active) return null;
+  if (active.bookId !== session.bookId) return null;
+  return resolveGhostItem(
+    session.flatToc,
+    session.currentIndex,
+    session.readableStartSectionHref ?? null,
+    session.readableEndSectionHref ?? null,
+    matchFn,
+  );
+}
+
+/**
  * Precedence: ghost -> manual next -> terminal -> idle. Pure; callers perform
  * the side effects (promote ghost / activate item / mark finished / no-op).
  */
@@ -64,7 +95,7 @@ export function resolveAdvance(opts: {
   atReadableEnd: boolean;
   atEndOfToc: boolean;
 }): AdvanceDecision {
-  if (opts.ghostItem) return { kind: "ghost" };
+  if (opts.ghostItem) return { kind: "ghost", ghost: opts.ghostItem };
   if (opts.manualNext) return { kind: "manual", item: opts.manualNext };
   if (opts.atReadableEnd || opts.atEndOfToc) return { kind: "terminal" };
   return { kind: "idle" };

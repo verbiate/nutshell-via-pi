@@ -14,7 +14,7 @@ import type {
   BookAudioContext,
 } from "./audio-context";
 import { buildSpinePlaylist } from "@/lib/reader/spine-playlist";
-import { resolveGhostItem, resolveAdvance, type GhostItem } from "@/lib/reader/ghost";
+import { resolveAdvance, deriveGhost, type GhostItem } from "@/lib/reader/ghost";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
@@ -331,6 +331,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef(session);
   const activeItemRef = useRef(activeItem);
   const playlistItemsRef = useRef(playlistItems);
+  const autoAdvanceRef = useRef(autoAdvanceBook);
   const bookFinishedRef = useRef(bookFinished);
   useEffect(() => {
     openBookRef.current = openBook;
@@ -344,6 +345,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     playlistItemsRef.current = playlistItems;
   }, [playlistItems]);
+  useEffect(() => {
+    autoAdvanceRef.current = autoAdvanceBook;
+  }, [autoAdvanceBook]);
   useEffect(() => {
     bookFinishedRef.current = bookFinished;
   }, [bookFinished]);
@@ -633,6 +637,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const active = activeItemRef.current;
     if (!s || !active) return;
 
+    const ghost = deriveGhost(
+      autoAdvanceRef.current,
+      s,
+      active,
+      ttsSectionMatches,
+    );
     const manualNext =
       playlistItemsRef.current.find(
         (i) => i.position === active.position + 1,
@@ -643,7 +653,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const atEndOfToc = s.currentIndex + 1 >= s.flatToc.length;
 
     const decision = resolveAdvance({
-      ghostItem: ghostItemRef.current,
+      ghostItem: ghost,
       manualNext,
       atReadableEnd,
       atEndOfToc,
@@ -651,12 +661,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     switch (decision.kind) {
       case "ghost": {
-        const g = ghostItemRef.current;
-        if (!g) return;
         const item = await playlistMutations.addItem({
           bookId: s.bookId,
-          sectionHref: g.sectionHref,
-          sectionLabel: g.sectionLabel,
+          sectionHref: decision.ghost.sectionHref,
+          sectionLabel: decision.ghost.sectionLabel,
           mode: "last",
           bookTitle: s.bookTitle,
           bookAuthor: s.bookAuthor,
@@ -664,7 +672,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           bookLanguage: s.bookLanguage,
         });
         await playlistMutations.activateItem(item.id);
-        startSection(g.sectionHref, g.sectionLabel);
+        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
         return;
       }
       case "manual": {
@@ -693,6 +701,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     if (!s) return;
     const active = activeItemRef.current;
 
+    const ghost = active
+      ? deriveGhost(autoAdvanceRef.current, s, active, ttsSectionMatches)
+      : null;
     const manualNext = active
       ? (playlistItemsRef.current.find(
           (i) => i.position === active.position + 1,
@@ -705,7 +716,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const atEndOfToc = s.currentIndex + 1 >= s.flatToc.length;
 
     const decision = resolveAdvance({
-      ghostItem: ghostItemRef.current,
+      ghostItem: ghost,
       manualNext,
       atReadableEnd,
       atEndOfToc,
@@ -713,12 +724,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     switch (decision.kind) {
       case "ghost": {
-        const g = ghostItemRef.current;
-        if (!g) return;
         const item = await playlistMutations.addItem({
           bookId: s.bookId,
-          sectionHref: g.sectionHref,
-          sectionLabel: g.sectionLabel,
+          sectionHref: decision.ghost.sectionHref,
+          sectionLabel: decision.ghost.sectionLabel,
           mode: "last",
           bookTitle: s.bookTitle,
           bookAuthor: s.bookAuthor,
@@ -726,7 +735,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           bookLanguage: s.bookLanguage,
         });
         await playlistMutations.activateItem(item.id);
-        startSection(g.sectionHref, g.sectionLabel);
+        startSection(decision.ghost.sectionHref, decision.ghost.sectionLabel);
         return;
       }
       case "manual": {
@@ -1298,20 +1307,12 @@ let cancelled = false;
   // Pure function of (session + active item + toggle); recomputed on every
   // activation, held while active. Null when toggle off, no session, the
   // active item belongs to another book, or the readable window is exhausted.
-  const ghostItem: GhostItem | null = useMemo(() => {
-    if (!autoAdvanceBook || !session || !activeItem) return null;
-    if (activeItem.bookId !== session.bookId) return null;
-    return resolveGhostItem(
-      session.flatToc,
-      session.currentIndex,
-      session.readableStartSectionHref ?? null,
-      session.readableEndSectionHref ?? null,
-      ttsSectionMatches,
-    );
-  }, [autoAdvanceBook, session, activeItem]);
-
-  const ghostItemRef = useRef(ghostItem);
-  ghostItemRef.current = ghostItem;
+  // Handlers re-derive the same value from refs (autoAdvanceRef) so their
+  // callback identity stays stable across ghost changes.
+  const ghostItem: GhostItem | null = useMemo(
+    () => deriveGhost(autoAdvanceBook, session, activeItem, ttsSectionMatches),
+    [autoAdvanceBook, session, activeItem],
+  );
 
   // ponytail: skip-ahead affordance. Visible whenever playback is non-IDLE and
   // there's somewhere to skip *to*: the ghost, or an upcoming playlist item
@@ -1398,6 +1399,7 @@ let cancelled = false;
       playlistItems,
       autoAdvanceBook,
       activeItem,
+      ghostItem,
       playSection,
       jumpToItem,
       removePlaylistItem,
