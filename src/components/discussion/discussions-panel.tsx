@@ -78,6 +78,7 @@ import {
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerButton,
+  useMessageScroller,
   useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
 
@@ -192,20 +193,54 @@ export interface DiscussionsPanelProps {
   attachBookMax?: number;
 }
 
-// ponytail:reports the MessageScroller viewport's "at bottom" state up to
-// DiscussionView, which uses it to gate auto-follow during follow-up streams:
-// when streaming a reply, the viewport pins to the user's anchored question and
-// only resumes live-edge following once the reader scrolls back to the bottom
-// (the manual "latch back on"). `end` is the primitive's "scrollable distance
-// remaining > threshold" flag (true = NOT at bottom), so we invert it to
-// `latched = !end`. The hook + this component must live INSIDE
+// ponytail: reports the MessageScroller viewport's "at bottom" state up to
+// DiscussionView (gates auto-follow during follow-up streams: the viewport pins
+// to the user's anchored question and only resumes live-edge following once the
+// reader scrolls back to the bottom — the manual "latch back on"). Also folds
+// the spacer to 0 on that same false→true transition, trimming the dead pixels
+// the keepPreviousPeek anchoring leaves beneath a short reply (option C: fires
+// mid-stream and post-stream alike — letting go of the pinned anchor by
+// scrolling down snaps the trim on, so the live edge is flush with the last
+// message's bottom the moment the reader re-arrives). `end` is the primitive's
+// "scrollable distance remaining > threshold" flag (true = at bottom), so
+// `latched = !end`. The hook + this component must live INSIDE the
 // MessageScrollerProvider (context boundary), which is why it's a separate
 // renderless child rather than a call inside DiscussionView itself.
-function ScrollLatch({ onChange }: { onChange: (latchedAtBottom: boolean) => void }) {
+function ScrollLatch({
+  onChange,
+  streaming,
+}: {
+  onChange: (latchedAtBottom: boolean) => void;
+  streaming: boolean;
+}) {
   const { end } = useMessageScrollerScrollable();
+  const { scrollToEnd } = useMessageScroller();
   useEffect(() => {
     onChange(!end);
   }, [end, onChange]);
+  // ponytail: spacer-trim. Fires ONCE per completed stream, then disarms until
+  // the next stream-end. Armed on `streaming` true→false; consumed by the first
+  // arrival at the bottom (`end` true && !streaming). Covers both arrival modes:
+  //   1. Reader stayed latched through the reply — arm+fire on the stream-end
+  //      tick itself.
+  //   2. Reader scrolled up during the stream — armed, waits dormant until
+  //      they scroll back down (post-stream), fires once, disarms.
+  // Disarming prevents idle scroll-downs (no recent stream) from re-firing the
+  // smooth scrollToEnd and "bouncing" the reader every time they scroll up and
+  // back in idle state. Initial-explainer streams don't anchor (spacer stays
+  // 0), so the trim is a harmless no-op there.
+  const prevRef = useRef({ streaming: false, armed: false });
+  useEffect(() => {
+    const p = prevRef.current;
+    const justStoppedStreaming = p.streaming && !streaming;
+    const armed = p.armed || justStoppedStreaming;
+    if (!streaming && end && armed) {
+      scrollToEnd({ behavior: "smooth" });
+      prevRef.current = { streaming, armed: false };
+    } else {
+      prevRef.current = { streaming, armed };
+    }
+  }, [streaming, end, scrollToEnd]);
   return null;
 }
 
@@ -1840,7 +1875,7 @@ function DiscussionView({
         // when no anchors exist or the last turn already fits in the viewport.
         defaultScrollPosition="last-anchor"
       >
-        <ScrollLatch onChange={setLatched} />
+        <ScrollLatch onChange={setLatched} streaming={streaming} />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport className="px-4 py-3">
             <MessageScrollerContent className="gap-3">
