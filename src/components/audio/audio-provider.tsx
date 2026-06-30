@@ -457,7 +457,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         prev.bookTitle !== openBook.bookTitle ||
         prev.bookAuthor !== openBook.bookAuthor ||
         prev.bookLanguage !== openBook.bookLanguage ||
-        prev.readableEndSectionHref !== openBook.readableEndSectionHref;
+        prev.readableEndSectionHref !== openBook.readableEndSectionHref ||
+        prev.readableStartSectionHref !== openBook.readableStartSectionHref;
       if (
         prev.currentIndex === currentIndex &&
         prev.flatToc.length === flatToc.length &&
@@ -474,6 +475,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         bookAuthor: openBook.bookAuthor,
         bookLanguage: openBook.bookLanguage,
         readableEndSectionHref: openBook.readableEndSectionHref,
+        readableStartSectionHref: openBook.readableStartSectionHref,
       };
     });
   }, [activeItem, openBook]);

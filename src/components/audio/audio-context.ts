@@ -8,6 +8,7 @@ import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
 import type { CloudQuota } from "@/hooks/use-tts-cloud";
 import type { UserRole } from "@/types/book";
 import type { FlatSection, SpineItem } from "@/lib/reader/spine-playlist";
+import type { GhostItem } from "@/lib/reader/ghost";
 import type { PlaylistItem } from "@/types/playlist";
 export type { FlatSection } from "@/lib/reader/spine-playlist";
 
@@ -148,7 +149,7 @@ export type AudioContextValue = {
   /** Computed next readable segment of the active item's book, when
    *  autoAdvanceBook is on and a next readable segment exists. Ephemeral -
    *  not a persisted PlaylistItem until it promotes to active. */
-  ghostItem: { sectionHref: string; sectionLabel: string } | null;
+  ghostItem: GhostItem | null;
   /**
    * Start, queue, or add a book section to the playlist.
    * `now` = add after active (or as first) and start playing.
