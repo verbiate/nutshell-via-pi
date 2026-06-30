@@ -1205,6 +1205,7 @@ export function ReaderClient({
       userRole,
       currentHref,
       readableEndSectionHref: endSectionHref,
+      readableStartSectionHref: startSectionHref,
     });
     registerViewer(viewerRef);
     return () => {
@@ -1224,6 +1225,7 @@ export function ReaderClient({
     userRole,
     currentHref,
     readableEndSectionHref,
+    readableStartSectionHref,
   ]);
 
   // ponytail: idle-fade predicate shared by chrome, progress, and the right

@@ -14,6 +14,7 @@ import type {
   BookAudioContext,
 } from "./audio-context";
 import { buildSpinePlaylist } from "@/lib/reader/spine-playlist";
+import { resolveGhostItem, type GhostItem } from "@/lib/reader/ghost";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
 import type { TtsPlaybackState } from "@/hooks/use-tts-playback";
@@ -87,6 +88,7 @@ function createSession(
     userRole: ctx.userRole,
     currentIndex,
     readableEndSectionHref: ctx.readableEndSectionHref,
+    readableStartSectionHref: ctx.readableStartSectionHref,
   };
 }
 
@@ -1276,16 +1278,34 @@ let cancelled = false;
   const showCard =
     !!openBook || session !== null || playlistItems.length > 0;
 
+  // ponytail: ghost = next readable section of the active item's book.
+  // Pure function of (session + active item + toggle); recomputed on every
+  // activation, held while active. Null when toggle off, no session, the
+  // active item belongs to another book, or the readable window is exhausted.
+  const ghostItem: GhostItem | null = useMemo(() => {
+    if (!autoAdvanceBook || !session || !activeItem) return null;
+    if (activeItem.bookId !== session.bookId) return null;
+    return resolveGhostItem(
+      session.flatToc,
+      session.currentIndex,
+      session.readableStartSectionHref ?? null,
+      session.readableEndSectionHref ?? null,
+      ttsSectionMatches,
+    );
+  }, [autoAdvanceBook, session, activeItem]);
+
+  const ghostItemRef = useRef(ghostItem);
+  ghostItemRef.current = ghostItem;
+
   // ponytail: skip-ahead affordance. Visible whenever playback is non-IDLE and
-  // there's somewhere to skip *to*: either an upcoming playlist item ahead of
-  // the active one, or (with auto-advance on) the next spine section.
+  // there's somewhere to skip *to*: the ghost, or an upcoming playlist item
+  // ahead of the active one.
   const activePos = activeItem?.position;
   const hasNextUpcoming = playlistItems.some(
     (i) => i.status === "upcoming" && activePos != null && i.position > activePos,
   );
-  const hasSpineNext =
-    !!session && autoAdvanceBook && session.currentIndex + 1 < session.flatToc.length;
-  const canSkipAhead = playbackState.state !== "IDLE" && (hasNextUpcoming || hasSpineNext);
+  const canSkipAhead =
+    playbackState.state !== "IDLE" && (ghostItem != null || hasNextUpcoming);
 
   // ─── Context value ─────────────────────────────────────────────────────────
   const value: AudioContextValue = useMemo(
@@ -1320,6 +1340,7 @@ let cancelled = false;
       playlistItems,
       autoAdvanceBook,
       activeItemId: activeItem?.id ?? null,
+      ghostItem,
       playSection,
       jumpToItem,
       removePlaylistItem,

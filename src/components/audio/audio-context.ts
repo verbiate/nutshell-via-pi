@@ -24,6 +24,9 @@ export type BookAudioContext = {
   // ponytail: LLM-pinned last readable section href. When auto-advance is on,
   // playback stops after this section instead of continuing into back matter.
   readableEndSectionHref?: string | null;
+  // ponytail: LLM-pinned first readable section href. The ghost jumps here
+  // when the active item is in front matter (before the readable window).
+  readableStartSectionHref?: string | null;
 };
 
 export type AudioSession = {
@@ -37,6 +40,8 @@ export type AudioSession = {
   currentIndex: number;
   // ponytail: null when no metadata row or no end anchor pinned.
   readableEndSectionHref?: string | null;
+  // ponytail: null when no metadata row or no start anchor pinned.
+  readableStartSectionHref?: string | null;
 };
 
 export type TtsStartPos = {
@@ -140,6 +145,10 @@ export type AudioContextValue = {
   autoAdvanceBook: boolean;
   /** Id of the currently active playlist item, if any. */
   activeItemId: string | null;
+  /** Computed next readable segment of the active item's book, when
+   *  autoAdvanceBook is on and a next readable segment exists. Ephemeral -
+   *  not a persisted PlaylistItem until it promotes to active. */
+  ghostItem: { sectionHref: string; sectionLabel: string } | null;
   /**
    * Start, queue, or add a book section to the playlist.
    * `now` = add after active (or as first) and start playing.
