@@ -12,20 +12,37 @@ export type FlatSection = {
   index: number;
 };
 
-function normHref(href: string): string {
-  return href.split("#")[0].split("?")[0];
+function basename(href: string): string {
+  return href.split("#")[0].split("?")[0].split("/").pop() ?? "";
 }
 
-function basename(href: string): string {
-  return normHref(href).split("/").pop() ?? "";
+type Leaf = { href: string; label: string };
+
+/**
+ * Collect ToC leaves depth-first in reading order. Each leaf becomes one
+ * playlist entry. The fragment (if any) is preserved on the href so the
+ * playlist can address sub-chapter verses individually (e.g. the Analects,
+ * whose flat ToC points 499 verse entries into ~24 shared XHTML files).
+ */
+function collectLeaves(items: NavItem[], out: Leaf[]) {
+  for (const item of items) {
+    if (item.href) {
+      out.push({ href: item.href, label: item.label });
+    }
+    if (item.subitems?.length) collectLeaves(item.subitems, out);
+  }
 }
 
 /**
- * Build the TTS playback playlist from the EPUB spine (true reading order),
- * labeling each item by the most recent ToC entry that resolves to it.
- * Spine items with no matching ToC entry inherit their chapter's label with
- * "(continued)" appended, so multi-file chapters are read in full instead of
- * jumping from the heading page to the next ToC entry.
+ * Build the TTS playback playlist. One entry per ToC leaf (fragment-aware),
+ * grouped by spine file in true reading order. Spine items with no ToC leaf
+ * (front matter, or continuation splits of a multi-file chapter) emit one
+ * entry each — labeled "(continued)" off the most recent leaf so multi-file
+ * chapters still read through, unnamed front matter stays blank.
+ *
+ * Downstream text extraction (extractSectionText, viewer.getSectionText)
+ * honors the #fragment to bound TTS to that verse, so the existing
+ * ENDED → auto-advance path moves leaf-by-leaf without special-casing.
  */
 export function buildSpinePlaylist(
   spine: SpineItem[],
@@ -33,47 +50,44 @@ export function buildSpinePlaylist(
 ): FlatSection[] {
   // ponytail: O(n) basename lookup. ToC hrefs may carry #fragments and path
   // prefixes the spine omits; basename is the stable spine identity.
-  const spineByBasename = new Map<string, SpineItem>();
-  for (const section of spine) {
-    const b = basename(section.href);
-    if (b && !spineByBasename.has(b)) {
-      spineByBasename.set(b, section);
-    }
-  }
-
-  const labelBySpineIndex = new Map<number, string>();
-  function walk(items: NavItem[]) {
-    for (const item of items) {
-      const b = basename(item.href);
-      if (b) {
-        const section = spineByBasename.get(b);
-        if (section && !labelBySpineIndex.has(section.index)) {
-          labelBySpineIndex.set(section.index, item.label);
-        }
-      }
-      if (item.subitems?.length) walk(item.subitems);
-    }
-  }
-  walk(toc);
+  const linearSpine = spine.filter((s) => s.linear !== false);
+  const leaves: Leaf[] = [];
+  collectLeaves(toc, leaves);
 
   const playlist: FlatSection[] = [];
-  let currentLabel = "";
-  for (const section of spine) {
-    if (section.linear === false) continue;
+  const seen = new Set<string>();
+  let prevLabel = "";
 
-    const label = labelBySpineIndex.get(section.index);
-    if (label) {
-      currentLabel = label;
-      playlist.push({ href: section.href, label, index: playlist.length });
-    } else if (currentLabel) {
-      playlist.push({
-        href: section.href,
-        label: `${currentLabel} (continued)`,
-        index: playlist.length,
-      });
-    } else {
-      // Front matter before the first ToC entry; still playable, just unnamed.
-      playlist.push({ href: section.href, label: "", index: playlist.length });
+  for (const section of linearSpine) {
+    const base = basename(section.href);
+    if (!base) continue;
+    const matched = leaves.filter((l) => basename(l.href) === base);
+    // ponytail: when verses (#fragments) subdivide a file, bare-href leaves
+    // are chapter headings — emitting both would read the whole file then
+    // re-read the first verse on advance. Drop the bare headings; keep all
+    // fragments. Files with no fragments keep their single bare entry.
+    const hasFragment = matched.some((l) => l.href.includes("#"));
+    const effective = hasFragment
+      ? matched.filter((l) => l.href.includes("#"))
+      : matched;
+    if (effective.length === 0) {
+      // ponytail: orphan spine item — no ToC leaf points here. Emit it so the
+      // file is still playable in sequence; carry the prior leaf's label as
+      // "(continued)" so multi-file chapters (Calibre splits) keep their
+      // chapter title. Front matter before any leaf stays blank.
+      const href = section.href;
+      if (seen.has(href)) continue;
+      seen.add(href);
+      const label = prevLabel ? `${prevLabel} (continued)` : "";
+      playlist.push({ href, label, index: playlist.length });
+      continue;
+    }
+    for (const leaf of effective) {
+      // ponytail: dedup — some EPUBs repeat nav points; first occurrence wins.
+      if (seen.has(leaf.href)) continue;
+      seen.add(leaf.href);
+      playlist.push({ href: leaf.href, label: leaf.label, index: playlist.length });
+      prevLabel = leaf.label;
     }
   }
 

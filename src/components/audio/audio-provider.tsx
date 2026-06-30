@@ -271,15 +271,46 @@ export function AudioSettingsModal({
 
 // ponytail: section hrefs can carry a #fragment (or query) that differs
 // between the rendition `rendered` event and the TOC href stored in
-// sectionHrefRef. Strip them, then fall back to a basename compare so a path
-// resolution mismatch (relative vs absolute) doesn't cause a false negative.
+// sectionHrefRef. When BOTH sides carry a fragment, compare basename + "#" +
+// fragment so verse-level entries (Analects) don't all collapse to one match.
+// Otherwise fall back to basename compare so a path resolution mismatch
+// (relative vs absolute, rendition-reported vs stored) doesn't false-negative.
 function ttsSectionMatches(a: string, b: string): boolean {
-  const strip = (h: string) => h.split("#")[0].split("?")[0].trim();
+  const strip = (h: string) => h.split("?")[0].trim();
   const pa = strip(a);
   const pb = strip(b);
-  if (pa === pb) return true;
-  const base = (h: string) => h.split("/").pop() ?? h;
+  const fa = pa.indexOf("#");
+  const fb = pb.indexOf("#");
+  const base = (h: string) => h.split("#")[0].split("/").pop() ?? h;
+  if (fa >= 0 && fb >= 0) {
+    return base(pa) === base(pb) && pa.slice(fa) === pb.slice(fb);
+  }
   return base(pa) === base(pb);
+}
+
+/**
+ * When `href` carries a #fragment, TTS text is already bounded to that verse
+ * (extractSectionText / viewer.getSectionText both honor the fragment), so a
+ * `startPos.elementId` equal to the fragment would compute an offset against
+ * the whole-file DOM and land past the end of the bounded text. Drop elementId
+ * in that case; keep passage-level `useVisible` / `startCfi` (independent of
+ * the fragment).
+ */
+function normalizeStartPos(
+  href: string,
+  startPos?: { elementId?: string; useVisible?: boolean; startCfi?: string },
+): { elementId?: string; useVisible?: boolean; startCfi?: string } | undefined {
+  if (!startPos) return undefined;
+  const fragIdx = href.indexOf("#");
+  if (fragIdx < 0) return startPos;
+  const fragment = href.slice(fragIdx + 1);
+  if (startPos.elementId && startPos.elementId === fragment) {
+    const { elementId: _drop, ...rest } = startPos;
+    // ponytail: if nothing else is set, return undefined so the engine starts
+    // at chunk 0 of the bounded text.
+    return rest.useVisible || rest.startCfi ? rest : undefined;
+  }
+  return startPos;
 }
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
@@ -541,10 +572,19 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     // uses `bookId` (the session's book). Mirrors the guards in
     // syncViewerToPlayback and rehighlightCurrentChunk.
     if (viewer && openBookRef.current?.bookId === bookId) {
-      if (currentHref !== href) {
+      // ponytail: split the #fragment off. Navigation is per-file (basename);
+      // two verses in the same file share currentHref, so compare basenames
+      // and only navigate when the FILE differs. The fragment is passed to
+      // getSectionText so TTS reads one verse, not the whole file.
+      const fragIdx = href.indexOf("#");
+      const fragment = fragIdx >= 0 ? href.slice(fragIdx + 1) : undefined;
+      const hrefPath = fragIdx >= 0 ? href.slice(0, fragIdx) : href;
+      const currentPath = currentHref?.split("#")[0] ?? "";
+      const sameBase = ttsSectionMatches(hrefPath, currentPath);
+      if (!sameBase) {
         await viewer.navigateTo(href, { ttsNav: true });
       }
-      return viewer.getSectionText() ?? "";
+      return viewer.getSectionText(fragment) ?? "";
     }
 
     const res = await fetch("/api/reader/section-text", {
@@ -1140,7 +1180,7 @@ let cancelled = false;
           // duplicate "next" entry.
           await playlistMutations.activateItem(active.id);
           ensureSessionForItem(active);
-          startSection(href, label, startPos, bookId);
+          startSection(href, label, normalizeStartPos(href, startPos), bookId);
         }
         return;
       }
@@ -1149,10 +1189,15 @@ let cancelled = false;
       // ponytail: navigate the viewer to the target section BEFORE starting TTS
       // so highlight-follow-along has rendered DOM to mark when chunk 0 plays.
       // Without this, highlightChunk fires before the new section is in the
-      // iframe → no marks (audio plays, highlight missing).
+      // iframe → no marks (audio plays, highlight missing). Skip only when the
+      // FILE is already current AND there's no #fragment — a fragment needs
+      // display(fragmentHref) to paginate to the verse's CFI (the reliable
+      // page-jump on "Play now"), even within the same file.
       const viewer = registeredViewerRef.current?.current;
       const currentHref = openBookRef.current?.currentHref;
-      if (viewer && currentHref !== href) {
+      const hasFragment = href.includes("#");
+      const sameFile = ttsSectionMatches(currentHref ?? "", href);
+      if (viewer && (!sameFile || hasFragment)) {
         await viewer.navigateTo(href, { ttsNav: true }).catch(() => {});
       }
       const item = await playlistMutations.addItem({
@@ -1164,7 +1209,7 @@ let cancelled = false;
       });
       await playlistMutations.activateItem(item.id);
       ensureSessionForItem(item);
-      startSection(href, label, startPos, bookId);
+      startSection(href, label, normalizeStartPos(href, startPos), bookId);
     },
     [playlistMutations, playPause, startSection, ensureSessionForItem],
   );

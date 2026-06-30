@@ -43,7 +43,9 @@ export async function extractSectionText(
 
   // Build manifest: id → { href, full path }
   const manifest = parseManifest(opfContent);
-  const cleanHref = sectionHref.split("#")[0];
+  // ponytail: split the #fragment off before manifest matching (hrefs in the
+  // manifest never carry one), but keep it for sub-chapter extraction below.
+  const [cleanHref, fragment] = splitFragment(sectionHref);
 
   // Match the section's manifest entry. Try several normalizations because
   // TOC hrefs vary across EPUBs (relative, rooted, with/without fragment).
@@ -57,7 +59,90 @@ export async function extractSectionText(
     throw new Error(`Section file not found in EPUB: ${fullPath}`);
   }
 
-  return opts?.forTts ? htmlToTtsText(content) : stripHtml(content).trim();
+  // ponytail: when a #fragment is present, bound the text to that element so
+  // verse-level playlist entries (Analects) read one verse then advance,
+  // instead of the whole file per entry. Falls back to whole-file text if the
+  // id isn't found (malformed markup / outdated ToC) — safer than throwing.
+  const scoped = fragment
+    ? extractElementByIdHtml(content, fragment) ?? content
+    : content;
+
+  return opts?.forTts ? htmlToTtsText(scoped) : stripHtml(scoped).trim();
+}
+
+function splitFragment(href: string): [string, string | null] {
+  const idx = href.indexOf("#");
+  return idx >= 0 ? [href.slice(0, idx), href.slice(idx + 1)] : [href, null];
+}
+
+/**
+ * Return the inner HTML of the first element carrying `id="<id>"`, tracked by
+ * tag-name depth so nested same-name descendants stay inside. null when the id
+ * isn't found.
+ *
+ * ponytail: scanner, not a parser — no DOMParser in Node, no new dep. Known
+ * ceilings: (1) malformed/unclosed tags fall through to "rest of document
+ * after the open tag" (regex-based; rare in EPUBs produced by Calibre/Sigil);
+ * (2) self-closing variants of the matched tag (e.g. `<div/>`) are treated as
+ * opens — handled by requiring a separate close token, so a self-closer would
+ * over-capture. Both degrade to "reads a bit more", never crash. Upgrade path
+ * if measurable breakage: switch to cheerio.
+ */
+export function extractElementByIdHtml(
+  content: string,
+  id: string,
+): string | null {
+  if (!id) return null;
+  // Locate the opening tag that owns the id. Handle double/single quotes and
+  // tolerate attribute ordering (`id` may not be first).
+  const tagRe = new RegExp(
+    `<([a-zA-Z][\\w-]*)\\b[^>]*?\\bid\\s*=\\s*["']${escapeRegex(id)}["'][^>]*?(/?)>`,
+  );
+  const open = content.search(tagRe);
+  if (open < 0) return null;
+  const openMatch = content.slice(open).match(tagRe)!;
+  const tagName = openMatch[1].toLowerCase();
+  const selfClosed = openMatch[2] === "/";
+  const tagStart = open;
+  const afterOpenTag = open + openMatch[0].length;
+  if (selfClosed) return "";
+
+  // Walk forward counting depth of `tagName` open/close tags (other tag names
+  // are irrelevant — we only care when our element's matching close appears).
+  const openTagRe = new RegExp(`<${tagName}\\b`, "gi");
+  const closeTagRe = new RegExp(`</${tagName}\\s*>`, "gi");
+  // Re-scan from afterOpenTag so depth starts at 1 (the open tag itself).
+  let depth = 1;
+  let pos = afterOpenTag;
+  let nextOpen: number;
+  let nextClose: number;
+  while (depth > 0) {
+    openTagRe.lastIndex = pos;
+    closeTagRe.lastIndex = pos;
+    const o = openTagRe.exec(content);
+    const c = closeTagRe.exec(content);
+    nextOpen = o ? o.index : Infinity;
+    nextClose = c ? c.index : Infinity;
+    if (nextClose === Infinity) {
+      // ponytail: unclosed element — return from the open tag to end of doc.
+      return content.slice(afterOpenTag);
+    }
+    if (nextOpen < nextClose) {
+      depth++;
+      pos = openTagRe.lastIndex;
+    } else {
+      depth--;
+      pos = closeTagRe.lastIndex;
+      if (depth === 0) {
+        return content.slice(afterOpenTag, nextClose);
+      }
+    }
+  }
+  return content.slice(afterOpenTag, afterOpenTag); // unreachable
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ─── Helpers (mirror epub-processor.ts patterns) ───────────────────────────

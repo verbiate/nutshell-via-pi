@@ -392,7 +392,13 @@ export interface EpubViewerHandle {
   flashCfi: (cfi: string) => Promise<void>;
   navigateToParagraph: (paragraphIndex: number) => Promise<void>;
   resize: () => void;
-  getSectionText: () => string;
+  /**
+   * Return TTS-ready text of the current section. When `fragmentId` is given,
+   * bound the text to that element (sub-chapter verse) so verse-level playlist
+   * entries read only their verse, not the whole file. Falls back to the
+   * whole section when the id isn't in the rendered DOM yet.
+   */
+  getSectionText: (fragmentId?: string) => string;
   highlightChunk: (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
@@ -727,14 +733,21 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           }
         }
       },
-      getSectionText: () => {
+      getSectionText: (fragmentId?: string) => {
         // ponytail: read directly from the DOM iframe. Use the shared TTS text
         // prep helper so block boundaries (chapter numbers, titles, bylines)
         // become sentence-separated lines with full-stop pauses.
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body) return "";
-        const clone = doc.body.cloneNode(true) as HTMLElement;
+        // ponytail: when a #fragment targets a sub-chapter verse, bound the
+        // cloned subtree to that element so TTS reads one verse then advances.
+        // Falls back to the whole body if the id isn't present (section not
+        // yet rendered / stale ToC) — caller still gets usable text.
+        const root: HTMLElement = fragmentId
+          ? (doc.getElementById(fragmentId) ?? doc.body)
+          : doc.body;
+        const clone = root.cloneNode(true) as HTMLElement;
         return htmlToTtsText(clone.innerHTML);
       },
       highlightChunk: async (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => {
