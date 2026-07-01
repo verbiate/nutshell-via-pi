@@ -37,6 +37,63 @@ function hasTextBlockDescendant(el: HTMLElement): boolean {
   );
 }
 
+/**
+ * Find the next element in document order — strictly after `start`'s own
+ * subtree — that carries a non-empty `id`. Used by `getSectionText` to bound a
+ * ToC-anchored range: the anchor marks the START of a section, the next anchor
+ * in the same file ends it. Returns null when no next anchored element exists.
+ *
+ * Exported for unit testing; production caller is `getSectionText` below.
+ *
+ * ponytail: skip the entire subtree of `start` before searching. EPUBs embed
+ * unrelated ids inside section wrappers (footnote refs, pagebreak spans like
+ * `<span id="page_47"/>`, figure anchors). Searching from `start` directly
+ * would match the first nested id and truncate the range prematurely — leaving
+ * the section's text empty or just a few chars, which causes TTS to no-op.
+ *
+ * First walk to the first element strictly after `start`'s subtree (next
+ * sibling, or ancestor's next sibling, etc., up to body). Then TreeWalker
+ * forward from that position.
+ *
+ * Cross-realm: iframe Elements fail `instanceof Element` against the parent
+ * window, so we duck-type on `id` / `nodeType` rather than instanceof-check.
+ */
+export function findNextAnchoredElement(
+  doc: Document,
+  start: Element,
+): Element | null {
+  // Walk to the first element strictly after `start`'s subtree.
+  let cursor: Element | null = start;
+  let afterSubtree: Element | null = null;
+  while (cursor && cursor !== doc.body) {
+    const sib = cursor.nextElementSibling;
+    if (sib) {
+      afterSubtree = sib;
+      break;
+    }
+    cursor = cursor.parentElement;
+  }
+  if (!afterSubtree) return null;
+
+  const walker = doc.createTreeWalker(
+    doc.body,
+    NodeFilter.SHOW_ELEMENT,
+    {
+      acceptNode(node) {
+        const el = node as Element;
+        return el.id ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      },
+    },
+  );
+  walker.currentNode = afterSubtree;
+  // ponytail: position at `afterSubtree` (which itself carries no id in the
+  // common case) — nextNode() descends into its subtree first, which is
+  // correct: any id'd element inside `afterSubtree` is genuinely *after*
+  // `start`'s subtree in document order.
+  if ((walker.currentNode as Element).id) return walker.currentNode as Element;
+  return walker.nextNode() as Element | null;
+}
+
 // ponytail: navigate by block element, not text offset. wrapRangePerBlock
 // extracts/wraps text nodes, which detaches/reindexes them and makes a
 // text-offset CFI point at a node that no longer lives where its path claims
@@ -397,8 +454,15 @@ export interface EpubViewerHandle {
    * bound the text to that element (sub-chapter verse) so verse-level playlist
    * entries read only their verse, not the whole file. Falls back to the
    * whole section when the id isn't in the rendered DOM yet.
+   *
+   * `endFragmentId` overrides the range's end boundary. By default the end is
+   * auto-discovered as the next id'd element in the DOM (findNextAnchoredElement),
+   * but EPUBs sometimes carry sub-section ids that are NOT ToC leaves (e.g.
+   * Blitzscaling's s16/s17/s18 under s15). Passing the next ToC leaf's fragment
+   * here bounds the range correctly — including those sub-sections as the user
+   * expects — and is preferred whenever the caller knows the playlist order.
    */
-  getSectionText: (fragmentId?: string) => string;
+  getSectionText: (fragmentId?: string, endFragmentId?: string) => string;
   highlightChunk: (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => Promise<void>;
   clearTtsHighlight: () => void;
   /**
@@ -733,22 +797,49 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           }
         }
       },
-      getSectionText: (fragmentId?: string) => {
+      getSectionText: (fragmentId?: string, endFragmentId?: string) => {
         // ponytail: read directly from the DOM iframe. Use the shared TTS text
         // prep helper so block boundaries (chapter numbers, titles, bylines)
         // become sentence-separated lines with full-stop pauses.
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc?.body) return "";
-        // ponytail: when a #fragment targets a sub-chapter verse, bound the
-        // cloned subtree to that element so TTS reads one verse then advances.
-        // Falls back to the whole body if the id isn't present (section not
-        // yet rendered / stale ToC) — caller still gets usable text.
-        const root: HTMLElement = fragmentId
-          ? (doc.getElementById(fragmentId) ?? doc.body)
-          : doc.body;
-        const clone = root.cloneNode(true) as HTMLElement;
-        return htmlToTtsText(clone.innerHTML);
+        // ponytail: when a #fragment targets a sub-chapter verse, treat the
+        // anchor as the START of a range that extends to the next element in
+        // document order carrying a non-empty id (the next ToC anchor in the
+        // same file). Without this, verse-structured books read only the one
+        // paragraph the anchor points at — making each section ~400 chars and
+        // forcing TTS to advance after every paragraph. Range extraction reads
+        // everything between anchors as the user expects.
+        if (!fragmentId) {
+          return htmlToTtsText(doc.body.innerHTML);
+        }
+        const startEl = doc.getElementById(fragmentId);
+        if (!startEl) {
+          return htmlToTtsText(doc.body.innerHTML);
+        }
+        // ponytail: prefer the caller-provided endFragmentId (the next ToC leaf
+        // in the same file) over DOM auto-discovery. findNextAnchoredElement
+        // returns the next id'd element, which may be a sub-section heading NOT
+        // in the ToC — e.g. Blitzscaling's s16/s17/s18 sit under s15 "The Three
+        // Basics of Blitzscaling" in the DOM but are absent from the ToC, so
+        // DOM discovery truncates s15 to just its intro paragraph. The
+        // ToC-derived boundary includes those sub-sections as the user expects.
+        // Falls back to findNextAnchoredElement when endFragmentId is absent or
+        // its element isn't in the rendered DOM (keeps old callers working).
+        const endEl = endFragmentId
+          ? (doc.getElementById(endFragmentId) ?? findNextAnchoredElement(doc, startEl))
+          : findNextAnchoredElement(doc, startEl);
+        const range = doc.createRange();
+        range.setStartBefore(startEl);
+        if (endEl) {
+          range.setEndBefore(endEl);
+        } else {
+          range.setEndAfter(doc.body);
+        }
+        const container = doc.createElement("div");
+        container.appendChild(range.cloneContents());
+        return htmlToTtsText(container.innerHTML);
       },
       highlightChunk: async (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => {
         const iframe = containerRef.current?.querySelector("iframe");

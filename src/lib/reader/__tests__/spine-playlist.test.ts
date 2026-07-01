@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSpinePlaylist, type SpineItem } from "../spine-playlist";
+import { buildSpinePlaylist, nextLeafFragmentInSameFile, type SpineItem } from "../spine-playlist";
 import type { NavItem } from "@likecoin/epub-ts";
 
 function makeSpine(hrefs: string[]): SpineItem[] {
@@ -152,5 +152,57 @@ describe("buildSpinePlaylist", () => {
     // ponytail: parent headings are dropped (their files are subdivided by
     // fragment leaves); only the verse leaves survive, depth-first.
     expect(playlist.map((p) => p.label)).toEqual(["I.1", "I.2", "II.1"]);
+  });
+});
+
+describe("nextLeafFragmentInSameFile", () => {
+  // ponytail: Blitzscaling-shape — s15 "The Three Basics" is followed by s19
+  // in the ToC, but the DOM carries s16/s17/s18 as non-ToC sub-section ids
+  // between them. The extractor must bound s15's range at s19 (the next ToC
+  // leaf), not s16 (the next DOM id).
+  it("returns the next ToC leaf's fragment when it shares the same file", () => {
+    const flat = buildSpinePlaylist(
+      [
+        { href: "c001.xhtml", index: 0 },
+        { href: "c002.xhtml", index: 1 },
+      ],
+      [
+        { label: "Three Basics", href: "c001.xhtml#s15" },
+        { label: "Five Stages", href: "c001.xhtml#s19" },
+        { label: "Next Chapter", href: "c002.xhtml#s1" },
+      ] as NavItem[],
+    );
+    expect(nextLeafFragmentInSameFile(flat, "c001.xhtml#s15")).toBe("s19");
+  });
+
+  it("returns undefined when the next leaf is in a different file (chapter end)", () => {
+    const flat = buildSpinePlaylist(
+      [{ href: "c001.xhtml", index: 0 }, { href: "c002.xhtml", index: 1 }],
+      [
+        { label: "Last Section", href: "c001.xhtml#s19" },
+        { label: "Next Chapter", href: "c002.xhtml#s1" },
+      ] as NavItem[],
+    );
+    expect(nextLeafFragmentInSameFile(flat, "c001.xhtml#s19")).toBeUndefined();
+  });
+
+  it("returns undefined when the href is not in the flatToc", () => {
+    const flat = buildSpinePlaylist(
+      [{ href: "c001.xhtml", index: 0 }],
+      [{ label: "S1", href: "c001.xhtml#s1" }] as NavItem[],
+    );
+    expect(nextLeafFragmentInSameFile(flat, "c001.xhtml#unknown")).toBeUndefined();
+  });
+
+  it("tolerates path prefixes (OEBPS/... vs bare) via basename compare", () => {
+    const flat = buildSpinePlaylist(
+      [{ href: "OEBPS/c001.xhtml", index: 0 }],
+      [
+        { label: "A", href: "OEBPS/c001.xhtml#s15" },
+        { label: "B", href: "OEBPS/c001.xhtml#s19" },
+      ] as NavItem[],
+    );
+    // caller passes a prefixed href; flatToc carries the same prefix
+    expect(nextLeafFragmentInSameFile(flat, "OEBPS/c001.xhtml#s15")).toBe("s19");
   });
 });

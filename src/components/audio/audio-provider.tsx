@@ -13,7 +13,7 @@ import type {
   AudioSession,
   BookAudioContext,
 } from "./audio-context";
-import { buildSpinePlaylist } from "@/lib/reader/spine-playlist";
+import { buildSpinePlaylist, nextLeafFragmentInSameFile } from "@/lib/reader/spine-playlist";
 import { resolveAdvance, deriveGhost, type GhostItem } from "@/lib/reader/ghost";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
@@ -584,7 +584,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       if (!sameBase) {
         await viewer.navigateTo(href, { ttsNav: true });
       }
-      return viewer.getSectionText(fragment) ?? "";
+      // ponytail: bound the section's range at the NEXT ToC leaf in the same
+      // file, not the next DOM id'd element. EPUBs sometimes carry sub-section
+      // ids absent from the ToC (Blitzscaling s16/s17/s18 under s15) — DOM
+      // auto-discovery would truncate the section to its intro paragraph.
+      // Session flatToc is the live playlist; fall back to building from
+      // openBook when the session isn't established yet.
+      const flatToc =
+        sessionRef.current?.flatToc ??
+        (openBookRef.current
+          ? buildSpinePlaylist(openBookRef.current.spineItems, openBookRef.current.toc)
+          : []);
+      const endFragment = fragment ? nextLeafFragmentInSameFile(flatToc, href) : undefined;
+      const txt = viewer.getSectionText(fragment, endFragment) ?? "";
+      return txt;
     }
 
     const res = await fetch("/api/reader/section-text", {
@@ -865,8 +878,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const s = sessionRef.current;
     if (!s) return;
 
+    // ponytail: explicit "Play next section" click must advance regardless of
+    // the auto-advance toggle — that toggle only gates automatic advancement
+    // at section end (handleSectionComplete). Pass true so deriveGhost honors
+    // the user's explicit intent instead of no-op'ing when autoplay is off.
     const ghost = active
-      ? deriveGhost(autoAdvanceRef.current, s, active, ttsSectionMatches)
+      ? deriveGhost(true, s, active, ttsSectionMatches)
       : null;
     const manualNext = active
       ? (playlistItemsRef.current.find(

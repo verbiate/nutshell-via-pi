@@ -1983,6 +1983,7 @@ function DiscussionView({
                     role="assistant"
                     content={initialContent}
                     pulsing={streamingInitial && !initialContent}
+                    streaming={streamingInitial}
                     spineHrefs={spineHrefs}
                     onNavigateToHref={onNavigateToHref}
                     attachedBookHrefs={attachedBookHrefs}
@@ -2039,6 +2040,11 @@ function DiscussionView({
                         slot.message.role === "assistant" &&
                         streaming &&
                         !slot.message.content &&
+                        slot.index === messages.length - 1
+                      }
+                      streaming={
+                        slot.message.role === "assistant" &&
+                        streaming &&
                         slot.index === messages.length - 1
                       }
                       spineHrefs={spineHrefs}
@@ -2422,6 +2428,7 @@ function MessageBubble({
   role,
   content,
   pulsing,
+  streaming,
   spineHrefs,
   onNavigateToHref,
   attachedBookHrefs,
@@ -2432,6 +2439,7 @@ function MessageBubble({
   role: "user" | "assistant";
   content: string;
   pulsing?: boolean;
+  streaming?: boolean;
   spineHrefs: string[];
   onNavigateToHref?: (href: string) => void;
   attachedBookHrefs?: Record<string, string[]>;
@@ -2526,6 +2534,7 @@ function MessageBubble({
           // ponytail: strip markdown to speakable plaintext so the engine
           // doesn't read asterisks/hashes/etc. aloud. Cache key (SHA-256 of
           // text) and both engines then receive the same plaintext.
+          disabled={streaming}
           text={markdownToTtsText(content)}
           label={content
             .replace(/[#*`>_~]/g, "")

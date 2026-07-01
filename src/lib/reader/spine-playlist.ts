@@ -93,3 +93,32 @@ export function buildSpinePlaylist(
 
   return playlist;
 }
+
+/**
+ * Fragment id of the next flatToc leaf after `href` that lives in the SAME
+ * spine file. Used by TTS text extraction to bound a section's range at the
+ * next ToC leaf rather than the next DOM id'd element — which may be a
+ * sub-section heading NOT in the ToC (e.g. Blitzscaling's s16/s17/s18 sit
+ * under s15 "The Three Basics of Blitzscaling" in the DOM but are absent from
+ * the ToC; bounding at s16 truncated s15 to just its intro paragraph).
+ *
+ * Returns undefined when `href` isn't in the flatToc, or when the next entry
+ * belongs to a different file (genuine chapter end → caller falls back to
+ * DOM auto-discovery via findNextAnchoredElement, which correctly runs to the
+ * file's end).
+ */
+export function nextLeafFragmentInSameFile(
+  flatToc: FlatSection[],
+  href: string,
+): string | undefined {
+  const base = basename(href);
+  const frag = href.split("#")[1] ?? "";
+  const idx = flatToc.findIndex(
+    (s) => basename(s.href) === base && (s.href.split("#")[1] ?? "") === frag,
+  );
+  if (idx < 0) return undefined;
+  const next = flatToc[idx + 1];
+  if (!next || basename(next.href) !== base) return undefined;
+  const nextFrag = next.href.split("#")[1] ?? "";
+  return nextFrag || undefined;
+}

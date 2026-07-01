@@ -24,7 +24,15 @@ import { Button } from "@/components/ui/button";
  * re-request for the same active text into a play/pause toggle, so there's no
  * need for a synthetic track id here.
  */
-export function ReadAloudButton({ text, label }: { text: string; label: string }) {
+export function ReadAloudButton({
+  text,
+  label,
+  disabled,
+}: {
+  text: string;
+  label: string;
+  disabled?: boolean;
+}) {
   const { playText, playlistItems, activeItemId, playbackState } = useAudio();
   const [open, setOpen] = useState(false);
 
@@ -38,6 +46,9 @@ export function ReadAloudButton({ text, label }: { text: string; label: string }
   // interrupting vs queueing is a real choice → open the modal.
   const isActive =
     playbackState.state !== "IDLE" && playbackState.state !== "ENDED";
+  // ponytail: non-clickable while this reply is the active audio track
+  // (Reading…/Reading/spinner) OR its text is still streaming in from the LLM.
+  const isDisabled = disabled || isThisPlaying;
 
   async function handlePrimary() {
     if (isActive) {
@@ -60,6 +71,7 @@ export function ReadAloudButton({ text, label }: { text: string; label: string }
           variant="ghost"
           size="sm"
           onClick={handlePrimary}
+          disabled={isDisabled}
           className="h-7 gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
           aria-label="Read this aloud"
         >

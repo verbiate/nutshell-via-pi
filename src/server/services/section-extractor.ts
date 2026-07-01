@@ -59,12 +59,13 @@ export async function extractSectionText(
     throw new Error(`Section file not found in EPUB: ${fullPath}`);
   }
 
-  // ponytail: when a #fragment is present, bound the text to that element so
-  // verse-level playlist entries (Analects) read one verse then advance,
-  // instead of the whole file per entry. Falls back to whole-file text if the
-  // id isn't found (malformed markup / outdated ToC) — safer than throwing.
+  // ponytail: when a #fragment is present, the anchor marks the START of a
+  // range that extends to the next id'd element in the same file (the next
+  // ToC anchor). Reading just the anchor's element would only yield one
+  // paragraph for verse-structured books — section text must span everything
+  // between anchors. Falls back to whole-file text if the id isn't found.
   const scoped = fragment
-    ? extractElementByIdHtml(content, fragment) ?? content
+    ? extractRangeFromIdHtml(content, fragment) ?? content
     : content;
 
   return opts?.forTts ? htmlToTtsText(scoped) : stripHtml(scoped).trim();
@@ -139,6 +140,94 @@ export function extractElementByIdHtml(
     }
   }
   return content.slice(afterOpenTag, afterOpenTag); // unreachable
+}
+
+/**
+ * Return the outer HTML from the element carrying `id="<startId>"` up to (but
+ * not including) the next opening tag — STRICTLY AFTER the start element's own
+ * subtree — that carries any non-empty `id` attribute. Used to scope TTS text
+ * to a *range*: the ToC anchor marks the START of a section; the next anchor
+ * in the same file ends it. Without this, verse-structured books would read
+ * only the one paragraph the anchor points at.
+ *
+ * Returns null when `startId` isn't found (caller falls back to whole file).
+ *
+ * ponytail: scanner, not a parser. Same ceilings as `extractElementByIdHtml`:
+ * malformed/unclosed tags fall through to rest-of-document. Both degrade to
+ * "reads a bit more", never crash. Upgrade path if measurable breakage:
+ * switch to cheerio.
+ *
+ * Subtree skip: EPUBs embed unrelated ids inside section wrappers (footnote
+ * refs, pagebreak spans like `<span id="page_47"/>`, figure anchors). Without
+ * skipping the start element's own subtree first, the next-id search would
+ * match a nested id and truncate the range prematurely. We find the start
+ * element's close tag (depth-tracking walk, same logic as
+ * `extractElementByIdHtml`) and search for the next id'd tag from THAT
+ * position onward.
+ */
+export function extractRangeFromIdHtml(
+  content: string,
+  startId: string,
+): string | null {
+  if (!startId) return null;
+  // Locate the opening tag carrying startId.
+  const startTagRe = new RegExp(
+    `<([a-zA-Z][\\w-]*)\\b[^>]*?\\bid\\s*=\\s*["']${escapeRegex(startId)}["'][^>]*?(/?)>`,
+  );
+  const startMatch = content.match(startTagRe);
+  if (!startMatch) return null;
+  const startOpen = startMatch.index!;
+  const tagName = startMatch[1].toLowerCase();
+  const selfClosed = startMatch[2] === "/";
+  const afterOpenTag = startOpen + startMatch[0].length;
+
+  // ponytail: find where the start element ENDS (its closing tag). For
+  // self-closing tags, the close position is the same as afterOpenTag. For
+  // normal tags, walk forward counting same-tagName depth — same algorithm as
+  // extractElementByIdHtml (reused, not re-extracted, because we need the
+  // close POSITION, not the inner content).
+  let afterSubtree = afterOpenTag;
+  if (!selfClosed) {
+    const openTagRe = new RegExp(`<${tagName}\\b`, "gi");
+    const closeTagRe = new RegExp(`</${tagName}\\s*>`, "gi");
+    let depth = 1;
+    let pos = afterOpenTag;
+    while (depth > 0) {
+      openTagRe.lastIndex = pos;
+      closeTagRe.lastIndex = pos;
+      const o = openTagRe.exec(content);
+      const c = closeTagRe.exec(content);
+      const nextOpen = o ? o.index : Infinity;
+      const nextClose = c ? c.index : Infinity;
+      if (nextClose === Infinity) {
+        // ponytail: unclosed start tag — read to end of doc.
+        return content.slice(startOpen);
+      }
+      if (nextOpen < nextClose) {
+        depth++;
+        pos = openTagRe.lastIndex;
+      } else {
+        depth--;
+        pos = closeTagRe.lastIndex;
+        if (depth === 0) {
+          afterSubtree = pos;
+          break;
+        }
+      }
+    }
+  }
+
+  // Search forward from `afterSubtree` for the next opening tag carrying any
+  // non-empty id. This is the next ToC anchor strictly after `start`'s subtree.
+  const anyIdTagRe =
+    /<[a-zA-Z][\w-]*\b[^>]*?\bid\s*=\s*["'][^"']+["'][^>]*?>/g;
+  anyIdTagRe.lastIndex = afterSubtree;
+  const next = anyIdTagRe.exec(content);
+  if (!next) {
+    // ponytail: no next anchor after `start` — read to end of file.
+    return content.slice(startOpen);
+  }
+  return content.slice(startOpen, next.index);
 }
 
 function escapeRegex(s: string): string {
