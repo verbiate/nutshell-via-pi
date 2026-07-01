@@ -31,7 +31,7 @@ On every load:
 | Stack | `package.json` deps + devDeps |
 | The one mental model / two-tier library / cache keys | Live `src/server/db/schema.prisma` + `services/explainer.ts` + `services/tts.ts` |
 | Repo navigation | `glob` of `src/`, `src/components/`, `src/app/api/`; check for new siblings |
-| The auth gate | `src/middleware.ts` + `src/lib/auth-guards.ts` (file exists, fan-in count) |
+| The auth gate | `src/proxy.ts` + `src/lib/auth-guards.ts` (file exists, fan-in count) |
 | First-day tour (8 stops) | File existence of each stop |
 | Reference files (`architecture.md`, `data-model.md`, `api-and-ops.md`) | Each has its own per-file stamp at top — audit only when that file is loaded on-demand |
 
@@ -119,13 +119,13 @@ _Verified 2026-06-26 against `src/server/db/schema.prisma` + `services/explainer
 | Animation | GSAP 3.15 + `@gsap/react` 2.1 + Lenis 1.3 (smooth scroll); Tweakpane loaded CDN-only in `/design-system` |
 | Tests | Vitest 4 + Playwright 1.59 |
 
-_Verified 2026-06-21 against `package.json`._
+_Verified 2026-07-01 against `package.json`._
 
 ## Repo navigation
 
 ```
 src/
-  middleware.ts            # edge session-cookie gate (no Prisma access)
+  proxy.ts                 # edge session-cookie gate (no Prisma access)
   app/
     (auth)/ (library)/ (reader)/ admin/ profile/   # route groups = NOT url segments
     design-system/         # dev-only gallery + Tweakpane token tuner (post-v1.0)
@@ -153,35 +153,35 @@ top glassmorphism chrome (`reader-chrome.tsx`, `h-12`, hide-on-idle) + left
 sidebar rail (`reader-sidebar.tsx`) hosting a panel system (`reader-panel.tsx`
 + bookmarks/highlights/search/book-settings/themes/tts panels).
 
-_Verified 2026-06-26 against `src/` filesystem._
+_Verified 2026-07-01 against `src/` filesystem._
 
 ## The auth gate (read before any protected work)
 
 Nothing is anonymous. Two layers:
 
-1. **Edge middleware** `src/middleware.ts:11` — cheap cookie check; redirects
+1. **Edge proxy** `src/proxy.ts:11` — cheap cookie check; redirects
    unauthenticated users from `/my-library`, `/book/*`, `/admin/*`.
 2. **Server guards** `src/lib/auth-guards.ts` — `requireAuth` / `requireAdmin`
-   at the top of **every** API handler (most-depended file, 42 fan-in).
+   at the top of **every** API handler.
 
 Cookie name: `better-auth.session_token`.
 
-_Verified 2026-06-21 against `src/middleware.ts` + `src/lib/auth-guards.ts`._
+_Verified 2026-07-01 against `src/proxy.ts` + `src/lib/auth-guards.ts`._
 
 ## First-day reading order (the 8-stop tour)
 
 From `.understand-anything/knowledge-graph.json` `tour[]`:
 
 1. `AGENTS.md` + `package.json` — agent profile + stack
-2. `src/middleware.ts` + `src/lib/auth-guards.ts` — the gate
+2. `src/proxy.ts` + `src/lib/auth-guards.ts` — the gate
 3. `src/server/db/schema.prisma` — Universal/Personal split
 4. `api/books/upload/route.ts` + `services/epub-processor.ts` — ingest + dedup
 5. `components/reader/reader-client.tsx` + `epub-viewer.tsx` — the reader (CFI)
-6. `api/explainers/route.ts` + `services/explainer.ts` — cache-first AI
+6. `api/explainers/[id]/route.ts` + `services/explainer.ts` — cache-first AI
 7. `api/tts/generate/route.ts` + `services/tts.ts` — multi-provider TTS
 8. `services/admin.ts` + `AuditLog` — access control & provenance
 
-_Verified 2026-06-21 against file existence._
+_Verified 2026-07-01 against file existence._
 
 ## When to use this skill
 

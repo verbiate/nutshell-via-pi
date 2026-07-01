@@ -14,6 +14,13 @@ vi.mock("@/server/db", () => ({
       findUnique: vi.fn(),
       delete: vi.fn(),
     },
+    note: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
     userBookAccess: {
       findUnique: vi.fn(),
     },
@@ -31,6 +38,10 @@ import {
   getHighlights,
   createHighlight,
   deleteHighlight,
+  getNotes,
+  createNote,
+  updateNote,
+  deleteNote,
   verifyBookAccess,
 } from "@/server/services/reader";
 
@@ -139,6 +150,65 @@ describe("READ-07: Highlight service", () => {
   it("deleteHighlight throws for non-owner", async () => {
     vi.mocked(db.highlight.findUnique).mockResolvedValue({ userId: "u2" } as any);
     await expect(deleteHighlight("u1", "h1")).rejects.toThrow("Highlight not found or access denied");
+  });
+});
+
+describe("READ: Note service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("getNotes returns ordered notes", async () => {
+    vi.mocked(db.note.findMany).mockResolvedValue([
+      { id: "n1", body: "a thought" },
+    ] as any);
+    const result = await getNotes("u1", "book1");
+    expect(result).toHaveLength(1);
+    expect(result[0].body).toBe("a thought");
+    expect(db.note.findMany).toHaveBeenCalledWith({
+      where: { userId: "u1", bookId: "book1" },
+      orderBy: { createdAt: "desc" },
+    });
+  });
+
+  it("createNote inserts with correct fields", async () => {
+    vi.mocked(db.note.create).mockResolvedValue({ id: "n1" } as any);
+    await createNote("u1", "book1", { body: "a thought" });
+    expect(db.note.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "u1",
+        bookId: "book1",
+        body: "a thought",
+      }),
+    });
+  });
+
+  it("updateNote edits owned note", async () => {
+    vi.mocked(db.note.findUnique).mockResolvedValue({ userId: "u1" } as any);
+    vi.mocked(db.note.update).mockResolvedValue({ id: "n1", body: "edited" } as any);
+    const result = await updateNote("u1", "n1", { body: "edited" });
+    expect(result.body).toBe("edited");
+    expect(db.note.update).toHaveBeenCalledWith({
+      where: { id: "n1" },
+      data: { body: "edited" },
+    });
+  });
+
+  it("updateNote throws for non-owner", async () => {
+    vi.mocked(db.note.findUnique).mockResolvedValue({ userId: "u2" } as any);
+    await expect(updateNote("u1", "n1", { body: "x" })).rejects.toThrow("Note not found or access denied");
+  });
+
+  it("deleteNote removes owned note", async () => {
+    vi.mocked(db.note.findUnique).mockResolvedValue({ userId: "u1" } as any);
+    vi.mocked(db.note.delete).mockResolvedValue({} as any);
+    await deleteNote("u1", "n1");
+    expect(db.note.delete).toHaveBeenCalledWith({ where: { id: "n1" } });
+  });
+
+  it("deleteNote throws for non-owner", async () => {
+    vi.mocked(db.note.findUnique).mockResolvedValue({ userId: "u2" } as any);
+    await expect(deleteNote("u1", "n1")).rejects.toThrow("Note not found or access denied");
   });
 });
 

@@ -31,6 +31,7 @@ model User {
   positions         UserBookPosition[]
   bookmarks         Bookmark[]
   highlights        Highlight[]
+  notes             Note[]
   explainerRequests ExplainerRequest[]
   discussions       Discussion[]
   playlistItems     PlaylistItem[]
@@ -150,6 +151,7 @@ model EpubFile {
   positions         UserBookPosition[]
   bookmarks         Bookmark[]
   highlights        Highlight[]
+  notes             Note[]
   explainerRequests ExplainerRequest[]
   discussions       Discussion[]
   // ponytail: second-book attachments — a discussion can attach at most `max`
@@ -315,6 +317,23 @@ model Highlight {
   book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@unique([userId, bookId, cfi])
+  @@index([userId])
+  @@index([bookId])
+}
+
+// ponytail: passage-independent, book-level note. Unlike Highlight (which is
+// hard-bound to a cfi/selectedText/color), a Note is just a thought tied to the
+// book — no location, sorted by createdAt only.
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  bookId    String
+  body      String
+  createdAt DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book EpubFile @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([bookId])
 }

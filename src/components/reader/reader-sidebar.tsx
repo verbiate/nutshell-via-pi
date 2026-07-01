@@ -153,7 +153,7 @@ export function ReaderSidebar({
               className={cn(
                 "flex h-[46px] w-[46px] items-center justify-center rounded-full border transition-colors",
                 isActive
-                  ? "border-lav-ring bg-lav-soft text-lav shadow-[0_0_0_4px_rgba(161,127,240,0.18)]"
+                  ? "border-2 border-lav bg-lav-soft text-lav"
                   : "border-line bg-card text-muted-foreground hover:border-lav-ring hover:text-lav",
               )}
             >

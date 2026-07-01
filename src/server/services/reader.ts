@@ -227,3 +227,55 @@ export async function deleteHighlight(userId: string, highlightId: string) {
   }
   await db.highlight.delete({ where: { id: highlightId } });
 }
+
+// Notes — passage-independent, book-level annotations.
+
+export async function getNotes(userId: string, bookId: string) {
+  return db.note.findMany({
+    where: { userId, bookId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function createNote(
+  userId: string,
+  bookId: string,
+  data: { body: string }
+) {
+  return db.note.create({
+    data: {
+      userId,
+      bookId,
+      body: data.body,
+    },
+  });
+}
+
+export async function updateNote(
+  userId: string,
+  noteId: string,
+  data: { body: string }
+) {
+  const note = await db.note.findUnique({
+    where: { id: noteId },
+    select: { userId: true },
+  });
+  if (!note || note.userId !== userId) {
+    throw new Error("Note not found or access denied");
+  }
+  return db.note.update({
+    where: { id: noteId },
+    data: { body: data.body },
+  });
+}
+
+export async function deleteNote(userId: string, noteId: string) {
+  const note = await db.note.findUnique({
+    where: { id: noteId },
+    select: { userId: true },
+  });
+  if (!note || note.userId !== userId) {
+    throw new Error("Note not found or access denied");
+  }
+  await db.note.delete({ where: { id: noteId } });
+}
