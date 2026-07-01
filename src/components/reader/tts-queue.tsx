@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -233,20 +234,30 @@ export function TtsQueue({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[min(80vh,600px)] flex flex-col overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        className="h-[min(80vh,600px)] flex flex-col overflow-hidden"
+      >
         <DialogHeader>
-          <div className="flex items-center justify-between pr-9">
+          <div className="flex items-center justify-between gap-2">
             <DialogTitle>Playlist</DialogTitle>
-            {items.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClearAll}
-                className="text-destructive hover:text-destructive"
-              >
-                Clear all
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {items.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClearAll}
+                  className="text-destructive hover:text-destructive"
+                >
+                  Clear all
+                </Button>
+              )}
+              <DialogClose asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </Button>
+              </DialogClose>
+            </div>
           </div>
         </DialogHeader>
 
