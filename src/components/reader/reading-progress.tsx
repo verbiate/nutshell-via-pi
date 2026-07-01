@@ -14,7 +14,7 @@ export function ReadingProgress({ percentage, hidden = false }: ReadingProgressP
   return (
     <div
       className={cn(
-        "absolute bottom-4 right-4 z-50 text-sm text-muted-foreground tabular-nums transition-opacity duration-300",
+        "absolute bottom-12 right-12 z-50 text-sm text-muted-foreground tabular-nums transition-opacity duration-300",
         hidden && "opacity-0 pointer-events-none",
       )}
       role="progressbar"
