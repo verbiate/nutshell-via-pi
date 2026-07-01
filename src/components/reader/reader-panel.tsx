@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { AlertTriangle, Lightbulb, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { BookCover } from "@/components/library/book-cover";
 import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
 import { useAudio } from "@/components/audio/audio-context";
+import { findFlatSectionIndex } from "@/lib/reader/spine-playlist";
 import type { PlaylistBookMeta } from "@/types/playlist";
 
 // ponytail: leading-trim/text-edge are draft CSS (css-inline-3) that crop the
@@ -25,6 +26,22 @@ import type { PlaylistBookMeta } from "@/types/playlist";
 // just render with normal leading, no visual breakage. Cast because csstype
 // hasn't shipped these keys yet.
 const TRIM_STYLE = { leadingTrim: "both", textEdge: "cap" } as CSSProperties;
+
+// ponytail: recursive walk mirroring the flattenToc in bookmarks/highlights
+// panels. Used to resolve the active row via findFlatSectionIndex (basename +
+// fragment aware), so nested chapters light up and path/fragment mismatches
+// between epub.js's relocated href and the ToC's normalized href don't break
+// the active marker.
+function flattenToc(
+  items: NavItem[],
+  acc: { href: string; label: string }[] = []
+): { href: string; label: string }[] {
+  for (const item of items) {
+    acc.push({ href: item.href, label: item.label });
+    if (item.subitems) flattenToc(item.subitems, acc);
+  }
+  return acc;
+}
 
 interface TocEntryProps {
   item: NavItem;
@@ -57,14 +74,16 @@ function TocEntry({
       */}
       <div className="group relative flex items-center">
         {/*
-          ponytail: active top-level rows get a left accent bar (the mockup's
-          chapter indicator). Subitems keep their existing indent border instead
-          — mixing a bar into the indented column reads as noise.
+           ponytail: active rows get a hanging dot — a typographic bullet in
+           the gutter (left-8, ~16px before the text's 48px optical start),
+           decoupled from the sidebar edge so it reads as belonging to the
+           line, not the chrome. Applies at every nesting level; subitem rows
+           indent via marginLeft so the dot sits clear of their indent rail.
         */}
-        {isActive && level === 0 && (
+        {isActive && (
           <span
             aria-hidden
-            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-lav"
+            className="absolute left-8 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-lav"
           />
         )}
         <button
@@ -231,6 +250,20 @@ export function ReaderPanel({
     return () => clearTimeout(t);
   }, [descriptionLoading]);
 
+  // ponytail: resolve the active ToC row from epub.js's relocated href.
+  // currentHref (a spine href that may carry/omit a #fragment or path prefix
+  // the normalized ToC href doesn't) is matched against the flattened ToC via
+  // findFlatSectionIndex — basename + fragment aware with a basename-only
+  // fallback — so the active marker pins exactly one row at any nesting depth
+  // even when the href strings differ. TocEntry then compares strict-equal
+  // against this resolved href (both sides are now real ToC hrefs).
+  const flatToc = useMemo(() => flattenToc(toc), [toc]);
+  const activeHref = useMemo(() => {
+    if (!currentHref) return "";
+    const idx = findFlatSectionIndex(flatToc, currentHref);
+    return idx >= 0 ? flatToc[idx].href : "";
+  }, [flatToc, currentHref]);
+
   return (
     <div className="flex h-full flex-col">
       {/*
@@ -382,7 +415,7 @@ export function ReaderPanel({
                   item={item}
                   onNavigate={onNavigate}
                   level={0}
-                  currentHref={currentHref}
+                  currentHref={activeHref}
                   onAskAboutSection={onAskAboutSection}
                   bookId={bookId}
                   bookMeta={{
