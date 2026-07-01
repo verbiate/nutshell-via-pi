@@ -844,6 +844,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       highlightChunk: async (text: string, opts?: { force?: boolean; skipBlockJump?: boolean }) => {
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
+        console.log("[DIAG-hc] entry", { hasDoc: !!doc?.body, textLen: text.length, force: opts?.force });
         if (!doc?.body || !text.trim()) return;
 
         if (opts?.force) {
@@ -959,8 +960,23 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             if (!startBlock) startBlock = target;
           }
         }
+        console.log("[DIAG-hc] done", {
+          rangeFound: !!range,
+          marksCreated,
+          blocksCount: blocks.length,
+          ttsActiveInDom: doc.querySelectorAll(".tts-active").length,
+          chunkMarksInDom: doc.querySelectorAll("mark.tts-chunk").length,
+        });
       },
       clearTtsHighlight: () => {
+        console.log(
+          "[DIAG-clear] caller:",
+          new Error().stack
+            ?.split("\n")
+            .slice(2, 5)
+            .map((l) => l.trim())
+            .join(" | "),
+        );
         const iframe = containerRef.current?.querySelector("iframe");
         const doc = iframe?.contentDocument;
         if (!doc) return;

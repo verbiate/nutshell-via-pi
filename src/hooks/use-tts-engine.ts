@@ -426,6 +426,12 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       // text is on a later page, highlightChunk advances pages automatically.
       // Read viewerRef through viewerRefRef so the running source.onended chain
       // always sees the latest registered viewer (e.g. after return-to-playing).
+      console.log("[DIAG-play] chunk", {
+        index,
+        hasViewer: !!viewerRefRef.current?.current,
+        sectionHref: sectionHrefRef.current,
+        chunkLen: chunksRef.current[index]?.length ?? 0,
+      });
       viewerRefRef.current?.current?.clearTtsHighlight();
       await viewerRefRef.current?.current?.highlightChunk(chunksRef.current[index], { skipBlockJump: chunkOpts?.skipBlockJump, force: chunkOpts?.force });
 
