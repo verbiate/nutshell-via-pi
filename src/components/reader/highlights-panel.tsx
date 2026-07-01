@@ -4,14 +4,13 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronDown,
   Lightbulb,
-  MoreHorizontal,
   Pencil,
   Trash2,
   StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OverflowMenuTrigger } from "@/components/ui/overflow-menu-trigger";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -28,9 +27,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
+import { SectionHeader } from "@/components/reader/section-header";
 import type { PlaylistBookMeta } from "@/types/playlist";
 import {
   HIGHLIGHT_COLORS,
@@ -137,7 +136,7 @@ function HighlightRow({
   };
 
   return (
-    <div className="flex gap-2 py-2 pl-12 pr-12">
+    <div className="group flex gap-2 py-2 pl-12 pr-12">
       <div
         className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
         style={highlightSwatchStyle(highlight.color)}
@@ -212,13 +211,8 @@ function HighlightRow({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-           <Button
-             variant="ghost"
-             className="h-8 w-8 shrink-0 rounded-full border border-line"
-             aria-label="Highlight actions"
-           >
-             <MoreHorizontal className="h-4 w-4" />
-          </Button>
+          {/* ponytail: shared overflow trigger — see ui/overflow-menu-trigger.tsx */}
+          <OverflowMenuTrigger label="Highlight actions" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
           <DropdownMenuItem
@@ -270,7 +264,7 @@ function NoteRow({
   };
 
   return (
-    <div className="flex gap-2 py-2 pl-12 pr-12">
+    <div className="group flex gap-2 py-2 pl-12 pr-12">
       <div
         className="mt-0.5 w-1 shrink-0 self-stretch rounded-full bg-muted-foreground/30"
         aria-hidden
@@ -322,13 +316,8 @@ function NoteRow({
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="h-8 w-8 shrink-0 rounded-full border border-line"
-            aria-label="Note actions"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
+          {/* ponytail: shared overflow trigger — see ui/overflow-menu-trigger.tsx */}
+          <OverflowMenuTrigger label="Note actions" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
           <DropdownMenuItem
@@ -370,39 +359,13 @@ function GroupBlock({
   if (items.length === 0) return null;
   return (
     <div>
-      {/*
-        ponytail: matches Bookmarks chapter header — 30px tall, type-section-label
-        (DM Sans 14/600), border-b flush with the row, circular outline count
-        badge, collapsible chevron. Keeps the two tabs visually consistent.
-      */}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!isCollapsed}
-        className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12 text-left"
-      >
-        <ChevronDown
-          className={cn(
-            "h-[14px] w-[14px] shrink-0 text-foreground transition-transform",
-            isCollapsed && "-rotate-90"
-          )}
-        />
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate pr-2 type-section-label text-foreground"
-        >
-          {swatch && (
-            <span
-              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-              style={highlightSwatchStyle(swatch)}
-              aria-hidden
-            />
-          )}
-          <span className="truncate">{label}</span>
-        </span>
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground"
-        >
-          {count}
-        </span>
-      </button>
+      <SectionHeader
+        label={label}
+        count={count}
+        swatchStyle={swatch ? highlightSwatchStyle(swatch) : undefined}
+        isCollapsed={isCollapsed}
+        onToggle={onToggle}
+      />
       {!isCollapsed && (
         <div className="pb-1">{items.map(renderItem)}</div>
       )}

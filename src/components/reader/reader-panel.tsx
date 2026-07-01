@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
-import { AlertTriangle, Lightbulb, Loader2, MoreHorizontal, Play } from "lucide-react";
+import { AlertTriangle, Lightbulb, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OverflowMenuTrigger } from "@/components/ui/overflow-menu-trigger";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,14 +95,15 @@ function TocEntry({
         */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-             <Button
-               variant="ghost"
-               size="icon-sm"
-               className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 opacity-100 transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-               aria-label={`More actions for ${item.label}`}
-             >
-               <MoreHorizontal className="h-4 w-4" />
-            </Button>
+             {/*
+               ponytail: shared overflow trigger (see
+               ui/overflow-menu-trigger.tsx). ToC carries the row-positioning
+               classes here since the trigger overlays the row.
+             */}
+             <OverflowMenuTrigger
+               label={`More actions for ${item.label}`}
+               className="absolute right-2 top-1/2 -translate-y-1/2"
+             />
           </DropdownMenuTrigger>
           {/* ponytail: shadcn's default sizes content to the trigger width
               (24px icon → collapses to the 128px min-w-32 floor), which wraps

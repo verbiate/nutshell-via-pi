@@ -10,6 +10,8 @@ import {
   type TimelineEvent,
 } from "@/lib/discussion/timeline";
 import { Button } from "@/components/ui/button";
+import { OverflowMenuTrigger } from "@/components/ui/overflow-menu-trigger";
+import { SectionHeader } from "@/components/reader/section-header";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,8 +41,6 @@ import {
   Lightbulb,
   Loader2,
   Maximize2,
-  Minimize2,
-  MoreHorizontal,
   Trash2,
   Database,
   RefreshCw,
@@ -150,10 +150,6 @@ export interface DiscussionsPanelProps {
   // mounted via reader-sidebar.tsx's lastTool pattern, so panel state
   // (activeDiscussionId, streaming, poppedOut) is preserved while hidden.
   onCloseSidebar?: () => void;
-  // ponytail: fired when the user "returns" the discussion from the modal
-  // back to the sidebar. Parent reopens the bulb tool; the panel was never
-  // unmounted (lastTool), so the active discussion is still intact.
-  onReturnToSidebar?: () => void;
   // ponytail: token-budget inputs for the "X% full" indicator. Both come from
   // the reader server component (resolved via tier config + getContextWindow).
   // Optional so the panel doesn't crash if a future caller omits them — the
@@ -253,7 +249,6 @@ export function DiscussionsPanel({
   pendingOpenDiscussionId,
   onPendingDiscussionConsumed,
   onCloseSidebar,
-  onReturnToSidebar,
   bookTxtTokens,
   contextWindow,
   onNavigateToHref,
@@ -581,14 +576,6 @@ export function DiscussionsPanel({
     if (id) selectDiscussion(id);
     setPoppedOut(true);
     onCloseSidebar?.();
-  }
-
-  // ponytail: inverse of popOutDiscussion — close the modal and reopen the
-  // sidebar. The active discussion survives because the bulb panel never
-  // unmounted (reader-sidebar lastTool keeps it alive while hidden).
-  function returnToSidebar() {
-    setPoppedOut(false);
-    onReturnToSidebar?.();
   }
 
   // ponytail: wrap navigation so a citation jump from the panel OR an inline
@@ -1303,7 +1290,6 @@ export function DiscussionsPanel({
           contextWindow={contextWindow}
           inModal={inModal}
           onPopOut={() => popOutDiscussion()}
-          onReturnToSidebar={returnToSidebar}
           onNavigateToHref={navigateAndCloseModal}
           onNavigateToCfi={navigateCfiAndCloseModal}
           onNavigateToBookSection={navigateBookAndCloseModal}
@@ -1467,18 +1453,10 @@ function ListView({
     // flex-1 + min-h-0 so heights propagate from the sidebar's flex-col parent.
     <SmoothScrollArea className="flex-1 min-h-0">
       {/*
-        ponytail: section header bar matches Bookmarks/Highlights group header
-        — 30px tall, type-section-label, border-b flush with the first row,
-        circular outline count badge. No chevron (not collapsible).
+        ponytail: section header — static variant (no chevron, not collapsible).
+        See section-header.tsx.
       */}
-      <div className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12">
-        <span className="type-section-label flex-1 truncate text-foreground">
-          Discussions
-        </span>
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground">
-          {discussions.length}
-        </span>
-      </div>
+      <SectionHeader label="Discussions" count={discussions.length} />
       {/*
         ponytail: rows match Bookmarks/Highlights — divide-y divide-line/50
         (subtle dividers, no hover bg), px-12 py-3, type-toc-section body,
@@ -1488,7 +1466,7 @@ function ListView({
       */}
       <ul>
         {discussions.map((t) => (
-          <li key={t.id} className="flex items-start gap-2 px-12 py-3">
+          <li key={t.id} className="group flex items-start gap-2 px-12 py-3">
             <button
               onClick={() => onSelect(t.id)}
               className="min-w-0 flex-1 text-left"
@@ -1520,18 +1498,8 @@ function ListView({
             </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                {/*
-                  ponytail: always-visible circular outline trigger, matching
-                  Bookmarks/Highlights (Figma mockup shows it persistent at all
-                  widths, not hover-revealed).
-                */}
-                 <Button
-                   variant="ghost"
-                   className="h-8 w-8 shrink-0 rounded-full border border-line"
-                   aria-label="Discussion actions"
-                 >
-                   <MoreHorizontal className="h-4 w-4" />
-                </Button>
+                {/* ponytail: shared overflow trigger — see ui/overflow-menu-trigger.tsx */}
+                <OverflowMenuTrigger label="Discussion actions" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
                 {!inModal && (
@@ -1579,7 +1547,6 @@ function DiscussionView({
   contextWindow,
   inModal,
   onPopOut,
-  onReturnToSidebar,
   onNavigateToHref,
   onNavigateToCfi,
   onNavigateToBookSection,
@@ -1632,7 +1599,6 @@ function DiscussionView({
   contextWindow?: number;
   inModal?: boolean;
   onPopOut: () => void;
-  onReturnToSidebar: () => void;
   onNavigateToHref?: (href: string) => void;
   onNavigateToCfi?: (cfi: string) => void;
   onNavigateToBookSection?: (bookId: string, basename: string) => void;
@@ -1785,9 +1751,8 @@ function DiscussionView({
         className={cn(
           "flex items-center gap-2 border-b border-border px-2 py-2",
           // ponytail: reserve room for the Dialog's absolute top-2 right-2 X
-          // when rendered inside the modal so it doesn't overlap the indicator
-          // or the Minimize2 return button. pr-12 (48px) gives the return
-          // button breathing room from the X (X spans ~8–36px from the edge).
+          // when rendered inside the modal so it doesn't overlap the indicator.
+          // pr-12 (48px) gives the X breathing room (it spans ~8–36px from edge).
           inModal && "pr-12"
         )}
       >
@@ -1812,12 +1777,11 @@ function DiscussionView({
             </span>
           )}
           {/*
-            ponytail: Maximize2 pops the discussion into the modal (sidebar only);
-            Minimize2 returns it to the sidebar (modal only). Symmetric icons
-            convey the inverse actions. size="icon-sm" is h-7 w-7, matching
-            the Back button's height.
+            ponytail: Maximize2 pops the discussion into the modal (sidebar
+            only). In the modal, the Dialog's built-in X closes it. size
+            "icon-sm" is h-7 w-7, matching the Back button's height.
           */}
-          {!inModal ? (
+          {!inModal && (
             <Button
               size="icon-sm"
               variant="ghost"
@@ -1826,16 +1790,6 @@ function DiscussionView({
               aria-label="Pop out"
             >
               <Maximize2 className="h-3.5 w-3.5" />
-            </Button>
-          ) : (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={onReturnToSidebar}
-              title="Return to sidebar"
-              aria-label="Return to sidebar"
-            >
-              <Minimize2 className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>

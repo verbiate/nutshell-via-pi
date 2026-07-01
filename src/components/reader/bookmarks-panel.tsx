@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import type { NavItem } from "@likecoin/epub-ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronDown, MoreHorizontal, Trash2 } from "lucide-react";
+import { BookmarkPlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OverflowMenuTrigger } from "@/components/ui/overflow-menu-trigger";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
+import { SectionHeader } from "@/components/reader/section-header";
 import type { PlaylistBookMeta } from "@/types/playlist";
 
 interface BookmarkItem {
@@ -188,36 +190,21 @@ export function BookmarksPanel({
                 return (
                   <div key={g.label}>
                     {/*
-                      ponytail: 30px-tall section header with a border-b flush against
-                      the row (Figma spec). The first list item has no top divider, so
-                      this border-b is the only line between header and first item — no
-                      double line.
+                      ponytail: shared section header — collapsible variant
+                      with chevron. See section-header.tsx.
                     */}
-                    <button
-                      type="button"
-                      onClick={() => toggle(g.label)}
-                      aria-expanded={!isCollapsed}
-                      className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12 text-left"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "h-[14px] w-[14px] shrink-0 text-foreground transition-transform",
-                          isCollapsed && "-rotate-90"
-                        )}
-                      />
-                      <span className="type-section-label flex-1 truncate text-foreground">
-                        {g.label}
-                      </span>
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground">
-                        {g.items.length}
-                      </span>
-                    </button>
+                    <SectionHeader
+                      label={g.label}
+                      count={g.items.length}
+                      isCollapsed={isCollapsed}
+                      onToggle={() => toggle(g.label)}
+                    />
                     {!isCollapsed && (
                       <div className="divide-y divide-line/50">
                         {g.items.map((b) => (
                           <div
                             key={b.id}
-                            className="flex items-center gap-2 px-12 py-3"
+                            className="group flex items-center gap-2 px-12 py-3"
                           >
                             <button
                               onClick={() => onBookmarkClick(b.cfi)}
@@ -231,18 +218,8 @@ export function BookmarksPanel({
                             </button>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                {/*
-                                  ponytail: always-visible circular outline trigger
-                                  (Figma mockup). Was hover-revealed ghost; mockup
-                                  shows it persistent at all widths.
-                                */}
-                                 <Button
-                                   variant="ghost"
-                                   className="h-8 w-8 shrink-0 rounded-full border border-line"
-                                   aria-label="Bookmark actions"
-                                 >
-                                   <MoreHorizontal className="h-4 w-4" />
-                                </Button>
+                                {/* ponytail: shared overflow trigger — see ui/overflow-menu-trigger.tsx */}
+                                <OverflowMenuTrigger label="Bookmark actions" />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
                                 {b.sectionHref && (

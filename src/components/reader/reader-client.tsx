@@ -1714,7 +1714,6 @@ export function ReaderClient({
                 pendingOpenDiscussionId={pendingOpenDiscussionId}
                 onPendingDiscussionConsumed={() => setPendingOpenDiscussionId(null)}
                 onCloseSidebar={() => setActiveTool(null)}
-                onReturnToSidebar={() => setActiveTool("bulb")}
                 bookTxtTokens={bookTxtTokens}
                 contextWindow={contextWindow}
                 onNavigateToHref={(href) => {
