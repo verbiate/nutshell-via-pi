@@ -1361,6 +1361,7 @@ export function DiscussionsPanel({
           onDelete={handleDeleteDiscussion}
           onPurge={setDiscussionToPurge}
           isAdmin={isAdmin}
+          inModal={inModal}
           emptyHint="Start a 'New discussion' about the whole book, or select text and click 'Ask about this' for a passage."
           resolveSectionLabel={resolveSectionLabel}
         />
@@ -1426,6 +1427,7 @@ function ListView({
   onDelete,
   onPurge,
   isAdmin,
+  inModal,
   emptyHint,
   resolveSectionLabel,
 }: {
@@ -1437,6 +1439,7 @@ function ListView({
   onDelete: (id: string) => void;
   onPurge: (discussion: DiscussionPreview) => void;
   isAdmin: boolean;
+  inModal?: boolean;
   emptyHint: string;
   resolveSectionLabel?: (href: string) => string | undefined;
 }) {
@@ -1530,11 +1533,13 @@ function ListView({
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-52">
-                <DropdownMenuItem onClick={() => onPopOut(t.id)}>
-                  <Maximize2 className="h-4 w-4" />
-                  Pop out
-                </DropdownMenuItem>
+              <DropdownMenuContent align="end" className="w-auto min-w-52">
+                {!inModal && (
+                  <DropdownMenuItem onClick={() => onPopOut(t.id)}>
+                    <Maximize2 className="h-4 w-4" />
+                    Pop out
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => onDelete(t.id)}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                   Delete
