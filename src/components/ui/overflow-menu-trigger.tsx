@@ -6,10 +6,11 @@ import { cn } from "@/lib/utils"
 
 // ponytail: the single source of truth for the three-dot overflow trigger
 // shared by the Discussions, Bookmarks, Highlights, Notes, and ToC rows. One
-// treatment so they cannot drift: ghost, 32px bordered circle, MoreHorizontal
-// icon. Hover-revealed at md+ (visible on touch widths where hover is absent),
-// revealed on row hover OR keyboard focus-within. The nearest row ancestor
-// must carry the `group` class.
+// treatment so they cannot drift: 32px bordered circle, white fill (matches the
+// default button surface, and gives the ToC trigger an opaque disc so it cleanly
+// masks the text tail it overlays), MoreHorizontal icon. Hover-revealed at md+
+// (visible on touch widths where hover is absent), revealed on row hover OR
+// keyboard focus-within. The nearest row ancestor must carry the `group` class.
 function OverflowMenuTrigger({
   label,
   className,
@@ -20,7 +21,7 @@ function OverflowMenuTrigger({
       variant="ghost"
       aria-label={label}
       className={cn(
-        "h-8 w-8 shrink-0 rounded-full border border-line",
+        "h-8 w-8 shrink-0 rounded-full border border-line bg-white",
         "opacity-100 transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
         className,
       )}

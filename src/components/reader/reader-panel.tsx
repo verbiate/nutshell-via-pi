@@ -70,6 +70,11 @@ function TocEntry({
         <button
           onClick={() => onNavigate(item.href)}
           className={cn(
+            // ponytail: text keeps the full row width — the overflow trigger
+            // overlays it on hover (see the mask + trigger below) instead of
+            // reserving permanent space, so long chapter titles aren't squeezed.
+            // pr-10 bounds the text off the right edge at rest; the mask fades
+            // the tail where the trigger appears on hover/touch.
             "type-toc-section flex-1 text-left py-2 pr-10 transition-colors",
             isActive
               ? "font-medium text-foreground"
@@ -87,6 +92,19 @@ function TocEntry({
           {item.label}
         </button>
         {/*
+          ponytail: hover/mobile-synced mask. The overflow trigger overlays the
+          row's right edge (matching the other panels' 48px offset) instead of
+          reserving layout width — so ToC titles keep full width. This gradient
+          fades the text tail into the surface exactly where the trigger
+          appears, keeping text from peeking around the circle. It mirrors the
+          trigger's own visibility rule (visible on touch, hover-revealed at
+          md+) so mask and trigger always appear together.
+        */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-background to-transparent opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+        />
+        {/*
           ponytail: hover-revealed overflow menu. "Ask about this" opens the
           section explainer as a discussion in the sidebar's bulb tool — same UI as
           passage explainers. The play affordance lives here too: one item when
@@ -102,7 +120,7 @@ function TocEntry({
              */}
              <OverflowMenuTrigger
                label={`More actions for ${item.label}`}
-               className="absolute right-2 top-1/2 -translate-y-1/2"
+               className="absolute right-12 top-1/2 -translate-y-1/2"
              />
           </DropdownMenuTrigger>
           {/* ponytail: shadcn's default sizes content to the trigger width
