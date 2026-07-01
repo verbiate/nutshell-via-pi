@@ -35,10 +35,12 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
 export const BOOK_SETTINGS_MIN_FONT = 14;
 export const BOOK_SETTINGS_MAX_FONT = 24;
 
+const CHOCOLATE = "#402A08";
+
 const THEME_SWATCHES: { id: ReaderThemeName; bg: string }[] = [
   { id: "light", bg: "#FEFBF5" },
-  { id: "sepia", bg: "#f4ecd8" },
-  { id: "dark", bg: "#1A130C" },
+  { id: "sepia", bg: "#FFFFFF" },
+  { id: "dark", bg: CHOCOLATE },
 ];
 
 const FONT_FAMILY_OPTIONS: { value: FontFamilyChoice; label: string }[] = [
@@ -108,8 +110,8 @@ export function BookSettingsPanel({
         <div className="px-12 flex flex-col gap-5">
           <SectionLabel>Page Adjustments</SectionLabel>
 
-        {/* Theme swatches */}
-        <div className="flex items-center gap-3">
+        {/* Theme swatches — tan, white, chocolate. 56px, inner stroke via inset box-shadow. */}
+        <div className="flex items-center gap-2.5">
           {THEME_SWATCHES.map((s) => {
             const active = theme === s.id;
             return (
@@ -119,16 +121,17 @@ export function BookSettingsPanel({
                 onClick={() => onThemeChange(s.id)}
                 aria-label={`Theme: ${s.id}`}
                 aria-pressed={active}
-                className={cn(
-                  "relative h-11 w-11 rounded-full border-2 transition-shadow",
-                  active
-                    ? "border-lav ring-2 ring-lav/20"
-                    : "border-line hover:border-lav-ring",
-                )}
-                style={{ backgroundColor: s.bg }}
+                className="relative size-14 rounded-full transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-espresso/20"
+                style={{
+                  backgroundColor: s.bg,
+                  boxShadow: `inset 0 0 0 ${active ? 2 : 1}px ${CHOCOLATE}`,
+                }}
               >
                 {active && (
-                  <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-espresso" />
+                  <span className={cn(
+                    "absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full",
+                    s.id === "dark" ? "bg-white" : "bg-espresso",
+                  )} />
                 )}
               </button>
             );
