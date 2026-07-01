@@ -19,6 +19,32 @@ export const SANS_STACK = '"IBM Plex Sans", system-ui, -apple-system, sans-serif
 
 const STYLE_ELEMENT_ID = "br-house-style";
 
+/**
+ * Dynamic typography (font-size, line-height, text-align, hyphens) applied by
+ * the reader. Must target body, p, li, dd, blockquote directly — NOT just body.
+ *
+ * ponytail: epub.js's themes.override() sets these as an inline style on <body>
+ * only (Contents.css → body.style.setProperty). text-align / font-size set on
+ * body reach <p> purely by inheritance, so any publisher rule like `p { text-align:
+ * left }` (or the UA default) beats them — which is why the justify/left switch
+ * appeared dead. Injecting on the structural elements with late !important wins.
+ */
+export interface ReaderTypography {
+  fontSize: string; // e.g. "18px"
+  lineHeight: string; // e.g. "1.5"
+  textAlign: "left" | "justify";
+  hyphens: "auto" | "manual";
+}
+
+export function typographyCss(t: ReaderTypography): string {
+  return `body, p, li, dd, blockquote {
+  font-size: ${t.fontSize} !important;
+  line-height: ${t.lineHeight} !important;
+  text-align: ${t.textAlign} !important;
+  hyphens: ${t.hyphens} !important;
+}`;
+}
+
 // The reset stylesheet for a given stack. Plain selectors + !important so it
 // beats publisher stylesheet rules (same specificity, but important wins).
 // ponytail: the one residual this CAN'T beat is a publisher's own inline
@@ -31,13 +57,22 @@ const STYLE_ELEMENT_ID = "br-house-style";
 function resetCss(stack: string): string {
   return [
     `body, p, li, dd, blockquote { font-family: ${stack} !important; }`,
+    // ponytail: force every structural text element to inherit the theme body
+    // color (chocolate/cream/sepia, set on <body> via themes.override). Some
+    // books set color: directly on p/h1/etc., breaking the monochrome look;
+    // !important + late injection (after the book's CSS) wins. Body itself is
+    // excluded — it carries the theme color. Inline <span style="color"> is the
+    // same residual category as inline font-family; strip pass deferred.
+    `p, li, dd, blockquote { color: inherit !important; }`,
     `h1, h2, h3, h4, h5, h6 {
        font-family: ${stack} !important;
        font-weight: 600 !important;
        line-height: 1.2 !important;
        text-indent: 0 !important;
+       text-align: left !important;
+       color: inherit !important;
      }`,
-    `h1 { font-size: 1.75em !important; margin: 2em 0 0.67em !important; text-align: left !important; }`,
+    `h1 { font-size: 1.75em !important; margin: 2em 0 0.67em !important; }`,
     `h2 { font-size: 1.45em !important; margin: 1.8em 0 0.6em !important; }`,
     `h3 { font-size: 1.25em !important; margin: 1.5em 0 0.5em !important; }`,
     `h4, h5, h6 { font-size: 1.1em !important; margin: 1.3em 0 0.5em !important; }`,
@@ -156,22 +191,37 @@ export function buildHouseStyleSheet(choice: HouseStyleChoice): string | null {
 }
 
 /**
- * Idempotently apply (or clear) the house stylesheet in an epub.js iframe
- * document. Removes any prior `<style id=br-house-style>` then, for non-
- * publisher choices, inserts the current one. Safe to call on every section
- * render and on live house-style switches.
+ * Build the full reader stylesheet injected into an epub.js iframe: the house
+ * reset + cloned @font-face (Serif/Sans only) PLUS the dynamic typography
+ * (always — applies in Publisher too, so the size/leading/alignment controls
+ * actually reach <p>). Returns a non-empty string.
  */
-export function applyHouseStyleToDoc(
+export function buildReaderStylesheet(
+  choice: HouseStyleChoice,
+  t: ReaderTypography,
+): string {
+  const parts: string[] = [];
+  if (choice !== "publisher") {
+    parts.push(buildPlexFontFaceCss(["IBM Plex Serif", "IBM Plex Sans"]));
+    parts.push(resetCss(HOUSE_STYLES[choice].stack));
+  }
+  parts.push(typographyCss(t));
+  return parts.join("\n");
+}
+
+/**
+ * Idempotently apply (or replace) the reader stylesheet in an epub.js iframe
+ * document. Removes any prior `<style id>` then inserts the current one. Safe
+ * to call on every section render and on live house-style / typography switches.
+ */
+export function applyReaderStylesToDoc(
   doc: Document | undefined | null,
   choice: HouseStyleChoice,
+  t: ReaderTypography,
 ): void {
   if (!doc || !doc.head) return;
+  const css = buildReaderStylesheet(choice, t);
   const existing = doc.getElementById(STYLE_ELEMENT_ID);
-  const css = buildHouseStyleSheet(choice);
-  if (!css) {
-    existing?.remove();
-    return;
-  }
   if (existing) {
     existing.textContent = css;
   } else {

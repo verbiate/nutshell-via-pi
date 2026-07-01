@@ -24,7 +24,11 @@ import {
   DEFAULT_FOLLOW_STATE,
 } from "@/lib/reader/follow-state";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
-import { applyHouseStyleToDoc, type HouseStyleChoice } from "./house-styles";
+import {
+  applyReaderStylesToDoc,
+  type HouseStyleChoice,
+  type ReaderTypography,
+} from "./house-styles";
 import { buildRenditionOptions } from "./rendition-options";
 import { highlightFill } from "./highlight-colors";
 import { htmlToTtsText } from "@/lib/tts/prepare-text";
@@ -403,11 +407,11 @@ export interface EpubViewerProps {
   url: string;
   theme: "light" | "dark" | "sepia";
   initialCfi?: string | null;
-  // ponytail: dynamic typography overrides (font-size, line-height,
-  // text-align, hyphens). Applied via themes.override on every change. The
-  // font-family is owned by the house stylesheet (see houseStyle), so it is
-  // intentionally absent here.
-  typography?: Record<string, string>;
+  // ponytail: dynamic typography (font-size, line-height, text-align, hyphens).
+  // Applied via an injected stylesheet on body+p+li+... (see house-styles.ts),
+  // NOT themes.override — that sets inline on <body> only, so text-align never
+  // reached <p> past a publisher `p { text-align: ... }` rule.
+  typography?: ReaderTypography;
   // ponytail: Serif/Sans inject a full house stylesheet (font + reset) into the
   // iframe; Publisher omits it so the epub's own CSS wins. Orthogonal to theme.
   houseStyle?: HouseStyleChoice;
@@ -628,10 +632,12 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     // ponytail: mirrors the TTS paused state so the content hook can re-apply
     // the .tts-paused body class after epub.js recreates a section's iframe.
     const ttsPausedRef = useRef(false);
-    // ponytail: mirrors the current house style + the live iframe document so a
-    // Serif↔Sans↔Publisher switch re-injects immediately without waiting for a
-    // page turn (the content hook only re-fires on section render).
+    // ponytail: mirrors the current house style + dynamic typography + the live
+    // iframe document so a Serif↔Sans↔Publisher or settings change re-injects
+    // immediately without waiting for a page turn (the content hook only re-
+    // fires on section render).
     const houseStyleRef = useRef<HouseStyleChoice>(houseStyle);
+    const typographyRef = useRef<ReaderTypography | null>(typography ?? null);
     const currentDocRef = useRef<Document | null>(null);
     // ponytail: follow-along state. Tracks whether the user has manually
     // navigated away from the TTS position so we don't yank them back. The
@@ -1348,16 +1354,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               );
             });
 
-            // ponytail: house style (Serif/Sans). Injects the full reset +
-            // cloned @font-face into this section's iframe. Captures the live
-            // document so the houseStyle-change effect below can re-inject on a
-            // mid-chapter toggle without waiting for a page turn. Registered per
-            // section because epub.js rebuilds the iframe across boundaries.
+            // ponytail: reader stylesheet = house reset (Serif/Sans) + dynamic
+            // typography, injected into this section's iframe. Captures the live
+            // document so the change effect below can re-inject on a mid-chapter
+            // toggle without waiting for a page turn. Registered per section
+            // because epub.js rebuilds the iframe across boundaries.
             rendition.hooks.content.register((contents: Contents) => {
               const doc = (contents as unknown as { document?: Document })
                 .document ?? null;
               currentDocRef.current = doc;
-              applyHouseStyleToDoc(doc, houseStyleRef.current);
+              if (typographyRef.current) {
+                applyReaderStylesToDoc(
+                  doc,
+                  houseStyleRef.current,
+                  typographyRef.current,
+                );
+              }
             });
 
             // ponytail: selection lifecycle inside the iframe.
@@ -1541,25 +1553,22 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       applyThemeOverrides(theme);
     }, [theme, applyThemeOverrides]);
 
-    // Apply dynamic typography overrides (font size/family/spacing from settings panel).
-    // ponytail: themes.override updates the registered rule in place, so the last
-    // write wins over READER_THEME_OVERRIDES defaults set at init.
-    useEffect(() => {
-      const rendition = renditionRef.current;
-      if (!rendition || !typography) return;
-      for (const [prop, value] of Object.entries(typography)) {
-        rendition.themes.override(prop, value, true);
-      }
-    }, [typography]);
-
-    // ponytail: live house-style switch. Updates the ref (so the content hook
-    // applies it on the next section render) AND re-injects into the currently
-    // visible iframe immediately, so toggling Serif↔Sans↔Publisher doesn't wait
-    // for a page turn.
+    // ponytail: live reader-style switch. Mirrors the latest house style +
+    // typography into refs (so the content hook applies them on the next section
+    // render) AND re-injects into the currently visible iframe immediately, so
+    // toggling Serif↔Sans↔Publisher or changing size/leading/alignment doesn't
+    // wait for a page turn.
     useEffect(() => {
       houseStyleRef.current = houseStyle;
-      applyHouseStyleToDoc(currentDocRef.current, houseStyle);
-    }, [houseStyle]);
+      if (typography) typographyRef.current = typography;
+      if (currentDocRef.current && typographyRef.current) {
+        applyReaderStylesToDoc(
+          currentDocRef.current,
+          houseStyle,
+          typographyRef.current,
+        );
+      }
+    }, [houseStyle, typography]);
 
 
     return (

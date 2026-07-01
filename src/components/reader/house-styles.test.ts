@@ -4,13 +4,24 @@ import {
   SANS_STACK,
   HOUSE_STYLES,
   buildHouseStyleSheet,
-  applyHouseStyleToDoc,
+  buildReaderStylesheet,
+  typographyCss,
+  applyReaderStylesToDoc,
   buildPlexFontFaceCss,
   __resetFontFaceCacheForTests,
   type HouseStyleChoice,
+  type ReaderTypography,
 } from "./house-styles";
 
 beforeEach(() => __resetFontFaceCacheForTests());
+
+const JUSTIFY: ReaderTypography = {
+  fontSize: "18px",
+  lineHeight: "1.5",
+  textAlign: "justify",
+  hyphens: "auto",
+};
+const LEFT: ReaderTypography = { ...JUSTIFY, textAlign: "left", hyphens: "manual" };
 
 describe("HOUSE_STYLES stacks", () => {
   it("serif targets IBM Plex Serif", () => {
@@ -25,8 +36,8 @@ describe("HOUSE_STYLES stacks", () => {
   });
 });
 
-describe("buildHouseStyleSheet", () => {
-  it("returns null for publisher (no injection)", () => {
+describe("buildHouseStyleSheet (static house reset)", () => {
+  it("returns null for publisher (no house reset)", () => {
     expect(buildHouseStyleSheet("publisher")).toBeNull();
   });
 
@@ -35,23 +46,51 @@ describe("buildHouseStyleSheet", () => {
     (choice) => {
       const css = buildHouseStyleSheet(choice);
       expect(css).not.toBeNull();
-      // Structural elements the house style owns (per agreed v1 scope).
       for (const sel of ["body", "h1", "h2", "h3", "blockquote", "li"]) {
         expect(css).toContain(sel);
       }
       expect(css).toContain("::first-letter");
-      // Reset must use !important to beat publisher stylesheet rules.
       expect(css).toContain("!important");
+      // Monochrome: structural text elements inherit the theme body color.
+      expect(css).toContain("color: inherit !important");
+      // Headings stay left-aligned (don't inherit a justified body).
+      expect(css).toContain("text-align: left !important");
     },
   );
+});
 
-  it("serif stylesheet carries the serif stack, sans the sans stack", () => {
-    expect(buildHouseStyleSheet("serif")).toContain(SERIF_STACK);
-    expect(buildHouseStyleSheet("sans")).toContain(SANS_STACK);
+describe("typographyCss / buildReaderStylesheet", () => {
+  it("targets body AND p (and li/dd/blockquote), not just body", () => {
+    const css = typographyCss(JUSTIFY);
+    // The bug: themes.override set text-align on <body> only, so publisher
+    // `p { text-align }` beat it. The fix requires p in the selector list.
+    expect(css).toMatch(/body, p, li, dd, blockquote/);
+    expect(css).toContain("text-align: justify !important");
+  });
+
+  it("justified typography lands in the serif reader stylesheet", () => {
+    const css = buildReaderStylesheet("serif", JUSTIFY);
+    expect(css).toContain(SERIF_STACK);
+    expect(css).toContain("text-align: justify !important");
+    expect(css).toContain("hyphens: auto !important");
+  });
+
+  it("left alignment produces left + manual hyphens", () => {
+    const css = buildReaderStylesheet("sans", LEFT);
+    expect(css).toContain("text-align: left !important");
+    expect(css).toContain("hyphens: manual !important");
+  });
+
+  it("publisher still injects typography (no house reset, no font stack)", () => {
+    const css = buildReaderStylesheet("publisher", JUSTIFY);
+    expect(css).toContain("text-align: justify !important");
+    expect(css).not.toContain(SERIF_STACK);
+    expect(css).not.toContain(SANS_STACK);
+    expect(css).not.toContain("::first-letter");
   });
 });
 
-// Minimal stub of the bits of Document applyHouseStyleToDoc touches. Keeps the
+// Minimal stub of the bits of Document applyReaderStylesToDoc touches. Keeps the
 // suite in the repo's default node test env (no jsdom dependency for one file).
 type FakeStyle = { id: string; textContent: string; remove: () => void };
 function freshDoc(): { byId: Map<string, FakeStyle> } & Record<string, unknown> {
@@ -78,37 +117,45 @@ function asDoc(doc: ReturnType<typeof freshDoc>) {
   return doc as unknown as Document;
 }
 
-describe("applyHouseStyleToDoc", () => {
-  it("injects a single #br-house-style style for serif", () => {
+describe("applyReaderStylesToDoc", () => {
+  it("injects a single #br-house-style style for serif + typography", () => {
     const doc = freshDoc();
-    applyHouseStyleToDoc(asDoc(doc), "serif");
+    applyReaderStylesToDoc(asDoc(doc), "serif", JUSTIFY);
     expect(doc.byId.size).toBe(1);
     const el = doc.byId.get("br-house-style");
     expect(el?.textContent).toContain(SERIF_STACK);
+    expect(el?.textContent).toContain("text-align: justify !important");
   });
 
-  it("replaces (not duplicates) on re-apply with a different style", () => {
+  it("replaces (not duplicates) on re-apply", () => {
     const doc = freshDoc();
-    applyHouseStyleToDoc(asDoc(doc), "serif");
-    applyHouseStyleToDoc(asDoc(doc), "sans");
+    applyReaderStylesToDoc(asDoc(doc), "serif", JUSTIFY);
+    applyReaderStylesToDoc(asDoc(doc), "sans", LEFT);
     expect(doc.byId.size).toBe(1);
     const el = doc.byId.get("br-house-style");
     expect(el?.textContent).toContain(SANS_STACK);
+    expect(el?.textContent).toContain("text-align: left !important");
     expect(el?.textContent).not.toContain(SERIF_STACK);
   });
 
-  it("removes the style element when switching to publisher", () => {
+  it("publisher keeps the style element (typography still applies)", () => {
     const doc = freshDoc();
-    applyHouseStyleToDoc(asDoc(doc), "serif");
-    expect(doc.byId.get("br-house-style")).toBeTruthy();
-    applyHouseStyleToDoc(asDoc(doc), "publisher");
-    expect(doc.byId.get("br-house-style")).toBeUndefined();
+    applyReaderStylesToDoc(asDoc(doc), "serif", JUSTIFY);
+    applyReaderStylesToDoc(asDoc(doc), "publisher", JUSTIFY);
+    const el = doc.byId.get("br-house-style");
+    expect(el).toBeTruthy();
+    expect(el?.textContent).toContain("text-align: justify !important");
+    expect(el?.textContent).not.toContain(SERIF_STACK);
   });
 
-  it("is a no-op on publisher when nothing was injected", () => {
+  it("a live alignment switch updates the same element", () => {
     const doc = freshDoc();
-    applyHouseStyleToDoc(asDoc(doc), "publisher");
-    expect(doc.byId.size).toBe(0);
+    applyReaderStylesToDoc(asDoc(doc), "serif", JUSTIFY);
+    applyReaderStylesToDoc(asDoc(doc), "serif", LEFT);
+    expect(doc.byId.size).toBe(1);
+    const el = doc.byId.get("br-house-style");
+    expect(el?.textContent).toContain("text-align: left !important");
+    expect(el?.textContent).not.toContain("text-align: justify !important");
   });
 });
 
@@ -143,7 +190,6 @@ describe("buildPlexFontFaceCss", () => {
     );
     const css = buildPlexFontFaceCss(["IBM Plex Serif"], doc);
     expect(css).toContain("IBM Plex Serif");
-    // ../media resolved against the sheet href's directory → absolute
     expect(css).toContain("https://app.example/_next/static/media/abc.woff2");
     expect(css).not.toContain("Other Font");
   });

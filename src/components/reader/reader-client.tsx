@@ -7,6 +7,7 @@ import type { NavItem } from "@likecoin/epub-ts";
 import { buildSpinePlaylist, type SpineItem } from "@/lib/reader/spine-playlist";
 import { EpubViewer, type EpubViewerHandle } from "./epub-viewer";
 import { READER_THEME_NAMES, type ReaderThemeName } from "./themes";
+import { type ReaderTypography } from "./house-styles";
 import { ReaderChrome } from "./reader-chrome";
 import { ReadingProgress } from "./reading-progress";
 import { ReaderSkeleton } from "./reader-skeleton";
@@ -1235,17 +1236,18 @@ export function ReaderClient({
   }, [chromeHidden, setReaderControlsHidden]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
-  // effect only fires on actual change. font-family is owned by the house
-  // stylesheet (see houseStyle prop), so it is intentionally NOT here.
-  const typography = useMemo<Record<string, string>>(() => {
-    const o: Record<string, string> = {
-      "font-size": `${bookSettings.fontSize}px`,
-      "line-height": String(bookSettings.lineSpacing),
-      "text-align": bookSettings.alignment,
+  // effect only fires on actual change. These land on body+p+li+... via the
+  // injected reader stylesheet (see house-styles.ts); font-family is owned by
+  // the house reset (Serif/Sans) and is intentionally NOT here.
+  const typography = useMemo<ReaderTypography>(
+    () => ({
+      fontSize: `${bookSettings.fontSize}px`,
+      lineHeight: String(bookSettings.lineSpacing),
+      textAlign: bookSettings.alignment,
       hyphens: bookSettings.alignment === "justify" ? "auto" : "manual",
-    };
-    return o;
-  }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment]);
+    }),
+    [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment],
+  );
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
