@@ -36,19 +36,15 @@ describe("READER_THEMES", () => {
 });
 
 describe("READER_THEME_OVERRIDES", () => {
-  it("includes font-family, font-size, line-height, text-align, hyphens", () => {
-    const keys = Object.keys(READER_THEME_OVERRIDES).sort();
-    expect(keys).toEqual([
-      "font-family",
-      "font-size",
-      "hyphens",
-      "line-height",
-      "text-align",
-    ]);
+  // ponytail: font-family is intentionally absent — Publisher (default) lets the
+  // epub's embedded font show through. Serif/Sans opt in via reader-client typography.
+  it("omits font-family so the epub's own font wins by default", () => {
+    expect(READER_THEME_OVERRIDES).not.toHaveProperty("font-family");
   });
 
-  it("uses IBM Plex Serif for body", () => {
-    expect(READER_THEME_OVERRIDES["font-family"]).toMatch(/IBM Plex Serif/i);
+  it("includes font-size, line-height, text-align, hyphens", () => {
+    const keys = Object.keys(READER_THEME_OVERRIDES).sort();
+    expect(keys).toEqual(["font-size", "hyphens", "line-height", "text-align"]);
   });
 
   it("justifies body text with hyphenation", () => {

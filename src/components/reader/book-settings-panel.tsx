@@ -26,7 +26,7 @@ export interface BookSettings {
 }
 
 export const DEFAULT_BOOK_SETTINGS: BookSettings = {
-  fontFamily: "serif",
+  fontFamily: "publisher",
   fontSize: 18,
   alignment: "justify",
   lineSpacing: 1.5,

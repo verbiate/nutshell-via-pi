@@ -6,6 +6,7 @@ import { countTokens } from "@/server/services/tokens";
 import { getTierBookTokenLimit } from "@/server/services/model-info";
 import { recordError } from "@/server/services/errors";
 import { extractBookMetadata } from "@/server/services/book-metadata";
+import { deobfuscateEpubFonts } from "@/server/services/font-deobfuscation";
 
 // ponytail: custom error so the upload route can return 413 (not 500) when
 // the user's tier can't accommodate the book. Message is intentionally
@@ -471,11 +472,14 @@ export async function processAndUploadBook(
     throw new UploadBlockedError();
   }
 
-  // Store files
-  const epubPath = await storage.write(
-    `epubs/${md5}.epub`,
-    Buffer.from(await file.arrayBuffer())
-  );
+  // ponytail: deobfuscate embedded fonts before storage so the reader receives
+  // a clean epub. No-op for the ~94% of books with no font obfuscation; for the
+  // rest, decrypts Adobe RC / IDPF fonts and strips the stale encryption.xml.
+  // md5 above is the dedup key over the raw upload and is intentionally NOT
+  // recomputed over the cleaned bytes.
+  const rawEpubBuffer = Buffer.from(await file.arrayBuffer());
+  const cleanEpubBuffer = await deobfuscateEpubFonts(rawEpubBuffer);
+  const epubPath = await storage.write(`epubs/${md5}.epub`, cleanEpubBuffer);
   const txtPath = await storage.write(`txts/${md5}.txt`, parsed.text);
 
   // Store cover if available

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { storage } from "@/server/storage/local";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guards";
@@ -63,10 +64,24 @@ export async function GET(
 
     const buffer = await storage.read(relativePath);
     const contentType = getContentType(relativePath);
+    // ponytail: these files can be re-processed in place (font deobfuscation,
+    // calibre styling strip) so `immutable` would be a lie. ETag → cheap 304 on
+    // unchanged repeat opens; max-age=0,must-revalidate always revalidates.
+    const etag = `"${crypto.createHash("md5").update(buffer).digest("hex")}"`;
+    if (_request.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "public, max-age=0, must-revalidate",
+        },
+      });
+    }
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        ETag: etag,
         "Content-Length": buffer.length.toString(),
       },
     });

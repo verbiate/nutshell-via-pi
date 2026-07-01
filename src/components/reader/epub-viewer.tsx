@@ -403,8 +403,8 @@ export interface EpubViewerProps {
   theme: "light" | "dark" | "sepia";
   initialCfi?: string | null;
   // ponytail: dynamic typography overrides (font-size, font-family, line-height,
-  // text-align, hyphens). Applied via themes.override on every change. Empty /
-  // publisher-font = fall back to READER_THEME_OVERRIDES defaults.
+  // text-align, hyphens). Applied via themes.override on every change. Omitted
+  // keys (e.g. font-family under Publisher) fall through to the epub's own CSS.
   typography?: Record<string, string>;
   onPositionChange?: (
     position: { paragraphIndex: number; charOffset: number },
@@ -1205,7 +1205,10 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       onLoadChange?.(false);
       restoredRef.current = false;
 
-      fetch(url)
+      // ponytail: cache:'no-cache' forces revalidation so a stale immutable
+      // entry (e.g. pre-deobfuscation epub) is never served; the server's ETag
+      // makes revalidation a cheap 304 when bytes are unchanged.
+      fetch(url, { cache: "no-cache" })
         .then((res) => {
           if (!res.ok) {
             throw new Error(
