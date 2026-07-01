@@ -295,7 +295,7 @@ function computeReaderCoverRect(): DOMRect {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : d;
   };
-  const sidebarW = num(cs.getPropertyValue("--reader-sidebar-w"), 400);
+  const sidebarW = num(cs.getPropertyValue("--reader-sidebar-w"), 460);
   const railW = num(cs.getPropertyValue("--reader-rail-w"), 94);
   const vw = window.innerWidth;
   const HEADER_H = 0;

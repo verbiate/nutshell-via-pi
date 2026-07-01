@@ -203,7 +203,7 @@
     --sidebar-ring: var(--purple);
 
     /* Reader sidebar geometry + motion tokens */
-    --reader-sidebar-w: 400px;
+    --reader-sidebar-w: 460px;
     --reader-rail-w: 94px;
     --reader-cover-w: 108px;
     --reader-dur: 250ms;

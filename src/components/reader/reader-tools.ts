@@ -33,7 +33,7 @@ export const READER_TOOLS: ReaderTool[] = [
   {
     id: "type",
     label: "Book Settings",
-    description: "Adjust typography, theme, and voice.",
+    description: "Any changes will apply to the current book only.",
     icon: "type",
   },
 ];

@@ -36,7 +36,7 @@ const expectedDefaults: Record<string, ParamValue> = {
   "r-lg": 22,
   radius: 0.625,
   "reader-rail-w": 94,
-  "reader-sidebar-w": 400,
+  "reader-sidebar-w": 460,
   "reader-dur": 250,
   "book-hover-lift": 1,
   "tts-bar-h": 64,

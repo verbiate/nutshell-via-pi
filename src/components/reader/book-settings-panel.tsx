@@ -47,13 +47,18 @@ const FONT_FAMILY_OPTIONS: { value: FontFamilyChoice; label: string }[] = [
   { value: "publisher", label: "Publisher" },
 ];
 
+// ponytail: segmented-control container + item styling matching Figma — a white
+// rounded box with a tan-dark border, borderless items, selected item fills tan-dark.
+const SEG_GROUP = "border border-line bg-white rounded-[12px] p-1.5";
+const SEG_ITEM_SELECTED = "data-[state=on]:bg-tan-dark data-[state=on]:rounded-md";
+
 // ponytail: inline line-stack icons for spacing toggles — lucide has none.
 function LineSpacingIcon({ density }: { density: "tight" | "medium" | "relaxed" }) {
   const gap = density === "tight" ? 3 : density === "medium" ? 5 : 7;
   const y2 = 4 + gap + 2;
   const y3 = 4 + 2 * (gap + 2);
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 16 16" fill="none" aria-hidden>
       <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <line x1="2" y1={y2} x2="14" y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <line x1="2" y1={y3} x2="14" y2={y3} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -64,7 +69,7 @@ function LineSpacingIcon({ density }: { density: "tight" | "medium" | "relaxed" 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-baseline gap-3">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+      <span className="text-base font-medium uppercase tracking-wider text-foreground shrink-0">
         {children}
       </span>
       <span className="ml-1 h-px flex-1 bg-line" />
@@ -132,7 +137,7 @@ export function BookSettingsPanel({
 
         {/* Font size slider with T labels */}
         <div className="flex items-center gap-3">
-          <span className="font-serif text-sm text-muted-foreground">T</span>
+          <span className="font-serif text-2xl leading-none text-foreground">T</span>
           <Slider
             value={[settings.fontSize]}
             min={BOOK_SETTINGS_MIN_FONT}
@@ -140,50 +145,73 @@ export function BookSettingsPanel({
             step={1}
             onValueChange={handleFontSize}
             aria-label="Text size"
-            className="flex-1"
+            className="flex-1 [&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-thumb]]:size-[22px] [&_[data-slot=slider-thumb]]:border [&_[data-slot=slider-thumb]]:shadow-[0_2px_2px_0_rgba(0,0,0,0.25),0_3px_8.5px_0_rgba(0,0,0,0.25)]"
           />
-          <span className="font-serif text-2xl text-muted-foreground">T</span>
+          <span className="font-serif text-[44px] font-light leading-none text-foreground">T</span>
         </div>
 
-        {/* Alignment */}
-        <ToggleGroup
-          type="single"
-          value={settings.alignment}
-          onValueChange={(v) => {
-            if (v === "left" || v === "justify") onChange({ alignment: v });
-          }}
-          variant="outline"
-        >
-          <ToggleGroupItem value="left" aria-label="Align left">
-            <AlignLeft className="h-4 w-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="justify" aria-label="Justify">
-            <AlignJustify className="h-4 w-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        {/* Alignment + line spacing, side by side */}
+        <div className="flex items-center justify-between gap-3">
+          <ToggleGroup
+            type="single"
+            value={settings.alignment}
+            onValueChange={(v) => {
+              if (v === "left" || v === "justify") onChange({ alignment: v });
+            }}
+            variant="default"
+            className={SEG_GROUP}
+          >
+            <ToggleGroupItem
+              value="left"
+              aria-label="Align left"
+              className={cn("h-12 px-4 [&_svg]:size-6", SEG_ITEM_SELECTED)}
+            >
+              <AlignLeft />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="justify"
+              aria-label="Justify"
+              className={cn("h-12 px-4 [&_svg]:size-6", SEG_ITEM_SELECTED)}
+            >
+              <AlignJustify />
+            </ToggleGroupItem>
+          </ToggleGroup>
 
-        {/* Line spacing */}
-        <ToggleGroup
-          type="single"
-          value={String(settings.lineSpacing)}
-          onValueChange={(v) => {
-            const n = parseFloat(v);
-            if (n === 1.4 || n === 1.5 || n === 1.65) {
-              onChange({ lineSpacing: n });
-            }
-          }}
-          variant="outline"
-        >
-          <ToggleGroupItem value="1.4" aria-label="Tight spacing">
-            <LineSpacingIcon density="tight" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="1.5" aria-label="Medium spacing">
-            <LineSpacingIcon density="medium" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="1.65" aria-label="Relaxed spacing">
-            <LineSpacingIcon density="relaxed" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+          <ToggleGroup
+            type="single"
+            value={String(settings.lineSpacing)}
+            onValueChange={(v) => {
+              const n = parseFloat(v);
+              if (n === 1.4 || n === 1.5 || n === 1.65) {
+                onChange({ lineSpacing: n });
+              }
+            }}
+            variant="default"
+            className={SEG_GROUP}
+          >
+            <ToggleGroupItem
+              value="1.4"
+              aria-label="Tight spacing"
+              className={cn("h-12 px-4", SEG_ITEM_SELECTED)}
+            >
+              <LineSpacingIcon density="tight" />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="1.5"
+              aria-label="Medium spacing"
+              className={cn("h-12 px-4", SEG_ITEM_SELECTED)}
+            >
+              <LineSpacingIcon density="medium" />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="1.65"
+              aria-label="Relaxed spacing"
+              className={cn("h-12 px-4", SEG_ITEM_SELECTED)}
+            >
+              <LineSpacingIcon density="relaxed" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
 
         {/* Font family */}
         <ToggleGroup
@@ -194,10 +222,26 @@ export function BookSettingsPanel({
               onChange({ fontFamily: v });
             }
           }}
-          variant="outline"
+          variant="default"
+          className={cn(SEG_GROUP, "w-full")}
         >
           {FONT_FAMILY_OPTIONS.map((opt) => (
-            <ToggleGroupItem key={opt.value} value={opt.value}>
+            <ToggleGroupItem
+              key={opt.value}
+              value={opt.value}
+              className={cn(
+                "h-12 flex-1 text-[20px] tracking-[-0.5px]",
+                SEG_ITEM_SELECTED,
+              )}
+              style={{
+                fontFamily:
+                  opt.value === "serif"
+                    ? SERIF_STACK
+                    : opt.value === "sans"
+                      ? SANS_STACK
+                      : undefined,
+              }}
+            >
               {opt.label}
             </ToggleGroupItem>
           ))}
@@ -206,7 +250,7 @@ export function BookSettingsPanel({
 
       {/* AUDIO SETTINGS ENTRY */}
       <div className="px-12 flex flex-col gap-5">
-        <SectionLabel>Audio</SectionLabel>
+        <SectionLabel>Voice adjustments</SectionLabel>
         <Button
           variant="outline"
           size="sm"

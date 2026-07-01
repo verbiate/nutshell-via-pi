@@ -734,7 +734,7 @@ export default function DesignSystemPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {[
                     "--reader-rail-w: 94px",
-                    "--reader-sidebar-w: 400px",
+                    "--reader-sidebar-w: 460px",
                     "--reader-dur: 250ms",
                   ].map((t) => (
                     <span key={t} className="rounded-md border border-line bg-paper-deep px-2.5 py-1 font-mono text-[11px] text-espresso">

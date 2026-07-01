@@ -73,7 +73,7 @@ describe("Design system page", () => {
     it("shows the reader geometry tokens with their values", () => {
       const html = render();
       expect(html).toContain("94px");   // --reader-rail-w
-      expect(html).toContain("400px");  // --reader-sidebar-w
+      expect(html).toContain("460px");  // --reader-sidebar-w
       expect(html).toContain("250ms");  // --reader-dur
     });
 

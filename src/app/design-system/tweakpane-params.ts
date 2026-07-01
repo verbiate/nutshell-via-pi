@@ -50,7 +50,7 @@ const CONFIG: readonly ParamConfig[] = [
   { key: "radius", value: 0.625, target: "root", format: "rem" },
 
   { key: "reader-rail-w", value: 94, target: "root", format: "px" },
-  { key: "reader-sidebar-w", value: 400, target: "root", format: "px" },
+  { key: "reader-sidebar-w", value: 460, target: "root", format: "px" },
   { key: "reader-dur", value: 250, target: "root", format: "ms" },
 
   { key: "book-hover-lift", value: 1, target: "gallery", format: "percent" },
