@@ -36,8 +36,10 @@ describe("READER_THEMES", () => {
 });
 
 describe("READER_THEME_OVERRIDES", () => {
-  // ponytail: font-family is intentionally absent — Publisher (default) lets the
-  // epub's embedded font show through. Serif/Sans opt in via reader-client typography.
+  // ponytail: font-family is intentionally absent here — the default (Serif)
+  // and Sans are applied via the house stylesheet injected by epub-viewer (see
+  // house-styles.ts). Publisher is the opt-in that omits it, letting the epub's
+  // own embedded font show through.
   it("omits font-family so the epub's own font wins by default", () => {
     expect(READER_THEME_OVERRIDES).not.toHaveProperty("font-family");
   });

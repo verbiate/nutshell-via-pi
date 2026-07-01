@@ -1,8 +1,9 @@
 export const READER_THEME_NAMES = ["light", "dark", "sepia"] as const;
 export type ReaderThemeName = (typeof READER_THEME_NAMES)[number];
 
-// ponytail: no font-family here — Publisher (default) lets the epub's embedded
-// font show through. Serif/Sans opt in via the typography memo in reader-client.
+// ponytail: no font-family here — Serif (the default) and Sans are applied via
+// the house stylesheet (see house-styles.ts); Publisher is the opt-in that omits
+// it so the epub's own embedded font shows through.
 export const READER_THEME_OVERRIDES: Record<string, string> = {
   "font-size": "clamp(16px, 1rem + 0.375vw, 20px)",
   "line-height": "1.5",

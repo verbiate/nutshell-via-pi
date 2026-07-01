@@ -24,6 +24,7 @@ import {
   DEFAULT_FOLLOW_STATE,
 } from "@/lib/reader/follow-state";
 import { READER_THEMES, READER_THEME_OVERRIDES } from "./themes";
+import { applyHouseStyleToDoc, type HouseStyleChoice } from "./house-styles";
 import { buildRenditionOptions } from "./rendition-options";
 import { highlightFill } from "./highlight-colors";
 import { htmlToTtsText } from "@/lib/tts/prepare-text";
@@ -402,10 +403,14 @@ export interface EpubViewerProps {
   url: string;
   theme: "light" | "dark" | "sepia";
   initialCfi?: string | null;
-  // ponytail: dynamic typography overrides (font-size, font-family, line-height,
-  // text-align, hyphens). Applied via themes.override on every change. Omitted
-  // keys (e.g. font-family under Publisher) fall through to the epub's own CSS.
+  // ponytail: dynamic typography overrides (font-size, line-height,
+  // text-align, hyphens). Applied via themes.override on every change. The
+  // font-family is owned by the house stylesheet (see houseStyle), so it is
+  // intentionally absent here.
   typography?: Record<string, string>;
+  // ponytail: Serif/Sans inject a full house stylesheet (font + reset) into the
+  // iframe; Publisher omits it so the epub's own CSS wins. Orthogonal to theme.
+  houseStyle?: HouseStyleChoice;
   onPositionChange?: (
     position: { paragraphIndex: number; charOffset: number },
     cfi: string,
@@ -556,6 +561,7 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
       theme,
       initialCfi,
       typography,
+      houseStyle = "publisher",
       onPositionChange,
       onTocLoaded,
       onSpineLoaded,
@@ -622,6 +628,11 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     // ponytail: mirrors the TTS paused state so the content hook can re-apply
     // the .tts-paused body class after epub.js recreates a section's iframe.
     const ttsPausedRef = useRef(false);
+    // ponytail: mirrors the current house style + the live iframe document so a
+    // Serif↔Sans↔Publisher switch re-injects immediately without waiting for a
+    // page turn (the content hook only re-fires on section render).
+    const houseStyleRef = useRef<HouseStyleChoice>(houseStyle);
+    const currentDocRef = useRef<Document | null>(null);
     // ponytail: follow-along state. Tracks whether the user has manually
     // navigated away from the TTS position so we don't yank them back. The
     // relocated event tags our own display() calls via ourNavInFlight; any
@@ -1337,6 +1348,18 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
               );
             });
 
+            // ponytail: house style (Serif/Sans). Injects the full reset +
+            // cloned @font-face into this section's iframe. Captures the live
+            // document so the houseStyle-change effect below can re-inject on a
+            // mid-chapter toggle without waiting for a page turn. Registered per
+            // section because epub.js rebuilds the iframe across boundaries.
+            rendition.hooks.content.register((contents: Contents) => {
+              const doc = (contents as unknown as { document?: Document })
+                .document ?? null;
+              currentDocRef.current = doc;
+              applyHouseStyleToDoc(doc, houseStyleRef.current);
+            });
+
             // ponytail: selection lifecycle inside the iframe.
             //  - mouseup flushes a selection made while the button was down (so
             //    the toolbar appears after the drag ends, not during it);
@@ -1528,6 +1551,16 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         rendition.themes.override(prop, value, true);
       }
     }, [typography]);
+
+    // ponytail: live house-style switch. Updates the ref (so the content hook
+    // applies it on the next section render) AND re-injects into the currently
+    // visible iframe immediately, so toggling Serif↔Sans↔Publisher doesn't wait
+    // for a page turn.
+    useEffect(() => {
+      houseStyleRef.current = houseStyle;
+      applyHouseStyleToDoc(currentDocRef.current, houseStyle);
+    }, [houseStyle]);
+
 
     return (
       <div className={cn("relative h-full w-full", className)}>

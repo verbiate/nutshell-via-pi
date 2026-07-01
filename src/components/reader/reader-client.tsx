@@ -24,8 +24,6 @@ import type { ReaderTool } from "./reader-tools";
 import {
   BookSettingsPanel,
   DEFAULT_BOOK_SETTINGS,
-  SERIF_STACK,
-  SANS_STACK,
   type BookSettings,
 } from "./book-settings-panel";
 import { DiscussionsPanel, type PendingDiscussionRequest } from "@/components/discussion/discussions-panel";
@@ -1237,8 +1235,8 @@ export function ReaderClient({
   }, [chromeHidden, setReaderControlsHidden]);
 
   // Derive EPUB typography overrides from settings. Memoized so the EpubViewer
-  // effect only fires on actual change. Publisher font = omit font-family so the
-  // book's embedded font shows through.
+  // effect only fires on actual change. font-family is owned by the house
+  // stylesheet (see houseStyle prop), so it is intentionally NOT here.
   const typography = useMemo<Record<string, string>>(() => {
     const o: Record<string, string> = {
       "font-size": `${bookSettings.fontSize}px`,
@@ -1246,10 +1244,8 @@ export function ReaderClient({
       "text-align": bookSettings.alignment,
       hyphens: bookSettings.alignment === "justify" ? "auto" : "manual",
     };
-    if (bookSettings.fontFamily === "serif") o["font-family"] = SERIF_STACK;
-    else if (bookSettings.fontFamily === "sans") o["font-family"] = SANS_STACK;
     return o;
-  }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment, bookSettings.fontFamily]);
+  }, [bookSettings.fontSize, bookSettings.lineSpacing, bookSettings.alignment]);
 
   // ─── Sidebar ↔ epub.js resize choreography ─────────────────────────────────
   // The EpubViewer wrapper animates its width when the sidebar opens/closes.
@@ -1573,6 +1569,7 @@ export function ReaderClient({
               url={epubUrl}
               theme={readerTheme}
               typography={typography}
+              houseStyle={bookSettings.fontFamily}
               // ponytail: skip cfi restore when TTS is live on this book —
               // syncViewerToPlayback owns the initial navigation in that case.
               initialCfi={ttsLiveForBook ? null : (savedPosition?.cfi ?? null)}

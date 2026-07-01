@@ -8,25 +8,23 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import type { ReaderThemeName } from "./themes";
+import { SERIF_STACK, SANS_STACK, type HouseStyleChoice } from "./house-styles";
 
-// ponytail: typography stacks kept here so the panel is the single source for
-// what "serif" / "sans" mean visually. Publisher = no override (book's own font).
-export const SERIF_STACK = '"IBM Plex Serif", Georgia, "Times New Roman", serif';
-export const SANS_STACK = '"DM Sans", system-ui, -apple-system, sans-serif';
-
-export type FontFamilyChoice = "serif" | "sans" | "publisher";
+// ponytail: typography stacks live in house-styles.ts now (single source — the
+// iframe injection reads the same constants). Re-exported here so existing
+// imports keep working. Publisher = no override (book's own font).
 export type AlignmentChoice = "left" | "justify";
 export type LineSpacingChoice = 1.4 | 1.5 | 1.65;
 
 export interface BookSettings {
-  fontFamily: FontFamilyChoice;
+  fontFamily: HouseStyleChoice;
   fontSize: number; // px, 14–24
   alignment: AlignmentChoice;
   lineSpacing: LineSpacingChoice;
 }
 
 export const DEFAULT_BOOK_SETTINGS: BookSettings = {
-  fontFamily: "publisher",
+  fontFamily: "serif",
   fontSize: 18,
   alignment: "justify",
   lineSpacing: 1.5,
@@ -43,7 +41,7 @@ const THEME_SWATCHES: { id: ReaderThemeName; bg: string }[] = [
   { id: "dark", bg: CHOCOLATE },
 ];
 
-const FONT_FAMILY_OPTIONS: { value: FontFamilyChoice; label: string }[] = [
+const FONT_FAMILY_OPTIONS: { value: HouseStyleChoice; label: string }[] = [
   { value: "serif", label: "Serif" },
   { value: "sans", label: "Sans" },
   { value: "publisher", label: "Publisher" },
