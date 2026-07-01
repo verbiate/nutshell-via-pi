@@ -94,13 +94,13 @@ function TocEntry({
         */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 opacity-100 transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-              aria-label={`More actions for ${item.label}`}
-            >
-              <MoreHorizontal className="h-4 w-4" />
+             <Button
+               variant="ghost"
+               size="icon-sm"
+               className="absolute right-2 top-1/2 h-6 w-6 -translate-y-1/2 opacity-100 transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+               aria-label={`More actions for ${item.label}`}
+             >
+               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           {/* ponytail: shadcn's default sizes content to the trigger width

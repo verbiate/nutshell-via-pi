@@ -180,15 +180,15 @@ function HighlightRow({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="h-8 w-8 shrink-0 rounded-full border border-line"
-            aria-label="Highlight actions"
-          >
-            <MoreHorizontal className="h-4 w-4" />
+           <Button
+             variant="ghost"
+             className="h-8 w-8 shrink-0 rounded-full border border-line"
+             aria-label="Highlight actions"
+           >
+             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-52">
+        <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
           <DropdownMenuItem
             onClick={() => onExplain(highlight.cfi, highlight.selectedText)}
           >

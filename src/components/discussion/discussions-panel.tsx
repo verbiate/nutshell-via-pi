@@ -1525,15 +1525,15 @@ function ListView({
                   Bookmarks/Highlights (Figma mockup shows it persistent at all
                   widths, not hover-revealed).
                 */}
-                <Button
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0 rounded-full border border-line"
-                  aria-label="Discussion actions"
-                >
-                  <MoreHorizontal className="h-4 w-4" />
+                 <Button
+                   variant="ghost"
+                   className="h-8 w-8 shrink-0 rounded-full border border-line"
+                   aria-label="Discussion actions"
+                 >
+                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-52">
+              <DropdownMenuContent align="end" className="w-fit min-w-56 whitespace-nowrap">
                 {!inModal && (
                   <DropdownMenuItem onClick={() => onPopOut(t.id)}>
                     <Maximize2 className="h-4 w-4" />
