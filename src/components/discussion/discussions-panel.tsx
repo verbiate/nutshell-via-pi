@@ -1448,9 +1448,11 @@ function ListView({
     );
   }
   if (discussions.length === 0) {
+    // ponytail: matches Bookmarks/Highlights empty state — px-12 py-8 text-center,
+    // sm font-medium title + xs muted hint. No icon (keeps the three panels
+    // visually identical when empty).
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
-        <Lightbulb className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+      <div className="px-12 py-8 text-center">
         <p className="text-sm font-medium text-foreground">No discussions yet</p>
         <p className="mt-1 text-xs text-muted-foreground">{emptyHint}</p>
       </div>
@@ -1461,52 +1463,44 @@ function ListView({
     // desktop (≥1024px), native overflow-y-auto on tablet/reduced-motion.
     // flex-1 + min-h-0 so heights propagate from the sidebar's flex-col parent.
     <SmoothScrollArea className="flex-1 min-h-0">
-      <div className="py-2">
-      <p className="px-4 pb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        Discussions
-      </p>
-      <ul className="space-y-1">
+      {/*
+        ponytail: section header bar matches Bookmarks/Highlights group header
+        — 30px tall, type-section-label, border-b flush with the first row,
+        circular outline count badge. No chevron (not collapsible).
+      */}
+      <div className="flex h-[30px] w-full items-center gap-2 border-b border-line/50 px-12">
+        <span className="type-section-label flex-1 truncate text-foreground">
+          Discussions
+        </span>
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-medium tabular-nums text-foreground">
+          {discussions.length}
+        </span>
+      </div>
+      {/*
+        ponytail: rows match Bookmarks/Highlights — divide-y divide-line/50
+        (subtle dividers, no hover bg), px-12 py-3, type-toc-section body,
+        text-[11px] uppercase tracking-wide meta, persistent circular ⋯
+        trigger (not hover-revealed). Click target is the inner <button>
+        wrapping the text, mirroring Bookmarks — avoids nested-<button> HTML.
+      */}
+      <ul>
         {discussions.map((t) => (
-          <li key={t.id}>
-            {/*
-              ponytail: row is a div role=button (not a <button>) so the
-              nested DropdownMenuTrigger can render its own <button> legally —
-              nested <button>s are invalid HTML. onKeyDown handles Enter/Space
-              for a11y; onClick covers mouse. pr-6 on inner content reserves
-              room for the absolutely-positioned ⋯ at top-right.
-            */}
-            <div
-              role="button"
-              tabIndex={0}
+          <li key={t.id} className="flex items-start gap-2 px-12 py-3">
+            <button
               onClick={() => onSelect(t.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect(t.id);
-                }
-              }}
-              className="group relative w-full cursor-pointer rounded-none px-4 py-2 text-left hover:bg-muted/50"
+              className="min-w-0 flex-1 text-left"
             >
-              <div className="mb-0.5 flex items-center gap-2 pr-6">
-                <Lightbulb className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                <span className="text-xs capitalize text-muted-foreground">
-                  {t.type}
-                </span>
-                {t._count.messages > 0 && (
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                    {t._count.messages}
-                  </Badge>
-                )}
-                <span className="ml-auto text-[10px] text-muted-foreground transition-opacity group-hover:opacity-0 focus-within:opacity-0">
-                  {formatRelative(t.updatedAt)}
-                </span>
-              </div>
-              <p className="line-clamp-2 pr-6 text-xs text-foreground">
+              <p className="type-toc-section line-clamp-2 font-normal text-foreground">
                 {t.passageText
                   ? t.passageText.slice(0, 120)
                   : t.sectionHref
                   ? resolveSectionLabel?.(t.sectionHref) ?? t.sectionHref
                   : "Whole book"}
+              </p>
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {t.type}
+                {t._count.messages > 0 && ` · ${t._count.messages}`}
+                {` · ${formatRelative(t.updatedAt)}`}
               </p>
               {/*
                 ponytail: cross-listed hint. When this discussion's origin book
@@ -1516,43 +1510,46 @@ function ListView({
                 secondary status. Covers the union-query case in Part 5.
               */}
               {t.book && currentBookId && t.book.id !== currentBookId && (
-                <p className="mt-0.5 pr-6 text-[10px] italic text-muted-foreground/70">
+                <p className="mt-0.5 text-[11px] italic text-muted-foreground/70">
                   with {t.book.title}
                 </p>
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Discussion actions"
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                  >
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onPopOut(t.id)}>
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    Pop out
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                {/*
+                  ponytail: always-visible circular outline trigger, matching
+                  Bookmarks/Highlights (Figma mockup shows it persistent at all
+                  widths, not hover-revealed).
+                */}
+                <Button
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0 rounded-full border border-line"
+                  aria-label="Discussion actions"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                <DropdownMenuItem onClick={() => onPopOut(t.id)}>
+                  <Maximize2 className="h-4 w-4" />
+                  Pop out
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onDelete(t.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  Delete
+                </DropdownMenuItem>
+                {isAdmin && t.explainer && (
+                  <DropdownMenuItem onClick={() => onPurge(t)}>
+                    <Database className="h-4 w-4 text-destructive" />
+                    Purge cached explainer (admin)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onDelete(t.id)}>
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    Delete
-                  </DropdownMenuItem>
-                  {isAdmin && t.explainer && (
-                    <DropdownMenuItem onClick={() => onPurge(t)}>
-                      <Database className="h-3.5 w-3.5 text-destructive" />
-                      Purge cached explainer (admin)
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </li>
         ))}
       </ul>
-      </div>
     </SmoothScrollArea>
   );
 }
