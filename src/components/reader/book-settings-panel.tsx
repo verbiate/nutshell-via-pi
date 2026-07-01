@@ -36,8 +36,8 @@ export const BOOK_SETTINGS_MAX_FONT = 24;
 const CHOCOLATE = "#402A08";
 
 const THEME_SWATCHES: { id: ReaderThemeName; bg: string }[] = [
-  { id: "light", bg: "#FEFBF5" },
-  { id: "sepia", bg: "#FFFFFF" },
+  { id: "sepia", bg: "#FEFBF5" },
+  { id: "light", bg: "#FFFFFF" },
   { id: "dark", bg: CHOCOLATE },
 ];
 
@@ -136,18 +136,31 @@ export function BookSettingsPanel({
           })}
         </div>
 
-        {/* Font size slider with T labels */}
+        {/* Font size slider with T labels. Tick marks the default (18px) when off it. */}
         <div className="flex items-center gap-3">
           <span className="font-serif text-2xl leading-none text-foreground">T</span>
-          <Slider
-            value={[settings.fontSize]}
-            min={BOOK_SETTINGS_MIN_FONT}
-            max={BOOK_SETTINGS_MAX_FONT}
-            step={1}
-            onValueChange={handleFontSize}
-            aria-label="Text size"
-            className="flex-1 [&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-thumb]]:size-[22px] [&_[data-slot=slider-thumb]]:border [&_[data-slot=slider-thumb]]:shadow-[0_2px_2px_0_rgba(0,0,0,0.25),0_3px_8.5px_0_rgba(0,0,0,0.25)]"
-          />
+          <div className="relative flex-1">
+            <Slider
+              value={[settings.fontSize]}
+              min={BOOK_SETTINGS_MIN_FONT}
+              max={BOOK_SETTINGS_MAX_FONT}
+              step={1}
+              onValueChange={handleFontSize}
+              aria-label="Text size"
+              className="w-full [&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-thumb]]:size-[22px] [&_[data-slot=slider-thumb]]:border [&_[data-slot=slider-thumb]]:shadow-[0_2px_2px_0_rgba(0,0,0,0.25),0_3px_8.5px_0_rgba(0,0,0,0.25)]"
+            />
+            {settings.fontSize !== DEFAULT_BOOK_SETTINGS.fontSize && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 size-1.5 rounded-full bg-tan-dark"
+                style={{
+                  left: `${(((DEFAULT_BOOK_SETTINGS.fontSize - BOOK_SETTINGS_MIN_FONT) /
+                    (BOOK_SETTINGS_MAX_FONT - BOOK_SETTINGS_MIN_FONT)) * 100)}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              />
+            )}
+          </div>
           <span className="font-serif text-[44px] font-light leading-none text-foreground">T</span>
         </div>
 

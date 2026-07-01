@@ -15,7 +15,7 @@ export const READER_THEMES = {
   light: {
     rules: {
       body: {
-        background: "#FEFBF5",
+        background: "#FFFFFF",
         color: "#402A08",
       },
       ".tts-active": {
@@ -36,7 +36,7 @@ export const READER_THEMES = {
   dark: {
     rules: {
       body: {
-        background: "#1A130C",
+        background: "#402A08",
         color: "#F2E9D4",
       },
       ".tts-active": {
@@ -57,8 +57,8 @@ export const READER_THEMES = {
   sepia: {
     rules: {
       body: {
-        background: "#f4ecd8",
-        color: "#5b4636",
+        background: "#FEFBF5",
+        color: "#402A08",
       },
       ".tts-active": {
         "background-color": "rgba(180, 130, 60, 0.2)",

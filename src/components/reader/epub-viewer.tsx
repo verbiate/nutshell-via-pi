@@ -1573,13 +1573,16 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
 
     return (
       <div className={cn("relative h-full w-full", className)}>
-        <div
-          className="h-full w-full"
-          style={{
-            padding:
-              "clamp(56px, 7vh, 96px) clamp(80px, 16vw, 200px)",
-          }}
-        >
+          <div
+            className="h-full w-full"
+            style={{
+              // ponytail: extra bottom padding clears the floating TTS card
+              // (fixed bottom-12 ≈ 48px + ~96px expanded card) with ~48px gap,
+              // matching the room the card leaves beneath itself.
+              padding:
+                "clamp(56px, 7vh, 96px) clamp(80px, 16vw, 200px) 192px clamp(80px, 16vw, 200px)",
+            }}
+          >
           <div
             ref={containerRef}
             className="h-full w-full"

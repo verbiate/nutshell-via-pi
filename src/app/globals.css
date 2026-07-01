@@ -109,9 +109,8 @@
     --red-warn: #F9241E;
     --green-success: #4FDB27;
 
-    /* Semantic surfaces → palette */
-    --paper: var(--tan);
-    --paper-deep: var(--tan-dark);
+    /* Semantic surfaces → palette. --paper/--paper-deep are themed per-block
+       (see :root / .sepia / .dark) since they must track the active chrome. */
     --card-plain: var(--white);
     --espresso: var(--chocolate);
     --ink: var(--chocolate);
@@ -169,7 +168,7 @@
     --shadow-float: 0 24px 60px -30px rgba(34,24,5,.45);
 
     /* shadcn semantic vars → Nutshell mapping */
-    --background: var(--tan);
+    --background: var(--white);
     --foreground: var(--chocolate);
     --card: var(--white);
     --card-foreground: var(--chocolate);
@@ -193,7 +192,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: var(--tan);
+    --sidebar: var(--white);
     --sidebar-foreground: var(--chocolate);
     --sidebar-primary: var(--chocolate-dark);
     --sidebar-primary-foreground: var(--tan);
@@ -201,6 +200,11 @@
     --sidebar-accent-foreground: var(--chocolate-dark);
     --sidebar-border: var(--tan-dark);
     --sidebar-ring: var(--purple);
+
+    /* White-mode surfaces: paper tracks the white chrome; paper-deep stays the
+       soft tan-dark for the subtle contrast cards/badges need on white. */
+    --paper: var(--white);
+    --paper-deep: var(--tan-dark);
 
     /* Reader sidebar geometry + motion tokens */
     --reader-sidebar-w: 460px;
@@ -272,74 +276,82 @@
 }
 
 .dark {
-    /* Warm chocolate-family dark reading theme — keeps the purple ring */
-    --background: #1A130C;
+    /* Warm chocolate dark reading theme — base #402A08 (brand --chocolate) with
+       a chocolate-family tonal ramp. Keeps the purple ring + cream ink. */
+    --background: #402A08;
     --field-bg: none;
     --foreground: #F2E9D4;
-    --card: #241A10;
+    --card: #52330A;
     --card-foreground: #F2E9D4;
-    --popover: #241A10;
+    --popover: #52330A;
     --popover-foreground: #F2E9D4;
     --primary: #F2E9D4;
-    --primary-foreground: #1A130C;
-    --secondary: #2E2214;
+    --primary-foreground: #402A08;
+    --secondary: #63420E;
     --secondary-foreground: #F2E9D4;
-    --muted: #2E2214;
-    --muted-foreground: #A8957A;
+    --muted: #63420E;
+    --muted-foreground: #C9B393;
     --accent: #2A2348;
     --accent-foreground: #D9D6FF;
     --destructive: #F9241E;
-    --border: #3A2E1E;
-    --input: #3A2E1E;
+    --border: #6B4814;
+    --input: #6B4814;
     --ring: #9B8FEF;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: #1A130C;
+    --sidebar: #402A08;
     --sidebar-foreground: #F2E9D4;
     --sidebar-primary: #F2E9D4;
-    --sidebar-primary-foreground: #1A130C;
+    --sidebar-primary-foreground: #402A08;
     --sidebar-accent: #2A2348;
     --sidebar-accent-foreground: #D9D6FF;
-    --sidebar-border: #3A2E1E;
+    --sidebar-border: #6B4814;
     --sidebar-ring: #9B8FEF;
+    --paper: #402A08;
+    --paper-deep: #52330A;
 }
 
 .sepia {
-    --background: #f4ecd8;
+    /* Sepia = the brand tan identity (#FEFBF5 = --tan). This is the warm-paper
+       mode; light mode is pure white, dark is chocolate. Foreground/ink is
+       chocolate; surfaces mirror the tan-brand chrome. */
+    --background: #FEFBF5;
     --field-bg: none;
-    --foreground: #5b4636;
-    --card: #f4ecd8;
-    --card-foreground: #5b4636;
-    --popover: #f4ecd8;
-    --popover-foreground: #5b4636;
-    --primary: #5b4636;
-    --primary-foreground: #f4ecd8;
-    --secondary: #e9dfc6;
-    --secondary-foreground: #5b4636;
-    --muted: #e9dfc6;
-    --muted-foreground: #8a7a6a;
-    --accent: #e9dfc6;
-    --accent-foreground: #5b4636;
-    --destructive: #b04a3e;
-    --border: #d4c5a9;
-    --input: #d4c5a9;
+    --foreground: #402A08;
+    --card: #FFFFFF;
+    --card-foreground: #402A08;
+    --popover: #FFFFFF;
+    --popover-foreground: #402A08;
+    --primary: #221805;
+    --primary-foreground: #FEFBF5;
+    --secondary: #DDD8CD;
+    --secondary-foreground: #221805;
+    --muted: #DDD8CD;
+    --muted-foreground: #6B5A48;
+    --accent: #D9D6FF;
+    --accent-foreground: #221805;
+    --destructive: #F9241E;
+    --border: #DDD8CD;
+    --input: #DDD8CD;
     --ring: #A17FF0;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: #f4ecd8;
-    --sidebar-foreground: #5b4636;
-    --sidebar-primary: #5b4636;
-    --sidebar-primary-foreground: #f4ecd8;
-    --sidebar-accent: #e9dfc6;
-    --sidebar-accent-foreground: #5b4636;
-    --sidebar-border: #d4c5a9;
+    --sidebar: #FEFBF5;
+    --sidebar-foreground: #402A08;
+    --sidebar-primary: #221805;
+    --sidebar-primary-foreground: #FEFBF5;
+    --sidebar-accent: #D9D6FF;
+    --sidebar-accent-foreground: #221805;
+    --sidebar-border: #DDD8CD;
     --sidebar-ring: #A17FF0;
+    --paper: #FEFBF5;
+    --paper-deep: #DDD8CD;
 }
 
 /* Bookshelf ↔ reader route transition is driven by GSAP in
@@ -367,6 +379,16 @@
   opacity: 0;
   animation: fadeInWord 0.3s ease-out forwards;
   animation-delay: calc(min(var(--word-index), 50) * 0.04s);
+}
+
+/* ponytail: neutralize Tailwind v4's built-in `sepia` FILTER utility. next-themes
+   puts class="sepia" on <html> for the reading theme, but Tailwind generates
+   `.sepia { --tw-sepia: sepia(100%) }` from that same token, tone-shifting the
+   ENTIRE page (the "neon yellow reader" bug). Overriding the utility to set the
+   var to its identity value keeps class="sepia" meaningful only as the theme
+   selector below — never as a filter — regardless of cache/HMR state. */
+@utility sepia {
+    --tw-sepia: initial;
 }
 
 @utility bg-grad {

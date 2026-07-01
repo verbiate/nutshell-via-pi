@@ -993,7 +993,7 @@ export function SceneTransitionProvider({
         ref={cloneLayerRef}
         data-scene-clone
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[#1A130C]"
+        className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[#402A08]"
         style={{ display: "none" }}
       />
       {/* Dim overlay: a single solid black layer whose opacity is animated to

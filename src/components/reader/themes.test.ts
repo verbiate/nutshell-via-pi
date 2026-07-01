@@ -21,9 +21,19 @@ describe("READER_THEMES", () => {
     },
   );
 
-  it("light theme keeps the tan paper background", () => {
-    expect(bodyRules("light").background).toBe("#FEFBF5");
+  it("light theme uses a clean white background with chocolate ink", () => {
+    expect(bodyRules("light").background).toBe("#FFFFFF");
     expect(bodyRules("light").color).toBe("#402A08");
+  });
+
+  it("sepia theme uses the brand tan background with chocolate ink", () => {
+    expect(bodyRules("sepia").background).toBe("#FEFBF5");
+    expect(bodyRules("sepia").color).toBe("#402A08");
+  });
+
+  it("dark theme uses the chocolate background with cream ink", () => {
+    expect(bodyRules("dark").background).toBe("#402A08");
+    expect(bodyRules("dark").color).toBe("#F2E9D4");
   });
 
   it.each(["light", "dark", "sepia"] as const)(
