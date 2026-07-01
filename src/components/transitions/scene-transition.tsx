@@ -51,6 +51,11 @@ interface SceneTransitionApi {
   // [data-hero-cover] hidden (opacity 0) so the fly clone can land into it,
   // then this flips false at the handoff and the real cover is revealed.
   forwardFlyActive: boolean;
+  // ponytail: True while a back cover fly is outbound. The reader holds the
+  // real [data-hero-cover] hidden (opacity 0) from back-nav start so the book
+  // appears to "leave" the sidebar — the parked fly clone is what's seen, not
+  // the real cover sliding out with the departing reader.
+  backFlyActive: boolean;
   // Visit-level: suppress the Bookshelf's staggered reveal for this library
   // visit (set on back-nav). Survives Bookshelf remounts within the visit.
   suppressShelfReveal: boolean;
@@ -77,6 +82,7 @@ const NOT_PROVIDED: SceneTransitionApi = {
   },
   entering: false,
   forwardFlyActive: false,
+  backFlyActive: false,
   suppressShelfReveal: false,
   returningHero: null,
   settleHero: () => {},
@@ -176,6 +182,28 @@ function zeroScrollOffsets(clone: HTMLElement) {
   }
 }
 
+// ponytail: propagate each live cover's rendered height onto the clone's matching
+// cover so the clone's layout is byte-identical to the live shelf regardless of
+// image-decode state. Real covers render as <img class="h-auto" loading="lazy">
+// with NO width/height/aspect-ratio (book-cover.tsx), so a freshly cloneNode'd
+// <img> has no intrinsic dimensions until its decode re-resolves against the
+// clone — the clone's content is briefly shorter, and applyScrollOffsets' write
+// of the captured scrollTop CLAMPS to the smaller scrollHeight. The cloned
+// bookshelf then sits at the wrong offset for the whole 0.8s recede, misaligning
+// with the fly clone (which is position:fixed at the correct hero.rect). This
+// was the occasional "~90px scroll jump" — more collapsed covers above the click
+// = larger offset, hence scroll- and timing-dependent. Pinning heights makes the
+// captured scrollTop apply unclamped AND lands the cloned book exactly under the
+// fly clone. Ceiling: O(covers), same as captureScrollOffsets' O(descendants).
+function pinCoverHeights(library: HTMLElement, clone: HTMLElement) {
+  const live = library.querySelectorAll("[data-book-cover]");
+  const dup = clone.querySelectorAll("[data-book-cover]");
+  for (let i = 0; i < live.length && i < dup.length; i++) {
+    const h = (live[i] as HTMLElement).getBoundingClientRect().height;
+    if (h > 0) (dup[i] as HTMLElement).style.height = `${h}px`;
+  }
+}
+
 // Freeze the cloned search bar's position so it scales with the recede transform
 // as part of the library, instead of recomputing its position:fixed (mobile) /
 // position:sticky (lg) against the clone's new geometry and scroll state. Without
@@ -201,6 +229,29 @@ function freezeShelfBar(library: HTMLElement, clone: HTMLElement) {
   if (!clonedBar) return;
   const barRect = bar.getBoundingClientRect();
   const libraryRect = library.getBoundingClientRect();
+  // ponytail: preserve the scroll content's height BEFORE reparenting the bar
+  // out of flow. The sticky [data-shelf-bar] (h-[138px] at lg) is the LAST child
+  // of [data-scroll-content], so it occupies 138px at the end of the scrollable
+  // region. clone.appendChild(clonedBar) below moves it to the clone root and
+  // removes that 138px box from flow → scrollHeight drops → maxScroll drops by
+  // ~138. The captured scrollTop (≈ live maxScroll, set by applyScrollOffsets)
+  // then exceeds the clone's maxScroll and the browser CLAMPS it down → the
+  // receding content shifts down ~138px and the last book row drops into where
+  // the bar sat. That was the end-of-bookshelf "jump downward": it only clamps
+  // when scrollTop is near maxScroll. Locking minHeight to the bar-inclusive
+  // offsetHeight (BEFORE the reparent — setting it after would be too late, the
+  // browser has already clamped and won't restore scrollTop) holds the content
+  // open so scrollHeight is unchanged → no clamp. The pinned-absolute bar
+  // (bottom:0 below) then overlays the exact space minHeight holds open.
+  // closest() returns null on mobile (no data-scroll-content there, and the bar
+  // is position:fixed so reparenting doesn't affect flow anyway) → safe skip.
+  const clonedContent = clonedBar.closest(
+    "[data-scroll-content]",
+  ) as HTMLElement | null;
+  const clonedContentH = clonedContent?.offsetHeight;
+  if (clonedContent && clonedContentH) {
+    clonedContent.style.minHeight = `${clonedContentH}px`;
+  }
   clone.appendChild(clonedBar);
   clone.style.position = "relative";
   clonedBar.style.position = "absolute";
@@ -328,6 +379,11 @@ export function SceneTransitionProvider({
   // was captured; cleared at the landing handoff). The reader holds the real
   // sidebar cover hidden while this is true.
   const [forwardFlyActive, setForwardFlyActive] = useState(false);
+  // ponytail: outbound back fly — drives the reader's coverHidden so the real
+  // sidebar cover drops out the instant the back fly clone is parked on top of
+  // it (see backFlyActive on the context). Cleared at forward nav, back
+  // arrival, and clearFly (abort/unmount).
+  const [backFlyActive, setBackFlyActive] = useState(false);
   // Set on back-nav; consumed by the Bookshelf on its mount.
   const [returningHero, setReturningHero] = useState<ReturningHero | null>(
     null,
@@ -414,6 +470,7 @@ export function SceneTransitionProvider({
     pendingFlyRef.current = null;
     backFlyPart1Ref.current = false;
     setForwardFlyActive(false);
+    setBackFlyActive(false);
   }, []);
 
   // ponytail: lock <html> scroll during the transition. The route swap briefly
@@ -444,6 +501,7 @@ export function SceneTransitionProvider({
       if (direction === "forward") {
         setSuppressShelfReveal(false);
         setLeavingReader(false);
+        setBackFlyActive(false);
       }
       // Back nav: signal that the reader is exiting so dependents (e.g. the
       // idle TTS player) can fade out during the slide-out rather than at swap.
@@ -476,6 +534,9 @@ export function SceneTransitionProvider({
         // Capture scroll BEFORE cloning (non-mutating read of live scrollTop).
         const scrollOffsets = captureScrollOffsets(library);
         const clone = library.cloneNode(true) as HTMLElement;
+        // Pin cover heights BEFORE attach so the clone's content height matches
+        // the live shelf — keeps applyScrollOffsets from clamping (see pinCoverHeights).
+        pinCoverHeights(library, clone);
         // Make the clone opaque with the same field background as <body>
         // (tan + --field-bg tints) so the whole screen — background included —
         // recedes as one unit; the dark stage shows at the scaled edges.
@@ -507,7 +568,10 @@ export function SceneTransitionProvider({
         // runs — otherwise its position:fixed/sticky recomputes against the
         // clone's new geometry and drifts up independently of the bookshelf.
         // Captured here (live library still mounted); persists through the
-        // back-direction clone reuse.
+        // back-direction clone reuse. freezeShelfBar also preserves the scroll
+        // content's height when it reparents the bar out of flow (see its
+        // minHeight note), so this does NOT shrink scrollHeight and clamp the
+        // scrollTop we just applied — the end-of-bookshelf "jump" stays gone.
         freezeShelfBar(library, clone);
         // will-change pre-promotes so the clone's first paint isn't mid-frame.
         gsap.set(clone, { ...FULL_TRANSFORM, willChange: "transform" });
@@ -539,6 +603,9 @@ export function SceneTransitionProvider({
       setForwardFlyActive(false);
 
       const fly = !!opts?.sidebarOpen && !!opts?.hero;
+      // Hide the real sidebar cover for the whole back fly so only the parked
+      // clone (then the flying clone) is seen — the book "leaves" the sidebar.
+      if (fly) setBackFlyActive(true);
       // returningHero is set NOW (not on arrival) so the Bookshelf — whose
       // child-depth layout effect beats this provider's pathname effect — sees
       // it on its very first render and can suppress the ripple reveal.
@@ -855,6 +922,7 @@ export function SceneTransitionProvider({
           pendingRef.current = null;
           setEntering(false);
           setLeavingReader(false);
+          setBackFlyActive(false);
           clearLayer();
           unlockScroll();
         }
@@ -904,12 +972,13 @@ export function SceneTransitionProvider({
       navigate,
       entering,
       forwardFlyActive,
+      backFlyActive,
       suppressShelfReveal,
       returningHero,
       settleHero,
       leavingReader,
     }),
-    [navigate, entering, forwardFlyActive, suppressShelfReveal, returningHero, settleHero, leavingReader],
+    [navigate, entering, forwardFlyActive, backFlyActive, suppressShelfReveal, returningHero, settleHero, leavingReader],
   );
 
   return (
@@ -1001,13 +1070,28 @@ export function _demoFreezeShelfBar() {
       toJSON: () => ({}),
     }) as DOMRect;
   const library = document.createElement("div");
+  // Bar lives inside [data-scroll-content] (the SmoothScrollArea content) — this
+  // is the real structure freezeShelfBar's minHeight compensation keys off via
+  // closest().
+  const content = document.createElement("div");
+  content.setAttribute("data-scroll-content", "");
   const bar = document.createElement("div");
   bar.setAttribute("data-shelf-bar", "");
-  library.appendChild(bar);
+  content.appendChild(bar);
+  library.appendChild(content);
   library.getBoundingClientRect = () => mockRect(0, 0, 1280, 800);
   bar.getBoundingClientRect = () => mockRect(662, 504, 776, 138);
 
   const clone = library.cloneNode(true) as HTMLElement;
+  const cloneContent = clone.querySelector(
+    "[data-scroll-content]",
+  ) as HTMLElement;
+  // jsdom/happy-dom report offsetHeight 0 without a real layout pass; force a
+  // realistic bar-inclusive value so the minHeight capture is non-zero.
+  Object.defineProperty(cloneContent, "offsetHeight", {
+    value: 1400,
+    configurable: true,
+  });
   freezeShelfBar(library, clone);
 
   const clonedBar = clone.querySelector("[data-shelf-bar]") as HTMLElement;
@@ -1044,6 +1128,10 @@ export function _demoFreezeShelfBar() {
   assert(
     clonedBar.parentElement === clone,
     "cloned bar must be reparented to the clone root",
+  );
+  assert(
+    cloneContent.style.minHeight === "1400px",
+    "scroll content minHeight must be pinned to its pre-reparent offsetHeight so the bar leaving flow doesn't shrink scrollHeight (end-of-bookshelf clamp)",
   );
   return true;
 }

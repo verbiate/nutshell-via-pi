@@ -779,6 +779,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     [enginePref],
   );
 
+  // ponytail: navigate the viewer to the target section BEFORE starting TTS so
+  // highlight-follow-along has rendered/paginated DOM to mark when chunk 0
+  // plays. Skip only when the FILE is already current AND there's no
+  // #fragment — a fragment needs display(fragmentHref) to paginate to the
+  // verse's CFI even within the same file. Currently used by playSection
+  // (ToC/Play-from-start). The ghost advance paths (advanceToNextSection,
+  // handleSectionComplete) intentionally do NOT call this — they rely on
+  // highlightChunk's display(chunkCfi) + bidirectional safety net, which
+  // avoids the two-competing-displays flash.
+  const navigateViewerForSection = useCallback(async (href: string) => {
+    const viewer = registeredViewerRef.current?.current;
+    const currentHref = openBookRef.current?.currentHref;
+    const hasFragment = href.includes("#");
+    const sameFile = ttsSectionMatches(currentHref ?? "", href);
+    if (viewer && (!sameFile || hasFragment)) {
+      await viewer.navigateTo(href, { ttsNav: true }).catch(() => {});
+    }
+  }, []);
+
   const handleSectionComplete = useCallback(async () => {
     const active = activeItemRef.current;
     if (!active) return;
@@ -1207,20 +1226,7 @@ let cancelled = false;
       }
 
       const addMode = active ? "next" : "last";
-      // ponytail: navigate the viewer to the target section BEFORE starting TTS
-      // so highlight-follow-along has rendered DOM to mark when chunk 0 plays.
-      // Without this, highlightChunk fires before the new section is in the
-      // iframe → no marks (audio plays, highlight missing). Skip only when the
-      // FILE is already current AND there's no #fragment — a fragment needs
-      // display(fragmentHref) to paginate to the verse's CFI (the reliable
-      // page-jump on "Play now"), even within the same file.
-      const viewer = registeredViewerRef.current?.current;
-      const currentHref = openBookRef.current?.currentHref;
-      const hasFragment = href.includes("#");
-      const sameFile = ttsSectionMatches(currentHref ?? "", href);
-      if (viewer && (!sameFile || hasFragment)) {
-        await viewer.navigateTo(href, { ttsNav: true }).catch(() => {});
-      }
+      await navigateViewerForSection(href);
       const item = await playlistMutations.addItem({
         bookId,
         sectionHref: href,
@@ -1232,7 +1238,7 @@ let cancelled = false;
       ensureSessionForItem(item);
       startSection(href, label, normalizeStartPos(href, startPos), bookId);
     },
-    [playlistMutations, playPause, startSection, ensureSessionForItem],
+    [navigateViewerForSection, playlistMutations, playPause, startSection, ensureSessionForItem],
   );
 
   // ponytail: play arbitrary text (a discussion reply). Mirrors playSection's

@@ -889,26 +889,32 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
           const rendition = renditionRef.current;
           if (rendition) {
             const chunkCfi = nodeToCfi(rendition, startBlock);
+            const pageBefore = readDisplayedPage(rendition);
+            console.log("[DIAG-hc-display]", {
+              chunkCfi: chunkCfi ? chunkCfi.slice(0, 80) : null,
+              pageBefore,
+              startBlockTag: startBlock.tagName,
+              startBlockId: startBlock.id || null,
+              startBlockText: (startBlock.textContent ?? "").slice(0, 60),
+            });
             if (chunkCfi) {
               markNavInFlight();
               await safeDisplayRef.current(chunkCfi, `highlightChunk:${chunkCfi}`);
               scheduleNavSettle();
             }
+            console.log("[DIAG-hc-display]", { pageAfter: readDisplayedPage(rendition) });
           }
         }
 
-        // ponytail: visibility safety net. display(blockCfi) lands on the
-        // block's START page — correct for normal blocks, but a block fragmented
-        // across a page boundary starts on the previous page while the chunk's
-        // spoken text is on this one. Advance columns until the chunk's START
-        // CHARACTER is on the displayed page. We can't use the block's rect
-        // (fragmented blocks span columns and never read as "visible"), and
-        // doc.defaultView.innerWidth here is the full N×pageWidth strip, not one
-        // page — so use the container width and the chunk char's own rect vs the
-        // rendition's current displayed page. Cheap no-op when display() already
-        // landed on the right page. Gated on !userBrowsedAway so a browsing user
-        // isn't yanked back. next() is just a column translation, so the text
-        // map/range above stay valid for the wrapping that follows.
+        // ponytail: visibility safety net — bidirectional. display(blockCfi)
+        // may land on the wrong page (CFI rounding, stale rendition state on
+        // same-file sub-section jumps) or be skipped entirely (chunkCfi
+        // null). Page forward OR backward until the chunk's START CHARACTER is
+        // on the displayed page. Oscillation guard (lastDir) prevents
+        // next↔prev infinite loops when a char sits exactly on a column
+        // boundary. Cap raised from 4 to 50 — the old 4-page cap silently
+        // bailed when sub-sections were far apart. Gated on
+        // !userBrowsedAway so a browsing user isn't yanked back.
         if (
           startBlock &&
           range &&
@@ -920,24 +926,55 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
             doc.defaultView?.innerWidth ??
             800;
           let safety = 0;
-          while (rendition && safety < 4) {
+          let lastDir: "next" | "prev" | null = null;
+          while (rendition && safety < 50) {
             const cr = charRectAt(doc, map, range.start);
             if (!cr) break;
             const page = readDisplayedPage(rendition);
             const visLeft = page > 0 ? (page - 1) * pageW : 0;
-            // char already on the displayed page (or before it) → done
-            if (cr.left < visLeft + pageW) break;
-            markNavInFlight();
-            try {
-              await rendition.next();
-              scheduleNavSettle();
-            } catch (err: any) {
-              clearNavInFlight();
-              console.warn("[EpubViewer] next() follow-along failed:", err);
-              break;
+            // char IS on the displayed page [visLeft, visLeft + pageW) → done
+            if (cr.left >= visLeft && cr.left < visLeft + pageW) break;
+            // char AFTER the displayed page → page forward
+            if (cr.left >= visLeft + pageW) {
+              if (lastDir === "prev") break; // oscillation guard
+              markNavInFlight();
+              try {
+                await rendition.next();
+                scheduleNavSettle();
+              } catch (err: any) {
+                clearNavInFlight();
+                console.warn("[EpubViewer] next() follow-along failed:", err);
+                break;
+              }
+              lastDir = "next";
+              safety++;
+              continue;
             }
-            safety++;
+            // ponytail: char BEFORE the displayed page → display overshot,
+            // page back. The old code broke here (treating "before" as
+            // "done"), stranding the viewer on a page past the chunk.
+            if (cr.left < visLeft) {
+              if (lastDir === "next") break; // oscillation guard
+              markNavInFlight();
+              try {
+                await rendition.prev();
+                scheduleNavSettle();
+              } catch (err: any) {
+                clearNavInFlight();
+                console.warn("[EpubViewer] prev() follow-along failed:", err);
+                break;
+              }
+              lastDir = "prev";
+              safety++;
+              continue;
+            }
+            break;
           }
+          console.log("[DIAG-hc-safety]", {
+            iterations: safety,
+            finalPage: renditionRef.current ? readDisplayedPage(renditionRef.current) : null,
+            lastDir,
+          });
         }
 
         // ponytail: NOW wrap marks on the (possibly just-scrolled) page.

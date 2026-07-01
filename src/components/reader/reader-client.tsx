@@ -127,7 +127,7 @@ export function ReaderClient({
   contextWindow,
   attachBookMax,
 }: ReaderClientProps) {
-  const { navigate: sceneNavigate, entering, forwardFlyActive } = useSceneTransition();
+  const { navigate: sceneNavigate, entering, forwardFlyActive, backFlyActive } = useSceneTransition();
   // ponytail: mutable library snapshot state — updated synchronously on
   // back-click via flushSync before backToLibrary fires, so the snapshot clone
   // in [data-scene-clone] reflects post-read recency order at animation time.
@@ -1672,7 +1672,7 @@ export function ReaderClient({
                 initialLanguage={initialLanguage}
                 isAdmin={isAdmin}
                 bookCreatedAt={panel.bookCreatedAt}
-                coverHidden={forwardFlyActive}
+                coverHidden={forwardFlyActive || backFlyActive}
                 onAskAboutSection={handleAskAboutSection}
                 onAskAboutBook={handleAskAboutBook}
               />
