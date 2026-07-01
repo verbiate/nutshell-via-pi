@@ -828,6 +828,46 @@ describe("useTtsEngine", () => {
     unmount();
   });
 
+  it("clears the paused visual state when restarting via startSection (Play now from a paused state)", async () => {
+    // ponytail: pause() toggles .tts-paused on the body, whose CSS fades
+    // .tts-chunk marks to transparent. resume() clears it — but the right-click
+    // "Play now" restart path goes through startSection, not resume(). If the
+    // start path doesn't reset .tts-paused, fresh <mark>s wrap text inside a
+    // body whose CSS hides them → audio plays, highlight invisible. This is
+    // the exact "Play now shows no highlight" symptom.
+    const viewerRef = createMockViewerRef();
+    const { getApi, unmount } = renderHook({
+      bookId: "book-1",
+      bookLanguage: "en",
+      getText: createGetText("Hello world."),
+      engineId: "kokoro",
+      voiceId: "af_bella",
+      viewerRef,
+    });
+
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PLAYING"));
+    act(() => {
+      getApi().pause();
+    });
+    await vi.waitFor(() => expect(getApi().state.phase).toBe("PAUSED"));
+    expect(viewerRef!.current!.setTtsPaused).toHaveBeenCalledWith(true);
+
+    // Restart from a position (the Play-now flow) — must clear .tts-paused so
+    // the new chunk's <mark> is visible.
+    vi.mocked(viewerRef!.current!.setTtsPaused).mockClear();
+    act(() => {
+      getApi().startSection("xhtml/chapter1.xhtml", "Chapter 1");
+    });
+    await vi.waitFor(() =>
+      expect(viewerRef!.current!.setTtsPaused).toHaveBeenCalledWith(false),
+    );
+
+    unmount();
+  });
+
   it("clears the paused highlight state on close", async () => {
     const viewerRef = createMockViewerRef();
     const { getApi, unmount } = renderHook({

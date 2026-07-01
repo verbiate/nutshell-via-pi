@@ -13,7 +13,7 @@ import type {
   AudioSession,
   BookAudioContext,
 } from "./audio-context";
-import { buildSpinePlaylist, nextLeafFragmentInSameFile } from "@/lib/reader/spine-playlist";
+import { buildSpinePlaylist, nextLeafFragmentInSameFile, findFlatSectionIndex } from "@/lib/reader/spine-playlist";
 import { resolveAdvance, deriveGhost, type GhostItem } from "@/lib/reader/ghost";
 import { TtsPlayer } from "@/components/reader/tts-player";
 import { useSceneTransition } from "@/components/transitions/scene-transition";
@@ -474,9 +474,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     // and is the only path that introduces a NEW book into the session.
     if (openBook && openBook.bookId === activeItem.bookId) {
       const flatToc = buildSpinePlaylist(openBook.spineItems, openBook.toc);
-      const idx = flatToc.findIndex((s) =>
-        ttsSectionMatches(s.href, activeItem.sectionHref ?? ""),
-      );
+      // ponytail: fragment-aware lookup — a bare parent (Blitzscaling "Part I")
+      // and its fragment children share a basename, so basename-only matching
+      // would pin currentIndex to the parent and make "Next" restart the
+      // current child. findFlatSectionIndex prefers an exact basename+fragment
+      // match, falling back to basename-only for path-prefix resilience.
+      const idx = findFlatSectionIndex(flatToc, activeItem.sectionHref ?? "");
       const currentIndex = Math.max(0, idx);
       setSession((prev) => {
         if (!prev || prev.bookId !== activeItem.bookId) {
@@ -535,9 +538,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         // spine — it stays null until that book's reader is opened.
         return prev;
       }
-      const idx = prev.flatToc.findIndex((s) =>
-        ttsSectionMatches(s.href, activeItem.sectionHref ?? ""),
-      );
+      const idx = findFlatSectionIndex(prev.flatToc, activeItem.sectionHref ?? "");
       const currentIndex = Math.max(0, idx);
       if (prev.currentIndex === currentIndex) return prev;
       return { ...prev, currentIndex };
@@ -587,7 +588,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       // ponytail: bound the section's range at the NEXT ToC leaf in the same
       // file, not the next DOM id'd element. EPUBs sometimes carry sub-section
       // ids absent from the ToC (Blitzscaling s16/s17/s18 under s15) — DOM
-      // auto-discovery would truncate the section to its intro paragraph.
+      // auto-discovery would truncate the section to its intro paragraph. This
+      // also bounds bare-href structural parents (Blitzscaling "Part I") at
+      // their first fragment child, so the parent reads only its intro.
       // Session flatToc is the live playlist; fall back to building from
       // openBook when the session isn't established yet.
       const flatToc =
@@ -595,7 +598,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         (openBookRef.current
           ? buildSpinePlaylist(openBookRef.current.spineItems, openBookRef.current.toc)
           : []);
-      const endFragment = fragment ? nextLeafFragmentInSameFile(flatToc, href) : undefined;
+      // ponytail: unconditional — nextLeafFragmentInSameFile returns undefined
+      // when the next leaf is in a different file, so plain bare-href chapters
+      // (no fragment siblings) keep their DOM-fallback behavior unchanged.
+      const endFragment = nextLeafFragmentInSameFile(flatToc, href);
       const txt = viewer.getSectionText(fragment, endFragment) ?? "";
       return txt;
     }
@@ -1072,9 +1078,7 @@ let cancelled = false;
     const open = openBookRef.current;
     if (!open || open.bookId !== item.bookId) return;
     const flatToc = buildSpinePlaylist(open.spineItems, open.toc);
-    const idx = flatToc.findIndex((s) =>
-      ttsSectionMatches(s.href, item.sectionHref ?? ""),
-    );
+    const idx = findFlatSectionIndex(flatToc, item.sectionHref ?? "");
     const currentIndex = Math.max(0, idx);
     setSession((prev) => {
       if (!prev) return createSession(open, currentIndex);
@@ -1281,7 +1285,10 @@ let cancelled = false;
 
       const href = overrideHref ?? open.currentHref;
       const flatToc = buildSpinePlaylist(open.spineItems, open.toc);
-      const currentFlat = flatToc.find((i) => ttsSectionMatches(i.href, href));
+      // ponytail: fragment-aware lookup keeps the "Read aloud from here" label
+      // pinned to the actual fragment child, not the bare parent that shares
+      // its basename (see findFlatSectionIndex).
+      const currentFlat = flatToc[findFlatSectionIndex(flatToc, href)];
       const title =
         overrideLabel || currentFlat?.label || open.bookTitle || "Reading";
 

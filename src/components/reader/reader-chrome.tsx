@@ -44,6 +44,7 @@ export function ReaderChrome({
     >
       <div className={cn("flex items-center", hidden ? "pointer-events-none" : "pointer-events-auto")}>
         <Button
+          variant="ghost"
           onClick={onBack}
           aria-label="Back to bookshelf"
           tabIndex={hidden ? -1 : 0}
@@ -63,6 +64,7 @@ export function ReaderChrome({
             tracks the chrome fade (hidden prop) independently of sidebarOpen. */}
         {onAskAboutSection && (
           <Button
+            variant="ghost"
             onClick={onAskAboutSection}
             tabIndex={hidden ? -1 : 0}
             aria-label="Ask about this section"
@@ -81,6 +83,7 @@ export function ReaderChrome({
         >
           <div className="overflow-hidden">
             <Button
+              variant="ghost"
               onClick={onHideControls}
               tabIndex={sidebarOpen && !hidden ? 0 : -1}
               aria-label="Hide controls"

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildSpinePlaylist, nextLeafFragmentInSameFile, type SpineItem } from "../spine-playlist";
+import {
+  buildSpinePlaylist,
+  nextLeafFragmentInSameFile,
+  findFlatSectionIndex,
+  type SpineItem,
+} from "../spine-playlist";
 import type { NavItem } from "@likecoin/epub-ts";
 
 function makeSpine(hrefs: string[]): SpineItem[] {
@@ -129,7 +134,7 @@ describe("buildSpinePlaylist", () => {
     expect(playlist.map((p) => p.label)).toEqual(["I.1", "I.2"]);
   });
 
-  it("flattens nested ToCs depth-first in reading order", () => {
+  it("keeps bare-href structural parents while flattening nested ToCs depth-first", () => {
     const spine = makeSpine(["text/book1.xhtml", "text/book2.xhtml"]);
     const toc = makeToc([
       {
@@ -149,9 +154,42 @@ describe("buildSpinePlaylist", () => {
 
     const playlist = buildSpinePlaylist(spine, toc);
 
-    // ponytail: parent headings are dropped (their files are subdivided by
-    // fragment leaves); only the verse leaves survive, depth-first.
-    expect(playlist.map((p) => p.label)).toEqual(["I.1", "I.2", "II.1"]);
+    // ponytail: structural parents (NavItem with subitems) are kept as stops
+    // even when their file is subdivided by fragment children — their bare
+    // href addresses distinct intro content (e.g. Blitzscaling "Part I"). Only
+    // flat redundant headings (no subitems) are dropped — see the Analects test.
+    expect(playlist.map((p) => p.label)).toEqual([
+      "Book I",
+      "I.1",
+      "I.2",
+      "Book II",
+      "II.1",
+    ]);
+  });
+
+  it("keeps a bare-href parent whose children subdivide the same file (Blitzscaling)", () => {
+    // Regression: "Part I" (bare href) is the NavItem PARENT of chapter
+    // fragments in the same file. It must survive so "next section" from the
+    // prior top-level entry lands on Part I, not its first subsection.
+    const spine = makeSpine(["OEBPS/c001.xhtml"]);
+    const toc = makeToc([
+      {
+        label: "Part I: What Is Blitzscaling?",
+        href: "OEBPS/c001.xhtml",
+        subitems: [
+          { label: "Software Is Eating the World", href: "OEBPS/c001.xhtml#s13" },
+          { label: "The Types of Scaling", href: "OEBPS/c001.xhtml#s14" },
+        ],
+      },
+    ]);
+
+    const playlist = buildSpinePlaylist(spine, toc);
+
+    expect(playlist.map((p) => p.label)).toEqual([
+      "Part I: What Is Blitzscaling?",
+      "Software Is Eating the World",
+      "The Types of Scaling",
+    ]);
   });
 });
 
@@ -204,5 +242,62 @@ describe("nextLeafFragmentInSameFile", () => {
     );
     // caller passes a prefixed href; flatToc carries the same prefix
     expect(nextLeafFragmentInSameFile(flat, "OEBPS/c001.xhtml#s15")).toBe("s19");
+  });
+});
+
+describe("findFlatSectionIndex", () => {
+  // Blitzscaling shape: a bare-href parent ("Part I") kept ahead of its
+  // fragment children in the same file. The index lookup must distinguish them.
+  const blitz = buildSpinePlaylist(
+    [{ href: "OEBPS/c001.xhtml", index: 0 }],
+    [
+      {
+        label: "Part I: What Is Blitzscaling?",
+        href: "OEBPS/c001.xhtml",
+        subitems: [
+          { label: "Software Is Eating the World", href: "OEBPS/c001.xhtml#s13" },
+          { label: "The Types of Scaling", href: "OEBPS/c001.xhtml#s14" },
+          { label: "The Three Basics of Blitzscaling", href: "OEBPS/c001.xhtml#s15" },
+        ],
+      },
+    ] as NavItem[],
+  );
+
+  it("pins a fragment child, not the bare parent that shares its basename", () => {
+    // Regression: basename-only matching returned Part I (index 0) here, so
+    // "next" from Software Is Eating re-resolved to Software Is Eating.
+    expect(findFlatSectionIndex(blitz, "OEBPS/c001.xhtml#s13")).toBe(1);
+    expect(findFlatSectionIndex(blitz, "OEBPS/c001.xhtml#s14")).toBe(2);
+  });
+
+  it("resolves a bare href to the bare parent", () => {
+    expect(findFlatSectionIndex(blitz, "OEBPS/c001.xhtml")).toBe(0);
+  });
+
+  it("advances child -> next child (the bug's user-facing check)", () => {
+    const cur = findFlatSectionIndex(blitz, "OEBPS/c001.xhtml#s13");
+    expect(blitz[cur + 1].label).toBe("The Types of Scaling");
+  });
+
+  it("tolerates path-prefix mismatch (spine bare, lookup prefixed)", () => {
+    const flat = buildSpinePlaylist(
+      [{ href: "c001.xhtml", index: 0 }],
+      [{ label: "A", href: "c001.xhtml#s13" }] as NavItem[],
+    );
+    expect(findFlatSectionIndex(flat, "OEBPS/c001.xhtml#s13")).toBe(0);
+  });
+
+  it("falls back to basename-only when the fragment is absent from flatToc", () => {
+    // Front matter / plain chapter: no fragments in the file. A fragment on the
+    // lookup href that no leaf carries should still resolve via basename.
+    const flat = buildSpinePlaylist(
+      [{ href: "intro.xhtml", index: 0 }],
+      [{ label: "Introduction", href: "intro.xhtml" }] as NavItem[],
+    );
+    expect(findFlatSectionIndex(flat, "intro.xhtml")).toBe(0);
+  });
+
+  it("returns -1 (clamped to 0 by callers) when nothing matches", () => {
+    expect(findFlatSectionIndex(blitz, "totally-elsewhere.xhtml")).toBe(-1);
   });
 });

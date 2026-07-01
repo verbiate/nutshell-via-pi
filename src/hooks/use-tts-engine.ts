@@ -676,6 +676,13 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
       cleanupSource();
       stopTimer();
       cancelBrowserSpeech();
+      // ponytail: clear any lingering .tts-paused body class. pause() toggles
+      // it on, resume()/close() toggle it off, but a restart via startSection
+      // (right-click "Play now" from a paused state) bypasses resume() — so the
+      // new chunk's <mark> would be wrapped in a body whose CSS fades it to
+      // transparent (.light.tts-paused .tts-chunk { background: transparent }).
+      // Reset on every fresh start so the highlight is visible.
+      viewerRefRef.current?.current?.setTtsPaused(false);
       bufferCacheRef.current.clear();
       durationsRef.current = [];
       chunkWordCountsRef.current = [];
