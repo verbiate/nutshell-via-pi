@@ -298,7 +298,7 @@ export function ReaderPanel({
       ) : null}
 
       {/* Action row */}
-      <div className="flex flex-col gap-3 px-12">
+      <div className="flex flex-col gap-1.5 px-12">
         {readableStartSectionHref && (
           <PlayFromStartButton
             bookId={bookId}
