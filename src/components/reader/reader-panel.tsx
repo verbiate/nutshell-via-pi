@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { BookCover } from "@/components/library/book-cover";
+import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
 import { useAudio } from "@/components/audio/audio-context";
 import type { PlaylistBookMeta } from "@/types/playlist";
@@ -211,158 +212,170 @@ export function ReaderPanel({
   }, [descriptionLoading]);
 
   return (
-    <div className="flex flex-col gap-9">
-      {/* Book details card */}
+    <div className="flex h-full flex-col">
       {/*
-        ponytail: row is items-start + the cover is self-start so the cover's
-        top is ALWAYS cardTop (never shifted by title/author height). That makes
-        the cover's resting rect statically computable for the forward fly
-        (computeReaderCoverRect in scene-transition.tsx). The text column still
-        reads as vertically centered against the cover: it stretches
-        (self-stretch) to the cover's height and centers its block internally.
-        For long titles where text > cover, the cover stays pinned at top
-        (determinism wins) and the column simply grows.
+        ponytail: fixed header zone — book details card, description, action
+        buttons, and narrative advisory stay pinned above the ToC scroll area.
+        Matches the Discussions panel's header/body split.
       */}
-      <div className="flex items-start gap-3 px-12 pt-12">
-        {/* data-hero-cover: the fly transition clones this frame. Fixed width +
-            natural aspect (matching the bookshelf card) so the fly clone lands
-            at the correct size/treatment. shadow-book unifies the frame with the
-            shelf. No opacity transition — the cover snaps opaque under the fly
-            clone at the handoff so its fade-out reveals it cleanly. coverHidden
-            holds it empty while a fly is inbound, then reveals. */}
-        <div
-          className="relative w-[var(--reader-cover-w)] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book"
-          data-hero-cover=""
-          style={{ opacity: coverHidden ? 0 : 1 }}
-        >
-          <BookCover coverPath={coverPath} title={bookTitle} />
-        </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center self-stretch">
-          {/*
-            ponytail: prefer the LLM-extracted main title (BookMetadata.title)
-            over EpubFile.title when metadata exists — the OPF title often
-            concatenates the subtitle, so we split them out below. Falls back
-            to the full title for stray books with no metadata row yet.
-          */}
-          <h3
-            title={bookTitle}
-            className="line-clamp-3 font-serif text-[20px] font-medium leading-[1.2] text-foreground"
-            style={{
-              letterSpacing: "-0.005em",
-              hangingPunctuation: "first last",
-              ...TRIM_STYLE,
-            }}
+      <div className="flex shrink-0 flex-col gap-9 pb-6">
+        {/* Book details card */}
+        {/*
+          ponytail: row is items-start + the cover is self-start so the cover's
+          top is ALWAYS cardTop (never shifted by title/author height). That makes
+          the cover's resting rect statically computable for the forward fly
+          (computeReaderCoverRect in scene-transition.tsx). The text column still
+          reads as vertically centered against the cover: it stretches
+          (self-stretch) to the cover's height and centers its block internally.
+          For long titles where text > cover, the cover stays pinned at top
+          (determinism wins) and the column simply grows.
+        */}
+        <div className="flex items-start gap-3 px-12 pt-12">
+          {/* data-hero-cover: the fly transition clones this frame. Fixed width +
+              natural aspect (matching the bookshelf card) so the fly clone lands
+              at the correct size/treatment. shadow-book unifies the frame with the
+              shelf. No opacity transition — the cover snaps opaque under the fly
+              clone at the handoff so its fade-out reveals it cleanly. coverHidden
+              holds it empty while a fly is inbound, then reveals. */}
+          <div
+            className="relative w-[var(--reader-cover-w)] shrink-0 self-start overflow-hidden rounded-md bg-paper-deep shadow-book"
+            data-hero-cover=""
+            style={{ opacity: coverHidden ? 0 : 1 }}
           >
-            {metadataTitle ?? bookTitle}
-          </h3>
-          {subtitle && (
-            <p
-              className="mt-0.5 line-clamp-3 font-serif text-[15px] font-medium leading-[1.3] text-foreground"
+            <BookCover coverPath={coverPath} title={bookTitle} />
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center self-stretch">
+            {/*
+              ponytail: prefer the LLM-extracted main title (BookMetadata.title)
+              over EpubFile.title when metadata exists — the OPF title often
+              concatenates the subtitle, so we split them out below. Falls back
+              to the full title for stray books with no metadata row yet.
+            */}
+            <h3
+              title={bookTitle}
+              className="line-clamp-3 font-serif text-[20px] font-medium leading-[1.2] text-foreground"
               style={{
+                letterSpacing: "-0.005em",
                 hangingPunctuation: "first last",
                 ...TRIM_STYLE,
               }}
             >
-              {subtitle}
-            </p>
-          )}
-          {author && (
-            <p
-              className="mt-1 truncate font-sans text-[15px] font-semibold leading-[1.35] text-foreground/60"
-              style={{ hangingPunctuation: "first last" }}
-            >
-              {author}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Description: LLM-generated single-sentence explainer from
-          BookMetadata. Three states — present (show), loading past 1s
-          (show spinner), or absent/loading under 1s (render nothing to
-          avoid flashing the slot). */}
-      {description ? (
-        <p
-          className="px-12 font-sans text-[13px] leading-[1.5] text-foreground/70"
-          style={{ hangingPunctuation: "first last" }}
-        >
-          {description}
-        </p>
-      ) : showSpinner && descriptionLoading ? (
-        <div className="flex items-center gap-2 px-12">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-          <span className="text-[13px] text-muted-foreground">
-            Extracting description…
-          </span>
-        </div>
-      ) : null}
-
-      {/* Action row */}
-      <div className="flex flex-col gap-1.5 px-12">
-        {readableStartSectionHref && (
-          <PlayFromStartButton
-            bookId={bookId}
-            sectionHref={readableStartSectionHref}
-            toc={toc}
-            bookMeta={{
-              bookTitle,
-              bookAuthor: author,
-              bookCoverPath: coverPath,
-              bookLanguage: language,
-            }}
-          />
-        )}
-        <Button
-          variant="outline"
-          className="w-full gap-2"
-          onClick={onAskAboutBook}
-        >
-          <Lightbulb />
-          Ask the book
-        </Button>
-      </div>
-
-      {/*
-        ponytail: narrative spoiler advisory. isNarrative is null until the
-        BookMetadata row lands (SSR or lazy ensure-metadata) — only show when
-        the LLM positively flagged it true. Sits under the explainer entry
-        point ("Ask the book") so the warning reads in context.
-      */}
-      {isNarrative === true && (
-        <div className="flex items-start gap-2 px-12">
-          <AlertTriangle
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-peach"
-            aria-hidden
-          />
-          <p className="text-[12px] font-medium leading-[1.4] text-foreground/60">
-            This is a narrative work. Explainers may contain spoilers.
-          </p>
-        </div>
-      )}
-
-      {/* Table of contents */}
-      {toc.length > 0 && (
-        <div>
-          <div className="py-1">
-            {toc.map((item) => (
-              <TocEntry
-                key={item.id || item.href}
-                item={item}
-                onNavigate={onNavigate}
-                level={0}
-                currentHref={currentHref}
-                onAskAboutSection={onAskAboutSection}
-                bookId={bookId}
-                bookMeta={{
-                  bookTitle,
-                  bookAuthor: author,
-                  bookCoverPath: coverPath,
-                  bookLanguage: language,
+              {metadataTitle ?? bookTitle}
+            </h3>
+            {subtitle && (
+              <p
+                className="mt-0.5 line-clamp-3 font-serif text-[15px] font-medium leading-[1.3] text-foreground"
+                style={{
+                  hangingPunctuation: "first last",
+                  ...TRIM_STYLE,
                 }}
-              />
-            ))}
+              >
+                {subtitle}
+              </p>
+            )}
+            {author && (
+              <p
+                className="mt-1 truncate font-sans text-[15px] font-semibold leading-[1.35] text-foreground/60"
+                style={{ hangingPunctuation: "first last" }}
+              >
+                {author}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Description: LLM-generated single-sentence explainer from
+            BookMetadata. Three states — present (show), loading past 1s
+            (show spinner), or absent/loading under 1s (render nothing to
+            avoid flashing the slot). */}
+        {description ? (
+          <p
+            className="px-12 font-sans text-[13px] leading-[1.5] text-foreground/70"
+            style={{ hangingPunctuation: "first last" }}
+          >
+            {description}
+          </p>
+        ) : showSpinner && descriptionLoading ? (
+          <div className="flex items-center gap-2 px-12">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <span className="text-[13px] text-muted-foreground">
+              Extracting description…
+            </span>
+          </div>
+        ) : null}
+
+        {/* Action row */}
+        <div className="flex flex-col gap-1.5 px-12">
+          {readableStartSectionHref && (
+            <PlayFromStartButton
+              bookId={bookId}
+              sectionHref={readableStartSectionHref}
+              toc={toc}
+              bookMeta={{
+                bookTitle,
+                bookAuthor: author,
+                bookCoverPath: coverPath,
+                bookLanguage: language,
+              }}
+            />
+          )}
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={onAskAboutBook}
+          >
+            <Lightbulb />
+            Ask the book
+          </Button>
+        </div>
+
+        {/*
+          ponytail: narrative spoiler advisory. isNarrative is null until the
+          BookMetadata row lands (SSR or lazy ensure-metadata) — only show when
+          the LLM positively flagged it true. Sits under the explainer entry
+          point ("Ask the book") so the warning reads in context.
+        */}
+        {isNarrative === true && (
+          <div className="flex items-start gap-2 px-12">
+            <AlertTriangle
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-peach"
+              aria-hidden
+            />
+            <p className="text-[12px] font-medium leading-[1.4] text-foreground/60">
+              This is a narrative work. Explainers may contain spoilers.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Scrollable Table of contents.
+          ponytail: ToC owns its own SmoothScrollArea so the book details +
+          action buttons stay pinned above. pb-12 keeps the last item clear of
+          the sidebar's bottom edge (matches the px-12 horizontal margin). */}
+      {toc.length > 0 && (
+        <SmoothScrollArea className="min-h-0 flex-1">
+          <div className="pb-12 pt-6">
+            <div className="py-1">
+              {toc.map((item) => (
+                <TocEntry
+                  key={item.id || item.href}
+                  item={item}
+                  onNavigate={onNavigate}
+                  level={0}
+                  currentHref={currentHref}
+                  onAskAboutSection={onAskAboutSection}
+                  bookId={bookId}
+                  bookMeta={{
+                    bookTitle,
+                    bookAuthor: author,
+                    bookCoverPath: coverPath,
+                    bookLanguage: language,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </SmoothScrollArea>
       )}
     </div>
   );

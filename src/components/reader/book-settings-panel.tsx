@@ -6,6 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import type { ReaderThemeName } from "./themes";
 
 // ponytail: typography stacks kept here so the panel is the single source for
@@ -92,10 +93,15 @@ export function BookSettingsPanel({
   );
 
   return (
-    <div className="flex flex-col gap-9">
-      {/* PAGE ADJUSTMENTS */}
-      <div className="px-12 flex flex-col gap-5">
-        <SectionLabel>Page Adjustments</SectionLabel>
+    // ponytail: no internal header/content split — it's all form fields.
+    // Wrap the whole panel in SmoothScrollArea so the shared sidebar header
+    // (title/description/icon) stays pinned above; pb-12 + pt-9 give the form
+    // uniform margins matching the other panels.
+    <SmoothScrollArea className="min-h-0 flex-1">
+      <div className="flex flex-col gap-9 pb-12">
+        {/* PAGE ADJUSTMENTS */}
+        <div className="px-12 flex flex-col gap-5">
+          <SectionLabel>Page Adjustments</SectionLabel>
 
         {/* Theme swatches */}
         <div className="flex items-center gap-3">
@@ -212,6 +218,7 @@ export function BookSettingsPanel({
           Open audio settings
         </Button>
       </div>
-    </div>
+      </div>
+    </SmoothScrollArea>
   );
 }

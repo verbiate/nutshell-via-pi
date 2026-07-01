@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { PlaySectionMenuItems } from "@/components/audio/play-section-menu";
 import type { PlaylistBookMeta } from "@/types/playlist";
 import {
@@ -425,7 +426,7 @@ export function HighlightsPanel({
 
   if (isLoading) {
     return (
-      <div className="px-12 py-8 text-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center px-12 py-8 text-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
@@ -433,11 +434,13 @@ export function HighlightsPanel({
 
   if (highlights.length === 0) {
     return (
-      <div className="px-12 py-8 text-center">
-        <p className="text-sm font-medium text-foreground">No highlights yet</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Select text while reading to highlight it.
-        </p>
+      <div className="flex h-full items-center justify-center px-12 py-8 text-center">
+        <div>
+          <p className="text-sm font-medium text-foreground">No highlights yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Select text while reading to highlight it.
+          </p>
+        </div>
       </div>
     );
   }
@@ -472,24 +475,33 @@ export function HighlightsPanel({
     <Tabs
       value={activeTab}
       onValueChange={setActiveTab}
-      className="flex flex-col gap-9"
+      className="flex h-full flex-col"
     >
-      <div className="px-12">
+      {/*
+        ponytail: fixed header — Tabs (Date/Chapter/Color) stay pinned above the
+        scroll area so the user can switch groupings without scrolling back up.
+        Matches the Discussions panel pattern.
+      */}
+      <div className="shrink-0 px-12 pb-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="date">Date</TabsTrigger>
           <TabsTrigger value="chapter">Chapter</TabsTrigger>
           <TabsTrigger value="color">Color</TabsTrigger>
         </TabsList>
       </div>
-      <TabsContent value="date" className="mt-0">
-        {renderGroups("date", dateGroups)}
-      </TabsContent>
-      <TabsContent value="chapter" className="mt-0">
-        {renderGroups("chapter", chapterGroups)}
-      </TabsContent>
-      <TabsContent value="color" className="mt-0">
-        {renderGroups("color", colorGroups)}
-      </TabsContent>
+      <SmoothScrollArea className="min-h-0 flex-1">
+        <div className="pb-12 pt-6">
+          <TabsContent value="date" className="mt-0">
+            {renderGroups("date", dateGroups)}
+          </TabsContent>
+          <TabsContent value="chapter" className="mt-0">
+            {renderGroups("chapter", chapterGroups)}
+          </TabsContent>
+          <TabsContent value="color" className="mt-0">
+            {renderGroups("color", colorGroups)}
+          </TabsContent>
+        </div>
+      </SmoothScrollArea>
     </Tabs>
   );
 }

@@ -9,7 +9,6 @@ import {
   Type,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SmoothScrollArea } from "@/components/library/smooth-scroll-area";
 import { READER_TOOLS, type ReaderTool } from "./reader-tools";
 
 const ICONS = {
@@ -83,7 +82,7 @@ export function ReaderSidebar({
               tab uses the shared title + description + icon header.
             */}
             {tool.id !== "reader" && (
-              <header className="flex items-center gap-4 px-12 pt-12">
+              <header className="flex shrink-0 items-center gap-4 px-12 pt-12">
                 <div className="min-w-0 flex-1">
                   <h2
                     className="font-serif text-[20px] font-medium leading-[1.2] text-foreground"
@@ -113,25 +112,16 @@ export function ReaderSidebar({
                 })()}
               </header>
             )}
-            {tool.id === "bulb" ? (
-              // ponytail: bulb (discussions) is chat-shaped — its
-              // DiscussionView anchors a header at top and composer at bottom with
-              // the messages scrolling between. Skipping the outer ScrollArea
-              // lets the panel's internal `h-full + flex-1 overflow-y-auto`
-              // layout work; otherwise heights don't propagate and the whole
-              // panel scrolls as one block (header + composer go along for
-              // the ride). Other panels stay list-shaped and keep ScrollArea.
-              <div className="min-h-0 flex-1 flex flex-col">
-                {panels[tool.id]}
-              </div>
-            ) : (
-              <SmoothScrollArea className="min-h-0 flex-1">
-                {/* ponytail: pb-12 gives every panel a uniform 48px trailing
-                    margin so the last item never butts against the sidebar's
-                    bottom edge (matches the px-12 horizontal margin). */}
-                <div className="pb-12">{panels[tool.id]}</div>
-              </SmoothScrollArea>
-            )}
+            {/*
+              ponytail: every panel gets the same flex-col wrapper and owns its
+              internal header/content split (fixed header + scrollable body),
+              matching the Discussions pattern. The sidebar no longer wraps
+              panels in SmoothScrollArea — each panel wraps its own scroll region
+              so its header buttons stay pinned above the scroll area.
+            */}
+            <div className="min-h-0 flex-1 flex flex-col">
+              {panels[tool.id]}
+            </div>
           </>
         )}
       </aside>
