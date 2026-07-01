@@ -200,21 +200,31 @@ function renderHook(props: UseTtsEngineOptions) {
 }
 
 describe("findStartChunkIndex", () => {
-  // ponytail: locks in contain-snap semantics. The old forward-snap returned
-  // the chunk AFTER the one containing the offset, which — combined with
-  // getTtsStartOffset returning a mid-sentence visible char — would skip the
-  // sentence actually at the top of the page.
-  const chunks = ["AAAA", "BBBB", "CCCC"]; // spans [0,4), [4,8), [8,12)
+  // ponytail: locks in contain-snap semantics WITH separator-aware coords.
+  // chunkText drops the 1-char separator between chunks, so chunk i's source
+  // start = sum(len[0..i-1]) + i. For ["AAAA","BBBB","CCCC"] that's source
+  // spans [0,4), [5,9), [10,14) — NOT contiguous. Feeding a source offset and
+  // ignoring the +i drift was the right-click "Play now" off-by-one.
+  const chunks = ["AAAA", "BBBB", "CCCC"]; // source spans [0,4), [5,9), [10,14)
 
   it("returns the chunk containing the offset, not the next one", () => {
-    expect(findStartChunkIndex(chunks, 3)).toBe(0); // inside AAAA, not BBBB
-    expect(findStartChunkIndex(chunks, 7)).toBe(1); // inside BBBB, not CCCC
+    expect(findStartChunkIndex(chunks, 3)).toBe(0); // inside AAAA
+    expect(findStartChunkIndex(chunks, 7)).toBe(1); // inside BBBB
+    expect(findStartChunkIndex(chunks, 12)).toBe(2); // inside CCCC
   });
 
   it("returns the chunk starting exactly at the offset", () => {
-    expect(findStartChunkIndex(chunks, 0)).toBe(0);
-    expect(findStartChunkIndex(chunks, 4)).toBe(1); // start of BBBB
-    expect(findStartChunkIndex(chunks, 8)).toBe(2); // start of CCCC
+    expect(findStartChunkIndex(chunks, 0)).toBe(0); // start of AAAA
+    expect(findStartChunkIndex(chunks, 5)).toBe(1); // start of BBBB
+    expect(findStartChunkIndex(chunks, 10)).toBe(2); // start of CCCC
+  });
+
+  it("does not drift forward deep in a chunk list (the Play-now regression)", () => {
+    // 25 four-char chunks: chunk 24's source start = 24*4 + 24 = 120. An offset
+    // in the latter part of chunk 24 (e.g. 122) must resolve to 24, not clamp
+    // past it. The buggy contiguous version would push such offsets forward.
+    const many = Array.from({ length: 25 }, () => "AAAA");
+    expect(findStartChunkIndex(many, 122)).toBe(24);
   });
 
   it("clamps to the last chunk when the offset is out of range", () => {
@@ -225,6 +235,43 @@ describe("findStartChunkIndex", () => {
   it("returns 0 for non-positive offsets", () => {
     expect(findStartChunkIndex(chunks, 0)).toBe(0);
     expect(findStartChunkIndex(chunks, -5)).toBe(0);
+  });
+});
+
+describe("findStartChunkIndex vs real chunkText (Play-now regression)", () => {
+  // Reproduces the right-click "Play now" off-by-one: chunkText drops the 1-char
+  // separator BETWEEN chunks while htmlToTtsText emits it, so naive cumulative
+  // chunk lengths drift forward ~1 char per boundary. Deep in a section, clicks
+  // in the latter part of chunk N resolved to N+1. This test feeds REAL chunkText
+  // output + the source offset of each chunk's final char and expects chunk N.
+  it("resolves a chunk's final source char to that chunk, not the next", async () => {
+    const { chunkText: realChunkText } = await vi.importActual<
+      typeof import("@/lib/tts/chunk")
+    >("@/lib/tts/chunk");
+
+    const sentences = Array.from({ length: 60 }, (_, i) =>
+      `Sentence number ${String(i).padStart(2, "0")} is here.`,
+    );
+    const text = sentences.join(" "); // single paragraph → 1-char " " between all
+    const chunks = realChunkText(text, { softLimit: 40, hardLimit: 60 });
+    expect(chunks.length).toBeGreaterThan(10);
+
+    // Oracle: with single-space separators every chunk is an exact substring of
+    // the source, so its source span is just text.indexOf(chunk).
+    let searchFrom = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      const start = text.indexOf(chunks[i], searchFrom);
+      const end = start + chunks[i].length;
+      searchFrom = end;
+      // The final source char of chunk i sits in the "drift zone" where the old
+      // contiguous logic pushed to i+1. It must resolve to i.
+      const got = findStartChunkIndex(chunks, end - 1);
+      if (got !== i) {
+        throw new Error(
+          `chunk ${i}: source offset ${end - 1} resolved to ${got}, expected ${i}`,
+        );
+      }
+    }
   });
 });
 

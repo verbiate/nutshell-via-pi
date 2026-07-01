@@ -147,23 +147,30 @@ function cancelBrowserSpeech(): void {
 // cumulative length comparison suffices. Ceiling: chunk granularity — if the
 // offset lands mid-chunk, that whole chunk is the start unit. Upgrade path:
 // split the chunk at the offset for char-level precision.
-// ponytail: first chunk whose START (cumulative offset) is >= targetOffset.
-// Forward-snap: when the page-top char lands inside a chunk that began on the
-// previous page, skip it and start at the next chunk boundary — i.e. the first
-// sentence BEGINNING on the current page.
-// ponytail: map a raw character offset to the chunk that CONTAINS it. Used by
-// the "Start reading from here" path, where getTtsStartOffset returns the
-// offset of the first VISIBLE character — which usually falls mid-chunk
-// (inside the sentence/clause straddling the page top). Contain-snap lands on
-// that chunk so playback begins at its natural start; forward-snap would skip
-// past it. For offsets past the end, clamp to the last chunk.
+// ponytail: map a raw character offset (in htmlToTtsText source-text coords) to
+// the chunk that CONTAINS it. Used by "Start reading from here" and the
+// right-click / bookmark / highlight "Play now" paths. Contain-snap: an offset
+// mid-chunk lands on that chunk so playback begins at its natural start.
+//
+// Coordinate caveat: chunkText joins sentences with a 1-char " " WITHIN a chunk
+// but the source text (htmlToTtsText) also has a 1-char separator ("\n" between
+// blocks, " " between sentences) BETWEEN chunks — and chunk[i].length does NOT
+// count that inter-chunk separator. So chunk i's source-text START is
+// sum(len[0..i-1]) + i, not sum(len[0..i-1]). Ignore the "+i" and the resolved
+// chunk drifts forward ~1 char per boundary; deep in a long section the drift
+// exceeds a chunk's length and clicks in the latter part of chunk N resolve to
+// N+1 — the "Play now" off-by-one. All inter-chunk separators here are exactly
+// 1 char (verified: htmlToTtsText collapses blank lines to single "\n", inline
+// sentence gaps are single spaces, and cascadeSplit trims one boundary char per
+// sub-chunk). If a chunker ever emits multi-char inter-chunk gaps, switch to
+// tracking source offsets in chunkText's return instead of this +i heuristic.
 export function findStartChunkIndex(chunks: string[], targetOffset: number): number {
   if (targetOffset <= 0) return 0;
-  let acc = 0;
+  let pos = 0; // source-text START offset of the current chunk
   for (let i = 0; i < chunks.length; i++) {
-    const end = acc + chunks[i].length;
-    if (targetOffset < end) return i;
-    acc = end;
+    if (i > 0) pos += 1; // the 1-char separator dropped between chunks
+    if (targetOffset < pos + chunks[i].length) return i;
+    pos += chunks[i].length;
   }
   return Math.max(0, chunks.length - 1);
 }
@@ -841,13 +848,16 @@ export function useTtsEngine(options: UseTtsEngineOptions): UseTtsEngineReturn {
 // ponytail: smallest thing that fails if findStartChunkIndex breaks. Run with:
 //   TTS_ENGINE_DEMO=1 npx tsx src/hooks/use-tts-engine.ts
 function _findStartChunkIndexDemo(): void {
+  // Separator-aware: chunk i source-start = sum(len[0..i-1]) + i.
+  // ["AAAA","BBBB","CCCC"] → source spans [0,4), [5,9), [10,14).
   const chunks = ["AAAA", "BBBB", "CCCC"];
   const checks: Array<[number, number, string]> = [
-    [0, 0, "offset 0 → chunk 0"],
+    [0, 0, "offset 0 (start of AAAA) → chunk 0"],
     [3, 0, "offset 3 (inside AAAA) → chunk 0 (containing)"],
-    [4, 1, "offset 4 (start of BBBB) → chunk 1"],
+    [5, 1, "offset 5 (start of BBBB) → chunk 1"],
     [7, 1, "offset 7 (inside BBBB) → chunk 1 (containing)"],
-    [8, 2, "offset 8 (start of CCCC) → chunk 2"],
+    [10, 2, "offset 10 (start of CCCC) → chunk 2"],
+    [12, 2, "offset 12 (inside CCCC) → chunk 2 (containing)"],
     [99, 2, "offset 99 → last chunk (out of range, clamp)"],
   ];
   for (const [offset, expected, label] of checks) {
@@ -858,7 +868,7 @@ function _findStartChunkIndexDemo(): void {
       );
     }
   }
-  console.log("findStartChunkIndex self-check passed (6 cases)");
+  console.log("findStartChunkIndex self-check passed (7 cases)");
 }
 
 if (process.env.TTS_ENGINE_DEMO) {
