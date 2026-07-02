@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import ePub, { Book, Rendition, NavItem, Contents } from "@likecoin/epub-ts";
+import ePub, { Book, EpubCFI, Rendition, NavItem, Contents } from "@likecoin/epub-ts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildParagraphMap, paragraphOffsetToCfi } from "@/lib/reader/position-tracking";
@@ -727,18 +727,58 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
         }
       },
       addHighlight: (cfi: string, color: string) => {
-        if (!renditionRef.current) return;
-        renditionRef.current.annotations.highlight(
-          cfi,
-          {},
-          () => {},
-          "br-highlight",
-          // ponytail: 50% alpha fill carries the highlight look; epub.js's
-          // SVG annotation layer ignores mix-blend-mode, so the alpha fill is
-          // the reliable baseline (multiply is applied in the UI swatches).
-          // color is required — callers always pass a user-chosen swatch.
-          { fill: highlightFill(color) }
-        );
+        const r = renditionRef.current;
+        if (!r) return;
+        // ponytail: register the annotation in epub.js's store. add() iterates
+        // the live views and attaches to any whose index matches the CFI's
+        // spinePos — but ONLY if such a view exists at call time. When the
+        // caller passes a CFI for a section that isn't currently displayed
+        // (the common case on book open: saved-position restore hasn't run
+        // yet, or the highlight is in another chapter), nothing attaches.
+        // epub.js's own inject() hook is *supposed* to attach on the next
+        // rendered section, but we've observed it firing without producing
+        // a visible SVG <g> in this codebase — likely a race with iframe
+        // rebuilds across section boundaries. So we ALSO register our own
+        // one-shot "rendered" listener that force-attaches the annotation
+        // the first time the matching section renders. Idempotent: attach
+        // on an already-attached annotation just creates a duplicate <g>,
+        // which is visually identical (same fill, same range rects) and
+        // bounded — one per addHighlight call, removed on section unload.
+        const fill = highlightFill(color);
+        r.annotations.highlight(cfi, {}, () => {}, "br-highlight", { fill });
+
+        // Self-heal: attach to the current view immediately if it matches,
+        // AND listen for the next render of the matching section.
+        const sectionIdx = new EpubCFI(cfi).spinePos;
+        const tryAttach = (view: any) => {
+          if (!view || view.index !== sectionIdx) return;
+          if (!view.contents) return;
+          // Skip if already attached to this view — view.highlights is keyed
+          // by CFI, so a present key means a prior attach succeeded.
+          if (view.highlights && cfi in view.highlights) return;
+          try {
+            const ann = (r.annotations as any)._annotations[
+              encodeURI(cfi + "highlight")
+            ];
+            ann?.attach?.(view);
+          } catch {
+            // attach throws when the CFI can't resolve in this view's DOM
+            // (e.g. wrong section despite index match, or DOM not ready).
+            // The "rendered" listener will retry on the next render.
+          }
+        };
+        // Immediate attempt for the currently-displayed view.
+        r.views().forEach((v: any) => tryAttach(v));
+        // Retry on each subsequent section render until attached.
+        const onRendered = (_section: any, view: any) => {
+          tryAttach(view);
+        };
+        r.on("rendered", onRendered);
+        // Ceiling: the listener is per-CFI and never removed. For a typical
+        // user this is dozens of listeners max (one per saved highlight),
+        // each doing a single Set lookup + maybe an attach — negligible. If
+        // a power user ever accumulates thousands of highlights, switch to
+        // a single shared "rendered" listener that walks _annotations.
       },
       flashCfi: async (cfi: string) => {
         // ponytail: jump to the range, then overlay a transient `.br-flash`
@@ -1370,6 +1410,28 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
                   typographyRef.current,
                 );
               }
+              // ponytail: the @font-face injected above loads async (font-display:
+              // swap). Highlight annotation rects are captured once at attach time
+              // via range.getClientRects(); when IBM Plex swaps in the text reflows
+              // and those rects go stale (highlights sit above/below their words).
+              // Once the iframe's FontFaceSet settles, re-render every view's pane
+              // — Pane.render() recomputes each mark's rects from the live range so
+              // they track the final layout. Fire-and-forget: never blocks paint
+              // (font-display:swap keeps text visible in fallback meanwhile). The
+              // 2s race bounds a hung font URL; cached fonts resolve instantly.
+              if (doc?.fonts) {
+                Promise.race([
+                  doc.fonts.ready,
+                  new Promise<void>((r) => setTimeout(r, 2000)),
+                ]).then(() => {
+                  renditionRef.current
+                    ?.views()
+                    .forEach(
+                      (v: { pane?: { render?: () => void } }) =>
+                        v.pane?.render?.(),
+                    );
+                });
+              }
             });
 
             // ponytail: selection lifecycle inside the iframe.
@@ -1561,12 +1623,30 @@ export const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(
     useEffect(() => {
       houseStyleRef.current = houseStyle;
       if (typography) typographyRef.current = typography;
-      if (currentDocRef.current && typographyRef.current) {
-        applyReaderStylesToDoc(
-          currentDocRef.current,
-          houseStyle,
-          typographyRef.current,
-        );
+      const doc = currentDocRef.current;
+      if (doc && typographyRef.current) {
+        applyReaderStylesToDoc(doc, houseStyle, typographyRef.current);
+        // ponytail: a settings change reflows the section's text, but epub.js
+        // captured highlight rects once at attach — without re-rendering the
+        // annotation panes they'd strand above/below the new word positions.
+        // Sync call captures size/leading/justify (a stylesheet textContent
+        // change invalidates layout; getClientRects inside Pane.render forces a
+        // synchronous reflow). Serif↔Sans swaps the primary @font-family, whose
+        // target font may still be loading, so re-render again once the iframe's
+        // FontFaceSet settles. 2s race bounds a hung font URL.
+        const rerender = () =>
+          renditionRef.current
+            ?.views()
+            .forEach(
+              (v: { pane?: { render?: () => void } }) => v.pane?.render?.(),
+            );
+        rerender();
+        if (doc.fonts) {
+          Promise.race([
+            doc.fonts.ready,
+            new Promise<void>((r) => setTimeout(r, 2000)),
+          ]).then(rerender);
+        }
       }
     }, [houseStyle, typography]);
 

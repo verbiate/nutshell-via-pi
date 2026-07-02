@@ -288,6 +288,12 @@ export function ReaderClient({
   // generated yet at save time (rare — user bookmarks before first paint settles),
   // locationFromCfi returns -1 and pageNumber falls back to null.
   const renditionRef = useRef<any>(null);
+  // ponytail: tracks which highlight CFIs we've already handed to epub.js, so
+  // the paint effect below is idempotent across re-runs (cache hit → data
+  // arrives before rendition; cache miss → rendition ready first). Reset on
+  // book swap. Ceiling: a Set is fine at typical highlight counts (dozens);
+  // swap to a Map keyed by bookId if a user ever accumulates thousands.
+  const paintedHighlightsRef = useRef<Set<string>>(new Set());
 
   // ─── Highlights data (via React Query) ────────────────────────────────────────
   const queryClient = useQueryClient();
@@ -301,6 +307,23 @@ export function ReaderClient({
       return res.json();
     },
   });
+
+  // ponytail: paint saved highlights once BOTH the rendition is ready AND the
+  // query has resolved, regardless of which arrives first. Previously this
+  // lived inside handleRenditionReady, which is captured once by EpubViewer's
+  // [url]-keyed setup effect — so if highlights loaded after the rendition
+  // (slow network / cold cache), the if(highlightsData) guard saw undefined
+  // and nothing ever painted. The Set makes this safe to re-run.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const highlights = highlightsData?.highlights;
+    if (!highlights?.length) return;
+    for (const h of highlights) {
+      if (paintedHighlightsRef.current.has(h.cfi)) continue;
+      paintedHighlightsRef.current.add(h.cfi);
+      viewerRef.current?.addHighlight(h.cfi, h.color);
+    }
+  }, [isLoaded, highlightsData]);
 
   // ─── Load saved position on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -1101,15 +1124,12 @@ export function ReaderClient({
         );
       });
 
-      if (highlightsData?.highlights) {
-        highlightsData.highlights.forEach(
-          (h: { cfi: string; color: string }) => {
-            viewerRef.current?.addHighlight(h.cfi, h.color);
-          }
-        );
-      }
+      // Saved highlights are painted by the dedicated [isLoaded, highlightsData]
+      // effect above — not here. handleRenditionReady fires exactly once per
+      // book (EpubViewer's setup effect is [url]-keyed), so closing over
+      // highlightsData here would race the query.
     },
-    [highlightsData, handleKeyDown, handlePointerActivity, rehighlightCurrentChunk]
+    [handleKeyDown, handlePointerActivity, rehighlightCurrentChunk]
   );
 
   const handleError = useCallback((err: Error) => {
@@ -1334,6 +1354,7 @@ export function ReaderClient({
     setCurrentHref("");
     chunkRestoredRef.current = false;
     ttsSyncedRef.current = false;
+    paintedHighlightsRef.current = new Set();
     swapStartRef.current = Date.now();
 
     if (wasOpen) {
